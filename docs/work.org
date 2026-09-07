@@ -1,0 +1,98 @@
+#+TITLE: Project Work Ledger
+#+STARTUP: overview
+#+TODO: TODO ACTIVE BLOCKED REVIEW | DONE ABANDONED
+#+TYP_TODO: PENDING FAILING SUPERSEDED | HOLD ASSUMED_PASS
+#+TAGS: feature defect maintenance migration legacy
+#+OPTIONS: toc:2 num:nil
+
+This is the project's canonical work and requirements index. Each fact has one
+authoritative representation:
+
+- *Current lifecycle state* :: The TODO keyword on the work-item headline.
+- *Classification* :: One or more tags on that headline.
+- *Stable metadata* :: The work item's property drawer.
+- *Current definition* :: The linked =spec.org= file.
+- *Evidence* :: The linked =audits.org= and =validation.org= files.
+- *History* :: Git history and explicitly linked archived sources.
+
+Do not repeat lifecycle state in a property, section, specification, or evidence
+file. Work items remain under one heading when their state changes. Use one
+monotonically increasing project-wide work number and never reuse an identifier,
+including after abandonment, deletion, retirement, or archival.
+
+* Ledger vocabulary
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+
+The file directives declare the permitted TODO states and standard tags. This
+section defines their meanings.
+
+** Lifecycle states
+
+- =TODO= :: Defined but not started.
+- =ACTIVE= :: Delivery is underway.
+- =BLOCKED= :: Delivery cannot continue because of a named external dependency.
+- =REVIEW= :: Human review, validation, or disposition is required.
+- =DONE= :: Delivered, verified, and closed.
+- =ABANDONED= :: Deliberately not delivered. Its identifiers remain reserved.
+
+** Legacy requirement states
+
+- =PENDING= :: The requirement or some required evidence remains unverified.
+- =FAILING= :: Current evidence shows that the requirement does not hold.
+- =SUPERSEDED= :: A named later requirement replaces or retires it.
+- =HOLD= :: The requirement remains current and its recorded evidence passes.
+- =ASSUMED_PASS= :: Migration inferred delivery under a recorded heuristic; it
+  is not a contemporaneous test result.
+
+** Standard tags
+
+- =feature= :: New or changed product behaviour.
+- =defect= :: Incorrect existing behaviour.
+- =maintenance= :: Internal upkeep without intended product-behaviour change.
+- =migration= :: Historical or framework migration work.
+- =legacy= :: Material governed by an earlier delivery process. Apply it to the
+  parent headline so the whole subtree inherits the classification.
+
+Tags are non-exclusive classifications. Add a project-specific tag only when it
+provides a durable cross-cutting category that the standard tags cannot express.
+
+** Work-item structure
+
+#+begin_example
+** TODO WNNN - Concise descriptor :feature:
+:PROPERTIES:
+:CUSTOM_ID: w-nnn
+:PRIORITY: P1
+:SOURCE: operator
+:CREATED: YYYY-MM-DD
+:END:
+
+- *Specification:* [[file:../specs/NNN-concise-descriptor/spec.org][WNNN - Concise descriptor]]
+#+end_example
+
+Use =OWNER= and =BRANCH= properties only when concurrent work needs explicit
+coordination. Use =MIGRATION_DISPOSITION= only to preserve an immutable migration
+classification; it is provenance, not current state.
+
+* Work items
+
+* Migration record
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+
+** DONE SDLC migration - new to v3                      :migration:
+:PROPERTIES:
+:CUSTOM_ID: sdlc-migration
+:MIGRATED: 2026-09-07
+:END:
+
+- *Pre-migration state:* sdlc_new_state_2026-09-07-2
+- *Migration branch:* sdlc-v3-migration-2026-09-07-2
+- *Ticket archive:* Not applicable.
+- *Historical requirements:* Not applicable.
+- *Archived v2 work:* Not applicable.
+- *Assumptions:* None recorded by project initialization.
+- *Unresolved items:* None recorded by project initialization.
