@@ -1,338 +1,414 @@
-# Architecture
+# Application architecture
 
-**Status:** Draft conceptual architecture.
+**Status:** Draft architecture for the first implementation. The components and
+paths below are proposed; this repository does not yet contain application code.
 
-**Last updated:** 7 September 2026.
+**Last updated:** 8 September 2026.
 
-The polling application brings together poll administration, invitations,
-passwordless access, ranked ballots, and a closing deadline. Counting follows
-Ireland's national rules for proportional representation by the Single
-Transferable Vote (PR-STV). The moderator specifies the number of winning options
-when creating a poll, equivalent to the number of seats in a constituency.
+The application will be a **single Go application with internal modules**,
+server-rendered HTML, and a local SQLite database. One binary will provide the
+web server and a command for processing due work. Exodan will deploy and operate
+it under its project integration contract.
 
-The application performs the count automatically. Automatic execution is the
-intended difference from the manual Irish count; the counting rules remain the
-same.
+The [README](../README.md#captured-requirements) holds the captured requirements.
+The [vision](VISION.md) holds product intent, voter-facing copy, and open product
+questions. This document defines application structure, technical boundaries,
+data ownership, and runtime behaviour. Detailed interfaces, schemas, counting
+rules, and acceptance criteria will follow in specification sheets.
 
-The application preserves one effective vote per participant while allowing that
-participant to revise their preferences before the poll closes. A participant
-may have several email addresses, all providing access to the same voting record
-for a poll.
+## Architectural decisions
 
-This document describes the system boundary, domain concepts, and allocation of
-responsibilities implied by the [product brief](../README.md) and developed in
-the [vision](VISION.md). It records the Go application server as the owner of
-interactions and user experience. Frameworks, storage, detailed interfaces, and
-authentication mechanisms beyond the stated magic-link requirement remain for
-solution design.
+| Area | Direction and reason |
+| --- | --- |
+| Application | One Go module and binary, with explicit internal package boundaries. The initial service does not need independently deployed components. |
+| Web interface | Standard-library `net/http`, `http.ServeMux`, and `html/template`. Ordinary HTML forms let Go own validation, state, navigation, and rendering. |
+| Persistence | SQLite through `database/sql` and `modernc.org/sqlite`, following writeback's existing foundation. Transactions cover ballots, poll closure, and durable work without another server. |
+| Counting | A separate Go package implementing the selected Irish PR-STV rules. It receives a frozen input and produces a result and count record without HTTP, SQL, or email dependencies. |
+| Background work | Durable work records in SQLite, processed by a bounded command in the same binary. Exodan owns periodic invocation. |
+| Email | An application-owned mail interface with an SMTP adapter, adapted from the sibling projects. Invitations and authentication use this boundary. |
+| Deployment | Exodan owns build/deployment orchestration and host services. The application consumes its runtime configuration, storage, and scheduling contract. |
+| Reuse | Adapt selected source into this repository first. Avoid making the first release depend on extracting a new shared framework. |
 
-## Architectural principles
+The initial deployment assumes one application host with local persistent
+storage. SQLite suits this topology, but serializes writers. Multiple application
+hosts or sustained write contention would require a fresh persistence decision;
+sharing the database over a network filesystem is outside this architecture.
+See SQLite's [deployment guidance](https://www.sqlite.org/whentouse.html).
 
-- **Irish PR-STV governs the count.** The number of winning options is a property
-  of the poll set by its moderator. Voting instructions remain simple even when
-  the count must handle complex transfers or edge cases. The application carries
-  out the count automatically using those rules.
-- **Explain the task plainly.** Invitations are short. Voting instructions and
-  a separate counting explanation are readily available from the voting page.
-  Voter-facing help discusses the poll without national or electoral framing.
-- **Go drives the experience.** All interactions and user experience are driven
-  by the Go application server.
-- **Avoid JavaScript.** JavaScript is permitted only where absolutely
-  unavoidable.
-- **One participant, one vote per poll.** Multiple email addresses provide access
-  to the same participant record and ballot.
-- **Reuse suitable existing code.** The upload and writeback projects are the
-  first sources to assess when developing the solution design.
+The [modernc SQLite driver](https://pkg.go.dev/modernc.org/sqlite) is CGo-free and
+supports `database/sql`. This fits Exodan's cross-compilation model without a
+native database service or a target-side Go toolchain. Dependency versions will
+be selected and pinned when the module is created.
 
-## System context
-
-The polling application sits between moderators who establish a poll and voters
-who participate in it. Email provides invitations and authentication links.
-Moderator eligibility comes from the configuration arrangement named in the
-brief.
+## Runtime topology
 
 ```mermaid
 flowchart LR
-    moderator[Moderator] -->|Creates and administers polls| polling[Go application server]
-    voter[Voter] -->|Submits and revises preferences| polling
-    polling -->|Invitations and authentication links| email[Email delivery]
-    email -->|Poll access| voter
-    configuration[Moderator configuration] -->|Eligible moderators| polling
+    browser[Moderator or voter browser] -->|HTTPS| caddy[Caddy: Exodan]
+    subgraph apphost[Application host]
+        caddy -->|ADDR| serve[stv-poll serve]
+        timer[Periodic invocation: Exodan] --> sweep[stv-poll process-due-work]
+        serve --> services[Application services]
+        sweep --> services
+        services --> db[(SQLite in STATE_DIRECTORY)]
+        services --> count[PR-STV counting package]
+        services --> mail[SMTP adapter]
+        config[Runtime YAML configuration] --> serve
+        config --> sweep
+    end
+    mail --> smtp[Configured SMTP service]
+    smtp -->|Invitations and authentication links| browser
 ```
 
-The diagram shows logical relationships. Its boxes do not prescribe separate
-services, processes, or infrastructure.
+The application-services box represents code linked into both command modes,
+not a network service. The web process remains running; each scheduled command
+performs a bounded sweep and exits. Both use the same configuration and local
+database under the application's service identity.
 
-## Roles and authority
+The browser receives HTML and CSS. It does not calculate results, decide voting
+eligibility, or maintain authoritative application state. No JavaScript is
+required by this architecture. Any later exception must identify an interaction
+that cannot reasonably be delivered by the Go server and native HTML.
 
-- **Moderator:** defines the poll, specifies the number of winning options,
-  adds participants and their email addresses, sets the deadline, and selects
-  whether the system should announce the outcome immediately. The moderator can
-  inspect results, pause polling, and manually trigger closing and the automatic
-  count. A participant list may be reused from an earlier poll and edited before
-  invitations are sent. Moderators are pre-configured; the brief does not provide
-  a self-registration flow for this role.
-- **Voter:** participates in an invited poll, ranks options, and revises their
-  own ballot before the deadline.
-- **Operator:** supplies the operating environment and configuration required
-  by the application. The detailed boundary with Exodan remains governed by its
-  applicable contract.
+## Application components and dependencies
 
-Authentication and permission to act are distinct responsibilities. A magic link
-provides the stated means of authentication; moderator eligibility and the
-poll's invitation list determine the relevant authority. The unique poll URL
-identifies a poll. The relationship between that address and the authentication
-link belongs in the later solution design.
-
-Whether moderators are limited to their own polls and whether an invited
-moderator may also vote remain product decisions. Pause and manual closing are
-established capabilities; other changes after opening remain to be defined.
-
-## Domain concepts
-
-| Concept | Meaning and relationship |
+| Component | Responsibility and dependencies |
 | --- | --- |
-| Poll | A question or decision, its options, number of winning options, invited participants, closing deadline, and announcement preference. |
-| Option | A choice within a particular poll that a voter may rank. |
-| Number of winners | The number of options to be selected by the count, specified by the moderator when creating the poll. It corresponds to constituency seats in Irish PR-STV. |
-| Participant list | The participants and their grouped email addresses prepared for a poll. A new list may be based on a previous poll's list and edited before invitations are sent. |
-| Participant | One invited person, represented by a record with one or more email addresses and one voting entitlement in the relevant poll. |
-| Email address | An invitation and authentication route associated with a participant. Several addresses may lead to the same participant. |
-| Invitation | Email access to a particular poll, sent to every address listed for an invited participant. |
-| Voter | A participant acting on their voting entitlement, using any of their associated email addresses. |
-| Ballot | The participant's current ordered preferences for that poll, shared across all their associated email addresses. A revision changes the effective ballot. |
-| Count | Application of Irish PR-STV counting rules to the final eligible ballots, using the poll's number of winners as its seat count. |
-| Result | The counted outcome available to the moderator, with automatic announcement controlled by the poll's announcement preference. |
-| Announcement preference | The moderator's **announce the winner immediately** checkbox, controlling whether the system announces the counted outcome. |
+| `cmd/stv-poll` | Selects `serve` or `process-due-work`, loads configuration, opens storage, and constructs dependencies. Owns process startup and shutdown. |
+| `internal/web` | Routes, middleware, form decoding, presentation models, and template rendering. Calls application services; does not issue SQL or perform counts. |
+| `internal/auth` | Issues and verifies magic-link grants and sessions. Resolves authenticated principals; poll services enforce authority over each requested poll and participant. |
+| `internal/polls` | Application services for poll administration, participants, invitations, ballot replacement, closing, and result access. Owns transaction boundaries through the store. |
+| `internal/count` | Counting model and PR-STV engine. Accepts a final ballot snapshot, winner count, and versioned rule inputs; returns the outcome and a structured count record. |
+| `internal/store` | SQLite access, migrations, constraints, transaction support, snapshots, and durable work records. SQL stays inside this package. |
+| `internal/automation` | Finds due polls and pending work, claims bounded batches, and invokes the same closing, counting, and delivery services used by application actions. |
+| `internal/notify` | Builds invitation/authentication messages from approved copy and delivers through an injected mail interface. Owns transport outcomes, not ballot acceptance. |
+| `internal/config` | Loads and validates Exodan's YAML layers and runtime paths. Exposes typed configuration without making other packages read the environment directly. |
 
-These are domain concepts, not a database schema. The participant-to-ballot
-relationship establishes voting entitlement; who may inspect that relationship
-depends on the privacy decisions still to be made.
+Dependencies run from HTTP and CLI entry points into application services and
+then into persistence, counting, and delivery. The counting package has no
+upstream dependency on those entry points or on infrastructure. Small interfaces
+at storage and external-delivery boundaries allow local substitutes during
+verification; package construction uses ordinary Go constructors.
 
-### Participant identity across email addresses
+This layout follows Go's [server-module guidance](https://go.dev/doc/modules/layout#server-project).
+Packages remain internal to the application. Model types live with the component
+that owns their meaning, with explicit conversion into the counting input and
+web presentation models.
 
-The participant is the unit of voting entitlement. An email address provides a
-way to reach and authenticate that participant. When adding a participant to a
-poll, the moderator may enter multiple addresses separated by commas or colons.
-Those addresses belong to the same participant record for the poll.
+## Server-rendered interaction
 
-For example, a readers' group member could be entered as
-`reader.personal@example.org, reader.group@example.org`. The moderator could
-also separate those addresses with a colon. Both addresses receive invitations,
-and a magic link used from either address reaches the same participant record
-and current ballot. Voting through one address and returning through the other
-therefore preserves one effective vote.
+GET requests render pages. Form submissions use POST, are validated on the
+server, and redirect after a successful mutation. Invalid submissions render the
+form with the entered values and clear field-level errors. All state-changing
+forms receive server-validated CSRF protection. The HTTP server applies bounded
+request sizes, timeouts, and graceful shutdown.
 
-The moderator explicitly groups addresses belonging to the same person. This
-model does not infer that separately entered participants are the same person.
-Handling an email address assigned to more than one participant, and correcting
-address groupings after voting begins, remain product decisions.
+The ballot page uses labelled rank inputs and a submit button. It supports
+keyboard navigation and ordinary form submission without drag-and-drop or a
+client-side state store. Native `details` elements or ordinary links provide the
+help in [VISION.md](VISION.md#voter-facing-copy). The invitation and help copy are
+presentation content; the count engine does not generate voting instructions.
 
-### Reusing a participant list
+Templates are parsed and checked at startup, adapting writeback's template cache.
+Templates and static assets are deployed as read-only runtime directories under
+Exodan's `data_dirs` contract. This retains the sibling applications' template
+workflow without adding a frontend build system. Mutable data never lives beside
+those assets.
 
-A moderator may use a previous poll's participant list as the starting point for
-a new poll. The grouping of each participant's email addresses is preserved.
-Before sending invitations, the moderator can edit the prepared list, including
-adding or removing participants and changing their associated addresses.
+Page handlers distinguish open, paused, closed, count-pending, and result-ready
+conditions using application state. Those presentation conditions do not settle
+open product questions such as whether a paused poll may resume or how its
+deadline is handled.
 
-The resulting electorate belongs to the new poll. Its preparation does not
-modify the earlier poll's electorate or ballots, and previous votes are not
-carried forward. The participant has one voting entitlement in each poll in
-which they are included. How participant information is represented across polls
-is a later storage-design decision.
+## Identity and authorization
 
-## Responsibilities within the application
+A poll participant has a stable identifier within that poll. Its associated
+email addresses are contact and authentication routes. Every address-specific
+grant resolves to the same poll and participant identifiers. The ballot is keyed
+by that participant identity, so changing the mailbox used to authenticate does
+not create another ballot.
 
-### Poll administration
+The magic-link flow is:
 
-Poll administration establishes the options, number of winners, electorate,
-deadline, and announcement preference, and provides the poll's unique URL. It is
-responsible for making the poll's definition available consistently to the other
-parts of the application.
+1. The invitation service creates an access grant for an allowed address and its
+   poll participant. Moderator login uses a distinct grant purpose and the
+   configured moderator identity.
+2. The mail adapter sends a link built from the validated configured `base_url`.
+3. The verification handler validates the grant's authenticity, purpose,
+   validity, and association with the current participant or moderator.
+4. The application establishes a session and redirects to a URL without the
+   token. Session cookies are `HttpOnly`, `Secure` in deployment, and use an
+   appropriate `SameSite` policy.
+5. Each subsequent operation checks authority against the requested poll and
+   participant, including when an identifier is supplied in a form or URL.
 
-It also supports preparing an electorate from a previous poll's participant list.
-List preparation and editing precede sending invitations to the new poll, so the
-moderator can review who will be invited and which addresses will receive them.
+Writeback's identity-based token and stored token-hash pattern is the starting
+point. STV Poll must add explicit grant purpose and poll scope. Session and
+magic-link credentials remain distinguishable. Grant hashes and lifecycle state
+belong in storage; raw tokens are excluded from logs and URL referrers.
 
-The moderator can pause polling when a problem occurs. From the paused poll,
-**Close poll and count results** ends polling and triggers the automatic count.
-Other rules for changing a poll after invitations or votes exist remain to be
-defined.
+Link lifetime, reuse, expiry recovery, and session lifetime remain product and
+security specification decisions. If links are consumed once, validation and
+consumption must be atomic. The architecture supports those policies without
+assuming that possession of an email address grants authority over every poll.
 
-### Invitations and access
+Moderator eligibility is loaded from configuration, separately from participant
+eligibility in the database. Whether moderators administer only their own polls,
+and whether an invited moderator may vote, remains explicit product policy.
+The authorization boundary must support those decisions without treating all
+signed-in users as interchangeable.
 
-This responsibility connects the moderator's participants to email invitations
-and passwordless authentication. An invitation goes to each address listed for
-each participant. Authentication through any of those addresses leads to that
-participant's shared voting record for the poll. This responsibility also
-distinguishes access to a poll from authority to administer it or submit a ballot.
+## Persistence and consistency
 
-Invitation messages use the [short invitation copy](VISION.md#invitation-email)
-defined in the vision. Each recipient receives the voting link associated with
-their address and participant; the email does not carry the detailed counting
-explanation.
+SQLite is the authoritative store for application state. The database file lives
+under `STATE_DIRECTORY`. Each command configures database connections consistently,
+including foreign-key enforcement and bounded lock waits. Versioned application
+migrations establish the schema before requests or work are accepted; migration
+failure prevents the process from serving against a partial schema.
 
-The concept of a magic link is established in the brief. Link generation,
-validation, lifetime, reuse, and the handling of a returning voter are solution
-design matters. Comparison with other applications' implementations is deferred
-to that work.
+The logical relationships are:
 
-### Ballot management
+- A **poll** owns its options, winner count, deadline, announcement preference,
+  state, and participant list.
+- A **poll participant** owns one or more contact addresses and at most one
+  current effective ballot. Database uniqueness enforces this ballot boundary.
+- A **grant** identifies its purpose and authorized principal. An invitation's
+  delivery record identifies the intended address without becoming a voting
+  entitlement of its own.
+- A **closed poll** identifies a frozen count input. The count input and result
+  retain their rule and application-version provenance.
+- **Work and delivery records** retain pending operations, claims, attempts, and
+  outcomes so that restarts do not discard unfinished work.
 
-Ballot management receives and maintains a participant's ordered preferences. It
-preserves two linked rules: one vote per participant, and unlimited revisions
-while polling is open, before the deadline. A revision therefore changes which
-preferences represent that vote in the final count, including when the
-participant returns through a different associated email address. Paused and
-closed polls accept neither new ballots nor revisions.
+Reusing a participant list copies the grouped contact information into new
+poll-participant records. It does not reuse ballot keys or mutate the earlier
+poll. No global person registry is required for this model. Duplicate addresses
+across separately entered participants still require the product policy recorded
+in the vision.
 
-The voter may rank only some options. The eventual ballot rules need to define
-invalid rankings and explain them to the voter; this conceptual architecture
-does not select validation or interface mechanisms.
+### Ballot submission and closing
 
-### Deadline and final ballot boundary
+Ballot replacement runs in a transaction that checks participant authority,
+validates rankings, and checks the poll's state and deadline before committing
+the effective ballot. A version check prevents a stale browser form from silently
+overwriting a newer accepted ballot; how that conflict is presented belongs in
+the detailed interaction specification.
 
-The deadline normally ends the period in which voters may change their
-preferences. The moderator can also pause polling and then close it manually
-through **Close poll and count results**, without waiting for that deadline.
-Either route to closing establishes the final ballots used by the count.
-Authentication alone does not extend the voting period.
+Closing uses the same persistence boundary: it stops further acceptance, freezes
+the eligible ballot input, and records pending count work atomically. A concurrent
+submission and close therefore have one database-defined order. A submission
+cannot pass an earlier HTTP-only eligibility check and later alter a frozen
+count.
 
-Pausing stops ballot submissions and revisions but does not itself close the
-poll, count the votes, or announce a result. Manually triggering a count means
-that the moderator initiates it; the application still performs the counting
-automatically under the same Irish PR-STV rules.
+The acceptance-time rule will be defined in the specification and implemented
+once in the application service. It applies even when a scheduled sweep is late.
+An Exodan timer wakes the processor; it does not determine whether a ballot was
+on time.
 
-The product definition needs to settle the precise meaning of submission at the
-deadline, how the deadline is presented across timezones, how a pause is ended,
-and what happens when the scheduled deadline arrives during a pause. The later
-design must give ballot acceptance and counting a consistent interpretation of
-those decisions.
+Count inputs contain option identifiers and ranked preferences, without email
+addresses. This limits the data the counting component needs. It does not promise
+anonymous ballots: the database still contains the participant-to-ballot
+association. Retention and access to that association remain product decisions.
 
-### Counting and results
+## Counting, work processing, and announcement
 
-Counting is performed automatically by the application, following Ireland's
-national PR-STV rules. Poll options take the role of candidates, and the
-moderator's configured number of winners takes the role of constituency seats.
-The count uses that number together with the final eligible ballots to determine
-the outcome. Automation replaces the manual counting work while retaining the
-same rules.
+The counting engine is an application-owned Go package. Its inputs are the frozen
+ballots, options, number of winners, rule version, and any ordering or selection
+inputs required by the chosen rules. Its outputs are the winning options and a
+structured record of the count, including quotas, transfers, exclusions, and
+termination.
 
-The Electoral Commission's [explanation of Ireland's voting system](https://www.electoralcommission.ie/irelands-voting-system/)
-describes the quota, surplus transfers, exclusions, and ballots with no remaining
-usable preference. These are responsibilities of the count, while the voter
-continues to express an ordered list of preferences.
+The [counting authority](VISION.md#why-irish-pr-stv) is Irish PR-STV. A generic STV
+library is not interchangeable merely because it accepts ranked ballots. Surplus
+selection, ties, transfer order, and termination must follow the selected rules.
+Where the rules require drawing lots or selecting ballots, the software must
+capture the decision inputs and outcomes needed to reproduce the count. The
+algorithm must not silently substitute another STV variant to make automation
+easier.
 
-The detailed national counting reference is Part XIX, Rules for the Counting of
-the Votes, of the [Electoral Act 1992](https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html).
-That link is the enacted text. The solution design must use the applicable rules
-and amendments when defining the detailed counting procedure, including ties and
-edge cases. The voting system is selected; translating its rules into software
-remains later work.
+The runtime flow is:
 
-Counting is conceptually separate from invitation delivery and authentication.
-The application's invitation, ballot-revision, and deadline rules determine
-participation and the final ballots submitted to that count.
+1. A deadline sweep or authorized manual close calls the same poll-closing
+   service. The close transaction creates one count input and pending work record.
+   Pausing alone never creates count work.
+2. `process-due-work` claims pending work. It calculates outside the database
+   write transaction, so a count does not hold the writer lock while it runs.
+3. A result transaction stores the outcome and count record against that input,
+   marks the work successful, and creates an announcement intent only when the
+   poll's setting calls for one. A uniqueness boundary prevents a retry from
+   creating a second authoritative result or announcement intent.
+4. Results become available to authorized moderator requests. Announcement work
+   is attempted after the result commits. A delivery failure cannot undo the
+   result or remove moderator access.
 
-The moderator can log in after the deadline to inspect results and the winning
-options. Results are also available following a manual close and count. This
-access is independent of whether the system announces the outcome.
+The HTTP close action records the work and renders its pending status; it does
+not hold a browser connection open for the entire count. The periodic command
+processes closing, counting, and delivery in dependency order so newly produced
+work can progress during the same invocation, within its execution bounds.
 
-The **announce the winner immediately** checkbox controls announcement:
+The **announce the winner immediately** preference means announcement becomes
+eligible as soon as the result is committed. The channel and message remain open
+product decisions. The architecture separates that intent from invitations and
+SMTP, so it does not accidentally choose email or public result visibility as
+announcement policy. With the checkbox clear, no system announcement is created.
 
-- When checked, the system announces the winning outcome as soon as counting
-  finishes, including after a manual close and count.
-- When unchecked, the system does not announce the outcome. The moderator
-  inspects the results and announces the winner outside the system.
+### Recovery and delivery
 
-The announcement channel, message content, and default checkbox state remain
-open decisions. Visibility of individual ballots and the level of counting
-detail exposed to participants also remain to be defined.
+Claims and outcomes are stored durably, with bounded claims that can be recovered
+after a crash. Retries use the same frozen input and recorded decision inputs.
+The processor reconciles current database state on every invocation rather than
+assuming every scheduled tick occurred. Counts that cannot be processed remain
+visible as pending or failed work; the service must not invent a result.
 
-### Voting guidance
+Invitations are recorded for every recipient address before delivery is
+attempted. A durable delivery queue, adapted from writeback's automation pattern,
+keeps email failures separate from poll and ballot transactions. SMTP runs
+outside write transactions with bounded transport time and a configured secure
+transport policy. Retry timing and terminal-failure presentation are specification
+work. SMTP acceptance does not prove inbox delivery, and a crash after acceptance
+can cause a retry to send a duplicate message; no exactly-once delivery guarantee
+is implied.
 
-The voting page provides readily available help explaining how to rank
-preferences. A separate **How will votes be counted?** link expands the counting
-explanation or opens a help page. These interactions follow the Go-driven UX
-principle and the restriction on JavaScript.
+## Exodan integration
 
-The [voter-facing copy](VISION.md#voter-facing-copy) in the vision defines the
-short invitation and draft explanations. Help uses plain English at a level
-understandable by a twelve-year-old and explains both the count and its benefits.
-It focuses on the task, without mentioning Ireland, national voting systems, or
-elections. Optional further reading links to Wikipedia's Single Transferable
-Vote article.
+The consumed authority is Exodan's
+[Project Integration Contract](https://github.com/tigger-developer/exodan/blob/master/deploy/docs/PROJECT-INTEGRATION.md),
+version 1.8, updated 25 August 2026, read for this draft. The application follows
+its active NixOS contract. Exodan remains the authority if its contract changes.
 
-The Irish source references above document the counting authority for development.
-They are separate from the voter-facing help.
+| Owner | Responsibilities |
+| --- | --- |
+| STV Poll | Go binary, application commands, HTML/CSS assets, typed configuration semantics, authentication, poll rules, SQLite schema and migrations, counts, delivery intent, and application health. |
+| Exodan | Build and deployment orchestration, Caddy, DNS, TLS, firewall, service identity and sandbox, host resources, secret decryption, periodic invocation, backup/restore orchestration, log collection, and host monitoring. |
 
-## Poll journey
+Exodan cross-compiles the Go application for `linux/amd64` from the operator
+machine and deploys the resulting binary. The initial application has no native
+command dependency, so it does not require a `dependencies/nix` declaration.
+Runtime templates and static assets are declared in `data_dirs`. Deployment uses
+committed and pushed source through the infrastructure workflow.
 
-1. A configured moderator defines the poll, its options, number of winners,
-   participants, closing deadline, and announcement preference, and receives its
-   unique URL. The participant list can be reused from an earlier poll and edited
-   before invitations are sent. Each participant has one or more email addresses;
-   multiple addresses can be separated by commas or colons.
-2. Each participant's listed addresses receive invitations. The participant
-   authenticates through a magic link received at any of those addresses and
-   reaches the same participant record for the poll.
-3. Each voter submits an ordered selection of options. Ranking every option is
-   optional.
-4. A returning voter may revise their preferences any number of times before
-   the deadline while polling is open, using any of their associated addresses.
-   Each revision still represents the same single vote.
-5. Polling normally closes at the deadline. If there is a problem, the moderator
-   can pause it and then choose **Close poll and count results**.
-6. The application counts the final eligible ballots automatically under Irish
-   PR-STV, using the poll's configured number of winners. The moderator can
-   inspect the results. The system announces the outcome immediately if the
-   checkbox was selected; otherwise the moderator announces it externally.
+### Runtime contract
 
-This is a conceptual journey, not a prescribed state machine or sequence of
-technical operations.
+| Input | Application use |
+| --- | --- |
+| `ADDR` | Bind the HTTP listener to the supplied address exactly. Caddy provides the public endpoint; the app does not choose a public host port or parse addresses by splitting on colons. |
+| `DEFAULT_CONFIG_PATH` | Load the base application YAML. |
+| `CONFIG_PATH` | Overlay the selected host's application YAML. |
+| `SECRETS_PATH` | Overlay the decrypted secrets YAML when supplied. The application never decrypts an `.age` file itself. |
+| `STATE_DIRECTORY` | Store the SQLite database and all other persistent mutable application data. |
+| `XDG_RUNTIME_DIR` | Use for subprocess runtime state if a future application dependency needs it. No such dependency is selected here. |
+| Process working directory | Resolve declared read-only runtime assets such as `templates/` and `static/`. |
 
-## Information and integration boundaries
+Configuration precedence is defaults, host YAML, then decrypted secrets. The
+loader validates the merged configuration at startup. An explicitly supplied
+but unreadable layer is an error; required values must not silently disappear
+through a fallback. The configured `base_url` supplies absolute invitation links.
+Request `Host` headers do not determine authentication-link destinations.
 
-- **Participation and ballot content:** the application needs to establish
-  voting eligibility and preserve one effective vote per participant across all
-  their associated addresses. That requirement does not decide who can inspect
-  the association between an individual and their preferences.
-- **Email delivery:** invitations and authentication depend on email. Delivery
-  of an email and acceptance of a ballot are separate events; the voter-facing
-  experience needs to distinguish them.
-- **Moderator configuration:** the original brief specifies a `.age.yaml` file
-  under an Exodan contract. This establishes an integration constraint, but the
-  contract's exact format and responsibilities have not been verified here.
-- **Application and environment:** poll meaning, eligibility, ballot revision,
-  and counting belong to the application's responsibilities. Deployment and
-  configuration integration must be reconciled with the Exodan contract during
-  solution design.
+The contract uses `config/defaults.yaml`, `config/<host>.yaml`, and encrypted
+`secrets/<host>.yaml.age`. Local development may use ignored
+`secrets/localhost.yaml`. These paths are part of the proposed application
+layout, not files already present in this repository.
 
-No storage layout, encryption mechanism, email provider, deployment topology, or
-shared authentication component is selected by these boundaries.
+### Scheduled work and operations
 
-## Reuse direction
+The application declares routine intent for `process-due-work`; Exodan creates
+and runs the host timer. Its interval grammar has a minimum of one minute. The
+selected interval and acceptable close-to-result latency must be reconciled in
+the detailed specification and deployment configuration. Voting deadlines remain
+enforced by the application independently of that interval.
 
-The upload and writeback projects are intended sources of reusable code, with
-their magic-link flows the first candidates to assess. The aim is to shorten the
-path to a working polling application by building on suitable existing work.
+The command uses the same runtime contract as `serve`, processes a bounded batch,
+and reports failure through its exit status and structured logs. The application
+does not install host timers, cron jobs, service units, or application-owned SSH,
+deploy, logs, or status wrappers.
 
-The later solution design should establish which code can be reused, which needs
-adaptation, and which responsibilities remain specific to polling. The approach
-to sharing or incorporating that code is also deferred. This draft records the
-reuse priority without asserting that a particular component is already suitable.
+Application health reports whether the server can use its required state and
+schema; dependency failure must not return a misleading healthy response. Logs
+record operation outcomes and identifiers without magic-link tokens, raw session
+credentials, or ballot contents. Exodan owns collection and host monitoring.
 
-## Open decisions and later design
+The storage design must provide a consistent SQLite backup boundary for Exodan's
+backup workflow. Backup integration must account for any journal files and
+concurrent writes; copying a live main database file alone is not an assumed
+recovery mechanism. Application migration compatibility and infrastructure
+rollback/restore must be assessed together before deployment.
 
-The [vision's open decisions](VISION.md#decisions-needed-to-develop-the-vision)
-identify the unresolved product questions. Participant corrections, privacy,
-announcement delivery, detailed result visibility, and the remaining poll
-administration rules need explicit decisions. The Irish PR-STV counting system,
-moderator-defined number of winners, announcement choice, and pause-to-close
-workflow are established requirements.
+## Proposed repository layout
 
-The later solution design can then select the technical components and explain
-how they uphold those decisions and the Go-driven interaction principle. That
-work includes authentication behaviour, data persistence, concurrent ballot
-revisions, enforcement of the closing deadline, email failures, and the Exodan
-integration. None of those mechanisms is selected by this draft.
+```text
+cmd/stv-poll/main.go
+internal/
+  auth/
+  automation/
+  config/
+  count/
+  notify/
+  polls/
+  store/
+    migrations/
+  web/
+templates/
+static/
+config/
+  defaults.yaml
+  <host>.yaml
+secrets/
+  <host>.yaml.age
+  localhost.yaml          # ignored, local development only
+```
+
+This is the intended component layout. The first build will introduce the Go
+module, assets, configuration, and application entry point under the subsequent
+specifications.
+
+## Reuse from upload and writeback
+
+The source review covered the files below, including their relevant handlers and
+command paths. These are concrete adaptation candidates, not a claim that either
+project has been audited or that its code can be copied unchanged.
+
+| Starting point | Inspected source | Adaptation for STV Poll |
+| --- | --- | --- |
+| Application composition | upload `cmd/upload/main.go`; writeback `internal/app/app.go` and `cmd/writeback/main.go` | Reuse standard-library routing, explicit dependency wiring, and writeback's bounded HTTP server and graceful shutdown pattern. Introduce polling services rather than either application's domain handlers. |
+| Magic links and sessions | writeback `internal/auth/auth.go`, login/verification in `internal/auth/handlers.go`, and `internal/registration/middleware.go`; upload `internal/auth/token.go` and `session.go` | Prefer writeback's identity-bearing token and token-hash foundation. Add purpose and poll scope, participant authorization, and the agreed grant lifecycle. Upload's email identity alone does not represent a participant with several addresses. |
+| Configuration | upload `internal/config/config.go`; writeback `internal/config/config.go` | Adapt upload's explicit runtime path handling and layered YAML. Apply all current Exodan inputs, typed validation, and required-layer errors; omit media-tenant and workshop-specific configuration and legacy fallbacks. |
+| Templates | writeback `internal/tmpl/cache.go` and `internal/app/assets.go` | Adapt startup parsing, shared partials, and asset versioning for plain HTML polling pages and help. |
+| Email | upload `internal/email/email.go`; writeback `internal/email/email.go` | Adapt the small sender interface and plain-text message construction. Keep poll copy separate from transport; add bounded transport and explicit security policy. Media confirmations, workshop mail, attachments, and BCC flows are outside the initial app. |
+| SQLite | writeback `go.mod` and `internal/db/db.go` | Reuse the CGo-free driver choice and application-owned initialization/migration pattern. Create a polling schema; configure every connection correctly and omit writeback's historical domain migrations. |
+| Durable automation | writeback `internal/automation/service.go`, automation records in `internal/db/db.go`, and `sessionAutomationSweepCommand` in `cmd/writeback/main.go` | Adapt one-pass processing, durable claims, and delivery outcomes into poll closing, counting, and mail work. Exodan retains scheduling ownership. |
+
+The review also found adaptations that are necessary before reuse: upload's
+login handler builds a link from the request host and logs the complete link;
+STV Poll uses configured `base_url` and redacts credentials. Writeback's moderator
+verification reads and then marks token usage separately; any one-use policy in
+STV Poll needs atomic consumption. These are source-specific reasons to adapt
+the components carefully.
+
+The inspected source snapshots were upload `3776f42e84d5`, writeback
+`8bd639af78e4`, and Exodan integration-contract revision `ec252421b188`.
+Paths above are relative to their respective repositories, available locally as
+`../upload`, `../writeback`, and the Exodan project.
+
+These reusable packages currently live under the sibling projects' `internal`
+directories. Go's [internal-package boundary](https://go.dev/doc/modules/layout#package-or-command-with-supporting-packages)
+prevents importing them directly into this separate module. The initial approach
+is selective local adaptation with source provenance and applicable licence
+obligations retained. A shared module can follow if a stable common boundary
+emerges; extracting one is not a prerequisite for the first application.
+
+## Verification boundaries and further design
+
+The architecture provides separate verification points: pure counting fixtures,
+SQLite transaction and recovery checks, HTTP form/authentication checks, and a
+local mail substitute. Deadline races, simultaneous use of two email addresses,
+and retry after interrupted counting cross the boundaries and need integration
+coverage. The fixtures and acceptance criteria will be defined in the next
+specification stage; no implementation checks have run for this draft.
+
+The remaining technical detail includes exact route and service interfaces,
+schema and migrations, grant/session policy, count-rule mapping and reproducible
+selection, work-claim recovery, transport configuration, and the backup boundary.
+The [product decision list](VISION.md#decisions-needed-to-develop-the-vision)
+separately preserves unresolved behaviour. Those decisions refine this application
+architecture without postponing the choice of its components or ownership.

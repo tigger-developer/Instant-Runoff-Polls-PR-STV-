@@ -2,7 +2,7 @@
 
 **Status:** Draft product direction.
 
-**Last updated:** 7 September 2026.
+**Last updated:** 8 September 2026.
 
 The polling application is intended to help an invited group select winning
 options using proportional representation by the Single Transferable Vote
@@ -11,11 +11,12 @@ poll, specifies the number of winning options, invites its voters, and sets a
 closing deadline. Voters rank their preferences, revise them as often as needed
 before that deadline, and participate without managing another password.
 
-This vision develops the intent in the [original product brief](../README.md).
+This vision develops the intent in the [product brief](../README.md).
 It describes the desired experience and product boundaries. The
-[architecture](ARCHITECTURE.md) describes the corresponding responsibilities and
-relationships. Both documents are drafts; implementation mechanisms remain for
-solution design. Irish PR-STV is the selected counting system.
+[architecture](ARCHITECTURE.md) defines the Go application's structure, technical
+components, and infrastructure integration. Both documents are drafts; detailed
+specifications and implementation follow. Irish PR-STV is the selected counting
+system.
 
 ## Purpose
 
@@ -89,8 +90,10 @@ The product has the following foundation:
 - **Short invitations and plain English help.** Invitation emails stay brief.
   The voting page provides readily available voting instructions and a separate
   explanation of counting and its benefits.
-- **Configured moderators.** Moderator configuration follows the `.age.yaml`
-  arrangement described in the brief, subject to the applicable Exodan contract.
+- **Configured moderators.** Moderator configuration follows Exodan's encrypted
+  YAML arrangement, `secrets/<host>.yaml.age`, with the decrypted configuration
+  supplied to the application. This corrects the original brief's `.age.yaml`
+  spelling to the verified contract convention.
 
 ## Why Irish PR-STV
 
@@ -107,6 +110,18 @@ The Electoral Commission's [explanation of Ireland's voting system](https://www.
 provides the public overview of preference voting, quotas, and transfers. The
 application uses the moderator's chosen number of winning options in the role
 played by seats in a constituency.
+
+The detailed national counting reference is Part XIX, Rules for the Counting of
+the Votes, of the [Electoral Act 1992](https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html).
+That link is the enacted text. The counting specification must establish the
+applicable rules and amendments, including quotas, surplus transfers,
+exclusions, ballots with no remaining usable preference, ties, and other edge
+cases. The system is selected; the detailed translation into software remains
+specification work. Automation changes the execution of the count, while
+retaining those rules.
+
+These references establish the counting authority for development. The
+voter-facing help below keeps its explanation focused on the poll.
 
 ## Desired experience
 
@@ -292,13 +307,20 @@ results or signed-off acceptance criteria:
 
 The Go application server drives all interactions and the user experience.
 JavaScript should be avoided wherever possible and used only where absolutely
-unavoidable. This is an architectural principle for the later solution design.
+unavoidable. The architecture applies this principle through server-rendered
+pages and ordinary HTML forms.
 
 The delivery priority is to reuse suitable code from the upload and writeback
-projects to reach an initial working application quickly. Their magic-link flows
-are the first candidates for assessment during solution design. Reuse should
-support the polling experience and its agreed rules; the suitability of
-particular components remains to be established.
+projects to reach an initial working application quickly. The
+[reuse plan](ARCHITECTURE.md#reuse-from-upload-and-writeback) identifies concrete
+starting points in their application wiring, configuration, magic links,
+templates, email, and automation. Reuse should support the polling experience and
+its agreed rules. The architecture records the necessary adaptations; code has
+not yet been incorporated.
+
+Exodan owns deployment and host operation. The Go application owns poll
+behaviour, data, authentication, and counting. This division follows Exodan's
+project integration contract, as recorded in the architecture.
 
 ## Decisions needed to develop the vision
 
@@ -314,7 +336,16 @@ particular components remains to be established.
   voting have begun.
 - **Privacy:** what information is retained and who is permitted to inspect
   participant addresses and ballots.
+- **Moderator authority:** whether moderators may administer only their own
+  polls, and whether an invited moderator may also vote.
+- **Ballot validation:** how invalid, repeated, or incomplete rankings are
+  handled and explained, while preserving optional further preferences.
+- **Timing:** the precise acceptance boundary for submissions at the deadline
+  and how deadlines are presented across timezones.
+- **Returning access:** magic-link lifetime and reuse, session lifetime, and
+  how a voter returns after a link or session expires.
 
 These questions refine the product contract. The Irish PR-STV counting system,
 moderator-defined number of winners, and Go-driven interactions are established
-directions. Their implementation belongs in the later solution design.
+directions. Detailed product rules will be developed in specification sheets;
+the application structure is defined in the architecture.
