@@ -59,6 +59,16 @@ type CountWork struct {
 	ExistingResult []byte
 }
 
+type DeliveryAttempt struct {
+	DeliveryID     string
+	PollID         string
+	ContactID      string
+	RecipientEmail string
+	MessageKind    string
+	Question       string
+	Attempts       int
+}
+
 func (s *Store) ReplaceElectorate(ctx context.Context, ownerID, pollID string, expectedVersion int, participants []ElectorateParticipant) error {
 	if s == nil || s.DB == nil || ownerID == "" || pollID == "" || expectedVersion < 1 {
 		return ErrConflict
@@ -188,7 +198,7 @@ func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVe
 		if invitation.WorkID == "" || invitation.DeliveryID == "" || tx.QueryRowContext(ctx, "SELECT delivery_email FROM contacts WHERE id=? AND poll_id=?", invitation.ContactID, pollID).Scan(&recipient) != nil {
 			return false, ErrConflict
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,?,?,?,'pending')", invitation.WorkID, pollID, "invitation", "invitation:"+pollID+":"+invitation.ContactID, now.Unix()); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,?,?,?,'pending')", invitation.WorkID, pollID, "delivery", "invitation:"+pollID+":"+invitation.ContactID, now.Unix()); err != nil {
 			return false, fmt.Errorf("insert invitation work: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?,?,'pending',?)", invitation.DeliveryID, invitation.WorkID, invitation.ContactID, recipient, "invitation", now.Unix()); err != nil {
@@ -230,7 +240,7 @@ func (s *Store) ClosePoll(ctx context.Context, ownerID, pollID string, expectedV
 	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?, 'count', ?,?,'pending')", workID, pollID, "count:"+pollID, now.Unix()); err != nil {
 		return false, fmt.Errorf("insert count work: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled' WHERE status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='invitation')", pollID); err != nil {
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled' WHERE message_kind='invitation' AND status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='delivery')", pollID); err != nil {
 		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',closed_at=?,version=version+1 WHERE id=? AND version=?", now.Unix(), pollID, expectedVersion); err != nil {
@@ -396,6 +406,71 @@ func (s *Store) FailWork(ctx context.Context, workID, claimToken string, now tim
 	changed, err := result.RowsAffected()
 	if err != nil || changed != 1 {
 		return ErrConflict
+	}
+	return nil
+}
+
+func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken string, now time.Time) (DeliveryAttempt, error) {
+	if workID == "" || claimToken == "" {
+		return DeliveryAttempt{}, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return DeliveryAttempt{}, fmt.Errorf("begin delivery attempt: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var attempt DeliveryAttempt
+	var state string
+	var deadline int64
+	err = tx.QueryRowContext(ctx, `SELECT delivery.id,work.poll_id,COALESCE(delivery.contact_id,''),delivery.recipient_email,delivery.message_kind,poll.question,poll.state,poll.deadline,work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN polls AS poll ON poll.id=work.poll_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &attempt.Attempts)
+	if err != nil || attempt.MessageKind == "invitation" && (state != "open" || now.Unix() >= deadline) {
+		return DeliveryAttempt{}, ErrConflict
+	}
+	attempt.Attempts++
+	result, err := tx.ExecContext(ctx, "UPDATE work_items SET attempts=? WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", attempt.Attempts, workID, claimToken, now.Unix())
+	if err != nil {
+		return DeliveryAttempt{}, fmt.Errorf("persist delivery attempt: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return DeliveryAttempt{}, ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='in_flight' WHERE id=?", attempt.DeliveryID); err != nil {
+		return DeliveryAttempt{}, fmt.Errorf("mark delivery in flight: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return DeliveryAttempt{}, fmt.Errorf("commit delivery attempt: %w", err)
+	}
+	return attempt, nil
+}
+
+func (s *Store) RetryDelivery(ctx context.Context, workID, claimToken string, now, nextDue time.Time, failureClass string) error {
+	if workID == "" || claimToken == "" || failureClass == "" || !nextDue.After(now) {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delivery retry: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE deliveries SET status='retrying',next_due=?,smtp_outcome=? WHERE work_id=? AND EXISTS (SELECT 1 FROM work_items WHERE id=? AND kind='delivery' AND status='claimed' AND claim_token=? AND claim_expires_at>?)`, nextDue.Unix(), failureClass, workID, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("record delivery retry: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	result, err = tx.ExecContext(ctx, `UPDATE work_items SET status='pending',due_at=?,failure_class=?,claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?`, nextDue.Unix(), failureClass, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("release delivery retry: %w", err)
+	}
+	changed, err = result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delivery retry: %w", err)
 	}
 	return nil
 }

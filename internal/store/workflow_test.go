@@ -92,7 +92,7 @@ func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
 	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id='poll-1'").Scan(&state); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE poll_id='poll-1' AND kind='invitation'").Scan(&workCount); err != nil {
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE poll_id='poll-1' AND kind='delivery'").Scan(&workCount); err != nil {
 		t.Fatal(err)
 	}
 	if state != "open" || workCount != 2 {
@@ -307,6 +307,45 @@ func TestCountEvidenceIsClaimBoundUniqueAndReplayable(t *testing.T) {
 	}
 	if _, err := st.CommitCountResult(ctx, "count-1", "stale", time.Unix(100, 0), []byte(`{}`)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale result error=%v", err)
+	}
+}
+
+func TestDeliveryAttemptPersistsBeforeRetryAndReleasesClaim(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='open',deadline=500 WHERE id='poll-1'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll-1','person','reader@example.test','reader@example.test')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('mail','poll-1','delivery','invitation:poll-1:contact',10,'claimed','token',300)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES ('delivery','mail','contact','reader@example.test','invitation','pending',10)"); err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := st.BeginDeliveryAttempt(ctx, "mail", "token", time.Unix(100, 0))
+	if err != nil || attempt.Attempts != 1 || attempt.RecipientEmail != "reader@example.test" || attempt.Question != "Question" {
+		t.Fatalf("attempt=%#v error=%v", attempt, err)
+	}
+	if err := st.RetryDelivery(ctx, "mail", "token", time.Unix(100, 0), time.Unix(160, 0), "temporary"); err != nil {
+		t.Fatal(err)
+	}
+	var deliveryStatus, workStatus string
+	var due int64
+	if err := st.DB.QueryRowContext(ctx, "SELECT status,next_due FROM deliveries WHERE id='delivery'").Scan(&deliveryStatus, &due); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT status FROM work_items WHERE id='mail'").Scan(&workStatus); err != nil {
+		t.Fatal(err)
+	}
+	if deliveryStatus != "retrying" || workStatus != "pending" || due != 160 {
+		t.Fatalf("delivery=%s work=%s due=%d", deliveryStatus, workStatus, due)
 	}
 }
 
