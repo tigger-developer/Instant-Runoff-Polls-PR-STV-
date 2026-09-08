@@ -326,7 +326,7 @@ func parseNamedElectorate(rows []string) ([]namedParticipant, error) {
 	for index, row := range rows {
 		name, addresses, found := strings.Cut(row, ":")
 		name = strings.TrimSpace(name)
-		if !found || len([]rune(name)) < 1 || len([]rune(name)) > 200 {
+		if !found || len([]rune(name)) < 1 || len([]rune(name)) > workflow.MaxParticipantDisplayNameRunes {
 			return nil, fmt.Errorf("participant row %d requires a name followed by a colon", index+1)
 		}
 		names = append(names, name)

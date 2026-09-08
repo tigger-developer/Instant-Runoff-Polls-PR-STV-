@@ -133,7 +133,7 @@ func createPollFromDefinition(ctx context.Context, st *store.Store, cfg config.C
 	participantRows := make([]string, 0, len(definition.Participants))
 	for index := range definition.Participants {
 		definition.Participants[index].Name = strings.TrimSpace(definition.Participants[index].Name)
-		if len([]rune(definition.Participants[index].Name)) < 1 || len([]rune(definition.Participants[index].Name)) > 200 || len(definition.Participants[index].Emails) < 1 {
+		if len([]rune(definition.Participants[index].Name)) < 1 || len([]rune(definition.Participants[index].Name)) > workflow.MaxParticipantDisplayNameRunes || len(definition.Participants[index].Emails) < 1 {
 			return createdPoll{}, errors.New("participants require a name and at least one email address")
 		}
 		participantRows = append(participantRows, strings.Join(definition.Participants[index].Emails, ","))

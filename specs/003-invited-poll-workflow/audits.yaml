@@ -128,6 +128,21 @@ audits:
             REVISION: cf8e20fe94956fb4bd89262b49cae68b3d122f71
             VERDICT: PASS
           updated: "2026-09-08T16:21:28Z"
+    - work_item: 003-invited-poll-workflow-moderator-completion-20260908
+      gate: implementation
+      session_id: 01a0823f-657f-72e1-8a44-e9990cd16010
+      external_round: 1
+      status: active
+      updated: "2026-09-08T18:22:33Z"
+      revision: 1733a83fd9dbd3618b10baa1d9ec4ce16040826d
+      verdict: FAIL
+      response: "GATE: implementation  \nREVISION: 1733a83fd9dbd3618b10baa1d9ec4ce16040826d  \nVERDICT: FAIL\n\nFINDINGS:\n\n1. `004-test-evidence.txt` duplicates the audited revision via `Candidate:`. Remove that revision; audit identity belongs only in `audits.yaml`.\n\n2. Participant names accept 101–200 runes, but the signed specification caps them at 100. Enforce the 100-rune limit and add boundary tests.\n\n3. Tests do not prove exact option labels, order, or edit persistence through the rendered moderator form. Add behavioural assertions using the production rendering path.\n\n4. Copy coverage checks only counts and one name. It does not prove multiple address groups remain associated, source data and ballots remain unchanged, or new participant/contact IDs are created. Add those assertions.\n\n5. The sole RED evidence stops at the options-field failure and does not establish RED for named parsing or electorate copying. Capture separate intended RED evidence, then corresponding GREEN results."
+      history:
+        - round: 1
+          revision: 1733a83fd9dbd3618b10baa1d9ec4ce16040826d
+          verdict: FAIL
+          response: "GATE: implementation  \nREVISION: 1733a83fd9dbd3618b10baa1d9ec4ce16040826d  \nVERDICT: FAIL\n\nFINDINGS:\n\n1. `004-test-evidence.txt` duplicates the audited revision via `Candidate:`. Remove that revision; audit identity belongs only in `audits.yaml`.\n\n2. Participant names accept 101–200 runes, but the signed specification caps them at 100. Enforce the 100-rune limit and add boundary tests.\n\n3. Tests do not prove exact option labels, order, or edit persistence through the rendered moderator form. Add behavioural assertions using the production rendering path.\n\n4. Copy coverage checks only counts and one name. It does not prove multiple address groups remain associated, source data and ballots remain unchanged, or new participant/contact IDs are created. Add those assertions.\n\n5. The sole RED evidence stops at the options-field failure and does not establish RED for named parsing or electorate copying. Capture separate intended RED evidence, then corresponding GREEN results."
+          updated: "2026-09-08T18:22:33Z"
 legacy:
     - path: audits.org
       content: |

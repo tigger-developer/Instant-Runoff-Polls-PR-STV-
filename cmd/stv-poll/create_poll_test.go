@@ -11,6 +11,7 @@ import (
 
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
 )
 
 func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T) {
@@ -93,9 +94,14 @@ func TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll(t *testin
 	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
 		t.Fatal(err)
 	}
-	definition := strings.NewReader("id: bad\nowner_id: owner\nquestion: Question\noptions: [A, A]\nplaces: 1\ndeadline: 2030-01-01T18:00:00Z\nparticipants:\n  - name: One\n    emails: [same@example.test]\n  - name: Two\n    emails: [SAME@example.test]\n")
-	if _, err := createPollFromDefinition(ctx, st, pollCreationConfig(), definition, bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
-		t.Fatal("invalid definition unexpectedly created a poll")
+	definitions := []string{
+		"id: bad\nowner_id: owner\nquestion: Question\noptions: [A, A]\nplaces: 1\ndeadline: 2030-01-01T18:00:00Z\nparticipants:\n  - name: One\n    emails: [same@example.test]\n  - name: Two\n    emails: [SAME@example.test]\n",
+		"id: bad-name\nowner_id: owner\nquestion: Question\noptions: [A, B]\nplaces: 1\ndeadline: 2030-01-01T18:00:00Z\nparticipants:\n  - name: " + strings.Repeat("é", workflow.MaxParticipantDisplayNameRunes+1) + "\n    emails: [one@example.test]\n",
+	}
+	for _, definition := range definitions {
+		if _, err := createPollFromDefinition(ctx, st, pollCreationConfig(), strings.NewReader(definition), bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
+			t.Fatal("invalid definition unexpectedly created a poll")
+		}
 	}
 	var polls int
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM polls").Scan(&polls); err != nil || polls != 0 {

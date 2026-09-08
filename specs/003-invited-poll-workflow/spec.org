@@ -720,7 +720,7 @@ timers:
 
 - States :: =draft=, =open=, =paused=, =closed=. Counting status is separate: =pending=, =awaiting_decision=, =succeeded=, or =failed=; =no_votes= is a completed poll outcome without an engine count.
 - Transitions :: draft->open; open->paused; paused->open only before deadline; open/paused->closed at deadline; paused->closed manually. No other transition is accepted.
-- Text :: Question 1 through 500 characters; option label 1 through 200; participant display name optional up to 100. Treat these as plain text and escape on output. A draft may be incomplete; opening requires valid fields, at least two options, one participant, one address per participant, and a future deadline.
+- Text :: Question 1 through 500 characters; option label 1 through 200; participant display name 1 through 100. Treat these as plain text and escape on output. A draft may be incomplete; opening requires valid fields, at least two options, one participant, one address per participant, and a future deadline.
 - Options :: Unique stable IDs and distinct trimmed labels within the poll; winner count 1 through option count.
 - Contacts :: Support bare mailbox addresses validated by the standard mail parser. Reject display-name forms and delimiter-containing quoted forms in this comma/colon input format; do not invent a permissive email regex.
 - Draft participant edits :: Apply the submitted list atomically. Copying creates new participant/contact identifiers and excludes all ballots, grants, and delivery outcomes.

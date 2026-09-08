@@ -18,6 +18,8 @@ type Participant struct {
 	Addresses []Address
 }
 
+const MaxParticipantDisplayNameRunes = 100
+
 func ParseElectorate(rows []string) ([]Participant, error) {
 	participants := make([]Participant, 0, len(rows))
 	owners := make(map[string]int)
