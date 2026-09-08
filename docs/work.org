@@ -76,6 +76,14 @@ Use =OWNER= and =BRANCH= properties only when concurrent work needs explicit
 coordination. Use =MIGRATION_DISPOSITION= only to preserve an immutable migration
 classification; it is provenance, not current state.
 
+* Project foundation
+
+- Review :: FOUNDATION REVIEW: PASS on 2026-09-08. The existing vision and architecture sufficiently define the first release; no additional discovery answer is required from the operator.
+- Authorities :: [[file:VISION.md][Product vision]] and [[file:ARCHITECTURE.md][Application architecture]].
+- Evidence :: [[file:foundation-audits.org][Foundation review and independent audit evidence]], including exact reviewed revisions and the retained advisory.
+- Approval :: Earlier architecture and specification approvals remain historical. Explicit sign-off of the currently reviewed foundation pair has not yet been recorded.
+- Scope :: This review introduces no new requirements, specifications or implementation work. The Go-foundation tooling amendment retains its separate review status below.
+
 * Work items
 
 ** REVIEW W001 - Establish the Go application foundation :feature:
