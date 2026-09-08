@@ -242,7 +242,7 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 	pageBody := new(bytes.Buffer)
 	_, _ = pageBody.ReadFrom(page.Body)
 	page.Body.Close()
-	if page.Header.Get("Content-Type") != "text/html; charset=utf-8" || !strings.Contains(pageBody.String(), "https://poll.example") {
+	if page.Header.Get("Content-Type") != "text/html; charset=utf-8" || !strings.Contains(pageBody.String(), "https://poll.example") || !strings.Contains(pageBody.String(), `href="/moderator/login"`) {
 		t.Fatalf("landing response = %s %q", page.Header.Get("Content-Type"), pageBody.String())
 	}
 	asset, err := client.Get("http://" + address + "/static/site.css")
