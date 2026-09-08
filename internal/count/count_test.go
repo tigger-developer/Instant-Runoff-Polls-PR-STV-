@@ -45,6 +45,23 @@ func TestRunTransfersOriginalSurplusUsingWholeBallots(t *testing.T) {
 	}
 }
 
+func TestRunRequestsDecisionForUnresolvedExclusionTie(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B"}, Places: 1, Ballots: []Ballot{
+		{ID: "a1", Preferences: []string{"A", "B"}},
+		{ID: "a2", Preferences: []string{"A", "B"}},
+		{ID: "b1", Preferences: []string{"B", "A"}},
+		{ID: "b2", Preferences: []string{"B", "A"}},
+	}}
+
+	outcome, err := Run(context.Background(), input, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Result != nil || outcome.DecisionRequest == nil {
+		t.Fatalf("outcome = %#v, want exclusion decision request without a result", outcome)
+	}
+}
+
 func ballots(preferences ...string) []Ballot {
 	result := make([]Ballot, 0, len(preferences))
 	for index, preference := range preferences {

@@ -25,7 +25,12 @@ type Result struct {
 	Quota   int      `json:"quota"`
 	Winners []string `json:"winners"`
 }
-type DecisionRequest struct{}
+type DecisionRequest struct {
+	Sequence           int
+	Kind               string
+	EligibleOptionIDs  []string
+	RequiredSelections int
+}
 type Outcome struct {
 	Result          *Result
 	DecisionRequest *DecisionRequest
@@ -89,13 +94,30 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 			continue
 		}
 		lowest := ""
+		lowestOptions := []string{}
 		for _, option := range input.Options {
-			if continuing[option] && (lowest == "" || tallies[option] < tallies[lowest]) {
+			if !continuing[option] {
+				continue
+			}
+			if lowest == "" || tallies[option] < tallies[lowest] {
 				lowest = option
+				lowestOptions = []string{option}
+				continue
+			}
+			if tallies[option] == tallies[lowest] {
+				lowestOptions = append(lowestOptions, option)
 			}
 		}
 		if lowest == "" {
 			return Outcome{}, errors.New("count made no progress")
+		}
+		if len(lowestOptions) > 1 {
+			return Outcome{DecisionRequest: &DecisionRequest{
+				Sequence:           1,
+				Kind:               "exclusion_lot",
+				EligibleOptionIDs:  lowestOptions,
+				RequiredSelections: 1,
+			}}, nil
 		}
 		continuing[lowest] = false
 		for index := range allocations {
