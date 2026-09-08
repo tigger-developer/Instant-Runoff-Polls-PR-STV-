@@ -427,6 +427,15 @@ data_dirs:
 - Decision :: Follow the approved Go application architecture, Exodan runtime contract, and native-tooling boundary. The application consumes supplied paths and listener address; Exodan retains URL/domain validation, deployment, routing, TLS and host ownership.
 - Decision :: No product or architecture question is outstanding within W001. The delivery remains limited to its signed-off foundation scope.
 
+** 2026-09-08T09:19:40Z :hands-off:review:
+
+*** Restart branch and audit accounting
+
+- Authority :: Taḋg invoked =deliver-change= for W001, W002 and W003, directed a restart, and explicitly stated that the new session resets audit counts.
+- Branch :: Continue on the operator-selected =w002-irish-pr-stv-counting= branch under the configured =feature= strategy. At restart it tracked =origin/w002-irish-pr-stv-counting= and was one local commit ahead; =git pull= reported that it was already up to date.
+- Decision :: Preserve every earlier implementation verdict and runner incident as revision-specific history. This invocation begins its local implementation audit count at round 1 of at most 5 and its retained-external count at zero.
+- Boundary :: The count reset does not change admission, erase findings, convert an earlier verdict, waive RED/GREEN or validation evidence, or authorize a replacement for an addressable retained audit context.
+
 * Delivery Handoff
 :PROPERTIES:
 :CUSTOM_ID: delivery-handoff

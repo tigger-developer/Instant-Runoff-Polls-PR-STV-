@@ -780,6 +780,17 @@ establish the bounded local integration/packaging evidence.
 - Web checks :: Inherit W001's *standalone Biome for CSS and tidy-html5 for rendered HTML*, alongside the separate Go lint/test commands. Extend rendered validation to moderator/access forms, ballots, validation/conflict responses, paused/closed/pending/result views and help, using synthetic state through the existing Go rendering/HTTP facilities. Do not validate unexpanded templates or add a browser stack. This workflow introduces no JavaScript/TypeScript, so oxlint remains conditional on a later approved change.
 - Provisioning :: Reuse W001's pinned native tools and missing-tool/failure contract. No additional frontend runtime, package toolchain or production command dependency is introduced.
 
+* Hands-off mode decision log
+
+** 2026-09-08T09:19:40Z :hands-off:review:
+
+*** Restart branch and delivery order
+
+- Authority :: Taḋg invoked =deliver-change= for W001, W002 and W003, directed a restart, and explicitly stated that the new session resets audit counts.
+- Branch :: Continue on the operator-selected =w002-irish-pr-stv-counting= branch under the configured =feature= strategy. The synchronized branch was already up to date with its upstream before new edits.
+- Decision :: Preserve earlier audit evidence as revision-specific history and begin this invocation's local and retained-external implementation audit counts at zero. Finish the W001 and W002 prerequisite gates before implementing this workflow.
+- Boundary :: The restart does not amend any approved workflow policy or authorize deployment, live email, production data, or infrastructure mutation.
+
 * Delivery Handoff
 :PROPERTIES:
 :CUSTOM_ID: delivery-handoff
