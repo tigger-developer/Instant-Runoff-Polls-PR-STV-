@@ -4,7 +4,31 @@
 
 * Automated regression
 
-- Execution :: Not run; test definitions precede implementation.
+- Candidate revision :: =cefc57ad4e784a1fc03944da8c761d076fae752a=.
+- Execution :: PASS at =2026-09-08T12:29:31Z= with =go test -count=1 -cover ./...=.
+- Race execution :: PASS with =go test -race ./...=.
+- Static and rendered-web checks :: PASS with =make lint=, including =gofmt=, =go vet=, =golangci-lint=, Biome, and Tidy on rendered pages.
+- Vulnerability scan :: PASS with the pinned =govulncheck@v1.7.0= target; result: =No vulnerabilities found.= The command used isolated temporary Go caches and did not install persistent tooling.
+- Documentation checks :: PASS after processing README, specification, and this validation record through =sanitize -q= without a resulting diff, and parsing both Org files with Pandoc.
+- Package statement coverage :: =cmd/stv-poll 61.1%=, =internal/config 84.4%=, =internal/count 93.7%=, =internal/store 69.8%=, =internal/web 71.9%=, and =internal/workflow 77.9%=.
+- Changed executable-line coverage :: =1786/2790 (64.0%)= against the pre-delivery baseline =baef447=, measured from a fresh =go test -count=1 -coverpkg=./... -coverprofile= profile. This is recorded as measured evidence, not represented as meeting an unestablished numeric gate.
+- RT003.1 :: =TestModeratorLoginQueuesGrantAndExchangesThroughPreAuthCSRF=, =TestConsumeModeratorGrantAllowsExactlyOneConcurrentExchange=, and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover configured login, one-use exchange, owner scope, and cross-owner denial.
+- RT003.2 :: =TestDraftPollCRUDIsOwnerScopedAndVersioned= and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover persistence, version conflicts, field validation, and owner scope.
+- RT003.3 :: =TestParseElectorateGroupsAddressesWithoutMergingPeople=, =TestParseElectorateRejectsAddressSharedAcrossParticipants=, =TestParseElectorateRejectsDisplayNamesAndEmptyGroups=, and =TestReplaceElectorateCommitsGroupedContactsAndVersion= cover grouped identities and atomic persistence.
+- RT003.4 :: =TestOwnedElectoratePreservesGroupsAndRejectsCrossOwnerRead= and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover owned copying, preserved groups, independent edits, and cross-owner denial.
+- RT003.5 :: =TestOpenPollCommitsStateAndOneLogicalInvitationPerContact=, =TestInvitationBuilderPersistsClaimsAndReusesExactBearer=, and =TestInvitationMessageUsesApprovedCopyAndOneRecipient= cover atomic opening, logical invitation identity, durable recovery, configured links, and exact one-recipient copy.
+- RT003.6 :: =TestGrantRoundTripPreservesParticipantScope=, =TestGrantRejectsTamperingKeyRotationExpiryAndOversize=, =TestParticipantSessionCreationRevokesPresentedSession=, =TestParticipantAccessRequestQueuesOneScopedReturnGrant=, and =TestPublicAccessRequestsRejectMissingPreAuthCSRF= cover grant, session, re-entry, tamper, expiry, scope, and pre-authentication boundaries.
+- RT003.7 :: =TestRankedPreferencesAcceptsConsecutiveSubsetInRankOrder=, =TestRankedPreferencesRejectsDuplicatesGapsAndEmptyBallot=, and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover valid subsets and HTTP ballot submission; store rollback tests preserve the accepted ballot after rejected mutations.
+- RT003.8 :: =TestReplaceBallotEnforcesDeadlineAndIndependentVersion= and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover repeated replacement semantics, shared participant entitlement, HTTP submission, and stale-version conflict.
+- RT003.9 :: =TestReplaceBallotEnforcesDeadlineAndIndependentVersion=, =TestBallotAndCloseRaceSerializesIntoSnapshot=, and =TestCloseHandlerRandomnessFailureRollsBackAndReclaimsNextSweep= cover exact deadline rejection, serialized close, frozen accepted ballots, and retry after close failure.
+- RT003.10 :: =TestPollPauseAndResumeCheckStateVersionAndDeadline=, =TestClosePollCommitsSnapshotAndOneCountWork=, and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover pause, resume, passed-deadline handling, manual close, and repeat safety.
+- RT003.11 :: =TestProcessDueWorkClosesCountsAndAnnouncesOnePoll=, =TestClaimDueWorkUsesOrderAndLeaseToken=, =TestClaimDueWorkReclaimsExpiredLeaseAndRejectsLiveLease=, and =TestRunProcessesNoWorkThroughConfiguredBoundary= cover ordered recovery, lease reclamation, executable configuration, counting, and exact summaries.
+- RT003.12 :: =TestCountEvidenceIsClaimBoundUniqueAndReplayable=, =TestCountHandlerPersistsLotAndAuthoritativeResult=, =TestCountHandlerMarksFailureWithoutRemovingSnapshot=, and =TestCountHandlerReportsFailurePersistenceError= cover recorded decisions, replay, unique result commit, retained snapshot, and persistence failure.
+- RT003.13 :: =TestPollForCloseAndResultForOwnerRemainOwnerScoped=, =TestProjectResultKeepsAggregatesAndDropsBallotEvidence=, =TestProjectZeroTurnoutHasNoWinnerOrCount=, and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover owner-only result projection, no ballot evidence, pending display, and zero turnout.
+- RT003.14 :: =TestCountResultCreatesOneAnnouncementPerContactAfterCommit=, =TestInvitationBuilderRoutesAnnouncementWithoutGrant=, and =TestProcessDueWorkClosesCountsAndAnnouncesOnePoll= cover checked announcements after result commit and unchecked isolation.
+- RT003.15 :: =TestDeliveryAttemptPersistsBeforeRetryAndReleasesClaim=, =TestDeliveryAttemptFinalizesExpiredSixthAttemptWithoutSendingAgain=, =TestDeliveryHandlerPersistsAcceptedTemporaryAndPermanentOutcomes=, =TestDeliveryHandlerSixthTemporaryFailureIsTerminal=, =TestSMTPTransportSendsOneRecipientInDevelopmentMode=, and =TestSMTPTransportRequiresAdvertisedSTARTTLS= cover durable attempts, bounded retry, exhausted visibility, one-recipient local delivery, and production TLS enforcement.
+- RT003.16 :: =TestHandlerServesPublicNoScriptHelpWithPrivacyNotice=, =TestRenderedPagesPassTidy=, and =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft= cover public help, semantic rendered pages, ordinary forms, confirmation, and visible result states without client scripting.
+- RT003.17 :: =TestDecodeFormAcceptsDeclaredScalarAndRepeatedFields=, =TestDecodeFormRejectsWrongTypeUnknownDuplicateAndOversize=, =TestPublicAccessRequestsRejectMissingPreAuthCSRF=, =TestLogoutRequiresSessionCSRFAndRevokesTheSession=, =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft=, and the transactional store tests cover media types, multiplicity, size, CSRF, authentication, ownership, stale versions, and rollback.
 
 * User tests
 
