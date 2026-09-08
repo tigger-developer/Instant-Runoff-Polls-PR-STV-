@@ -77,6 +77,51 @@ func TestProcessDueWorkNoWorkEmitsExactSummary(t *testing.T) {
 	}
 }
 
+func TestRunProcessesNoWorkThroughConfiguredBoundary(t *testing.T) {
+	host := filepath.Join(t.TempDir(), "host.yaml")
+	if err := os.WriteFile(host, []byte("base_url: https://poll.example\nmoderators: []\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DEFAULT_CONFIG_PATH", filepath.Join(projectRoot(t), "config", "defaults.yaml"))
+	t.Setenv("CONFIG_PATH", host)
+	t.Setenv("SECRETS_PATH", "")
+	t.Setenv("STATE_DIRECTORY", t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"process-due-work"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if stdout.String() != "{\"version\":1,\"closed\":0,\"counted\":0,\"no_votes\":0,\"smtp_accepted\":0,\"retrying\":0,\"failed\":0,\"cancelled\":0}\n" || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if secureToken() == "" {
+		t.Fatal("empty secure token")
+	}
+	if jitter, err := secureJitter(); err != nil || jitter < 0 || jitter > 0.1 {
+		t.Fatalf("jitter=%f error=%v", jitter, err)
+	}
+}
+
+func TestRunHandlesHelpVersionAndInvalidConfiguration(t *testing.T) {
+	t.Chdir(projectRoot(t))
+	for _, tc := range []struct {
+		args []string
+		code int
+	}{
+		{args: []string{"-h"}, code: 0},
+		{args: []string{"--version"}, code: 0},
+		{args: []string{"unknown"}, code: 2},
+		{args: []string{"serve"}, code: 1},
+		{args: []string{"process-due-work"}, code: 1},
+	} {
+		t.Setenv("DEFAULT_CONFIG_PATH", "")
+		t.Setenv("STATE_DIRECTORY", "")
+		var stdout, stderr bytes.Buffer
+		if code := run(tc.args, &stdout, &stderr); code != tc.code {
+			t.Fatalf("args=%v code=%d stdout=%s stderr=%s", tc.args, code, stdout.String(), stderr.String())
+		}
+	}
+}
+
 func TestCLIHelpFormsAreEquivalent(t *testing.T) {
 	binary := buildBinary(t)
 	short := exec.Command(binary, "-h")
