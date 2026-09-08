@@ -1,0 +1,20 @@
+# Example input for `stv-poll-admin create-poll` through the Exodan admin wrapper.
+id: team-lunch
+owner_id: moderator-1
+question: Where should the team go for lunch?
+options:
+  - Cafe
+  - Pizza
+  - Sushi
+  - Tapas
+places: 1
+deadline: "2099-09-08T16:00:00Z"
+announce: false
+participants:
+  - name: Alex
+    emails:
+      - alex@example.test
+      - alex-alias@example.test
+  - name: Sam
+    emails:
+      - sam@example.test

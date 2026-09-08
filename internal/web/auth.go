@@ -95,7 +95,7 @@ func (app *authApplication) postParticipantAccess(response http.ResponseWriter, 
 
 func (app *authApplication) queueParticipantReturn(ctx context.Context, contact store.EligibleContact) error {
 	now := app.now()
-	claims := workflow.GrantClaims{Version: 1, KeyID: app.config.Auth.KeyID, Purpose: workflow.ParticipantGrant, PrincipalID: contact.ParticipantID, PollID: contact.PollID, ContactID: contact.ContactID, IssuedAt: now, ExpiresAt: now.Add(24 * time.Hour)}
+	claims := workflow.GrantClaims{Version: 1, KeyID: app.config.Auth.KeyID, Purpose: workflow.ParticipantGrant, PrincipalID: contact.ParticipantID, PollID: contact.PollID, IssuedAt: now, ExpiresAt: now.Add(24 * time.Hour)}
 	token, payload, err := workflow.IssuePersistableGrant(claims, app.config.Auth.SigningKey, app.randomness)
 	if err != nil {
 		return err

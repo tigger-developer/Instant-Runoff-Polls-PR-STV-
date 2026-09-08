@@ -117,7 +117,7 @@ func TestReplaceBallotSamplesAcceptanceTimeInsideWriteBoundary(t *testing.T) {
 	}
 }
 
-func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
+func TestOpenPollCommitsOneMultiRecipientInvitationPerParticipant(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)
 	defer st.Close()
@@ -130,7 +130,7 @@ func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
 	if _, err := st.DB.ExecContext(ctx, "INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact-1','poll-1','person-1','one@example.test','one@example.test'),('contact-2','poll-1','person-1','other@example.test','other@example.test')"); err != nil {
 		t.Fatal(err)
 	}
-	invitations := []InvitationWork{{WorkID: "work-1", DeliveryID: "delivery-1", ContactID: "contact-1"}, {WorkID: "work-2", DeliveryID: "delivery-2", ContactID: "contact-2"}}
+	invitations := []InvitationWork{{WorkID: "work-1", DeliveryID: "delivery-1", ParticipantID: "person-1", RecipientEmails: []string{"one@example.test", "other@example.test"}}}
 	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 1, "close-work", invitations, time.Unix(100, 0)); err != nil || !changed {
 		t.Fatalf("open changed=%v error=%v", changed, err)
 	}
@@ -145,7 +145,11 @@ func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE poll_id='poll-1' AND kind='delivery'").Scan(&workCount); err != nil {
 		t.Fatal(err)
 	}
-	if state != "open" || workCount != 2 {
+	var recipientCount int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM delivery_recipients WHERE delivery_id='delivery-1'").Scan(&recipientCount); err != nil {
+		t.Fatal(err)
+	}
+	if state != "open" || workCount != 1 || recipientCount != 2 {
 		t.Fatalf("state=%s work=%d", state, workCount)
 	}
 	var closeDue int64

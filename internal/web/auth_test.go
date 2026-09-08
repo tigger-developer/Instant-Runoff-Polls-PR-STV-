@@ -330,7 +330,7 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE kind='close'").Scan(&closeWork); err != nil {
 		t.Fatal(err)
 	}
-	if openResponse.Code != http.StatusSeeOther || state != "open" || deliveries != 2 || closeWork != 1 {
+	if openResponse.Code != http.StatusSeeOther || state != "open" || deliveries != 1 || closeWork != 1 {
 		t.Fatalf("open response=%d state=%s deliveries=%d close=%d body=%s", openResponse.Code, state, deliveries, closeWork, openResponse.Body.String())
 	}
 

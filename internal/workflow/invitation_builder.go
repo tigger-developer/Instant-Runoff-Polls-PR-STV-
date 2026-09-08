@@ -43,7 +43,7 @@ func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string,
 			return Message{}, errors.New("invitation builder dependencies are invalid")
 		}
 		at := now()
-		claims := GrantClaims{Version: 1, KeyID: keyID, Purpose: ParticipantGrant, PrincipalID: attempt.ParticipantID, PollID: attempt.PollID, ContactID: attempt.ContactID, IssuedAt: at, ExpiresAt: at.Add(24 * time.Hour)}
+		claims := GrantClaims{Version: 1, KeyID: keyID, Purpose: ParticipantGrant, PrincipalID: attempt.ParticipantID, PollID: attempt.PollID, IssuedAt: at, ExpiresAt: at.Add(24 * time.Hour)}
 		token, payload, err := IssuePersistableGrant(claims, key, randomness)
 		if err != nil {
 			return Message{}, err
@@ -59,6 +59,6 @@ func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string,
 			return Message{}, err
 		}
 		link := strings.TrimRight(baseURL, "/") + "/auth/verify?grant=" + url.QueryEscape(token)
-		return InvitationMessage(attempt.RecipientEmail, attempt.Question, link)
+		return InvitationMessage(attempt.RecipientEmails, attempt.Question, link)
 	}
 }

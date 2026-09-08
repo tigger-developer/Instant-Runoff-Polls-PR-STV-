@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-func TestInvitationMessageUsesApprovedCopyAndOneRecipient(t *testing.T) {
-	message, err := InvitationMessage("reader@example.test", "Favourite book", "https://poll.example/polls/one?grant=secret")
+func TestInvitationMessageUsesApprovedCopyAndMultipleRecipients(t *testing.T) {
+	message, err := InvitationMessage([]string{"reader@example.test", "alias@example.test"}, "Favourite book", "https://poll.example/polls/one?grant=secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if message.To != "reader@example.test" || message.Subject != "Vote: Favourite book" {
+	if len(message.To) != 2 || message.To[0] != "reader@example.test" || message.To[1] != "alias@example.test" || message.Subject != "Vote: Favourite book" {
 		t.Fatalf("headers = %#v", message)
 	}
 	want := "Please vote for Favourite book by clicking the link below:\n\nhttps://poll.example/polls/one?grant=secret\n\nYou will be asked to vote by ranking your preferences 1, 2, 3 and so on.\nYou have what is called a *Single Transferable Vote*.\nEvery vote counts towards choosing the result.\nVoter preferences count.\n"
@@ -22,7 +22,7 @@ func TestInvitationMessageUsesApprovedCopyAndOneRecipient(t *testing.T) {
 }
 
 func TestMessagesRejectHeaderInjection(t *testing.T) {
-	if _, err := InvitationMessage("reader@example.test", "Question\r\nBcc: stolen@example.test", "https://poll.example"); err == nil {
+	if _, err := InvitationMessage([]string{"reader@example.test"}, "Question\r\nBcc: stolen@example.test", "https://poll.example"); err == nil {
 		t.Fatal("header injection succeeded")
 	}
 	if _, err := ResultMessage("reader@example.test", "Question", []string{"A\nB"}, false); err == nil {

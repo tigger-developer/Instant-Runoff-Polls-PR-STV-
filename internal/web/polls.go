@@ -371,15 +371,17 @@ func (app *authApplication) postOpenPoll(response http.ResponseWriter, request *
 	}
 	var invitations []store.InvitationWork
 	for _, participant := range electorate {
-		for _, contact := range participant.Contacts {
-			workID, workErr := randomID(app.randomness)
-			deliveryID, deliveryErr := randomID(app.randomness)
-			if workErr != nil || deliveryErr != nil {
-				http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
-				return
-			}
-			invitations = append(invitations, store.InvitationWork{WorkID: workID, DeliveryID: deliveryID, ContactID: contact.ID})
+		workID, workErr := randomID(app.randomness)
+		deliveryID, deliveryErr := randomID(app.randomness)
+		if workErr != nil || deliveryErr != nil {
+			http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+			return
 		}
+		recipients := make([]string, 0, len(participant.Contacts))
+		for _, contact := range participant.Contacts {
+			recipients = append(recipients, contact.DeliveryEmail)
+		}
+		invitations = append(invitations, store.InvitationWork{WorkID: workID, DeliveryID: deliveryID, ParticipantID: participant.ID, RecipientEmails: recipients})
 	}
 	changed, err := app.store.OpenPoll(request.Context(), access.ID, poll.ID, version, closeWorkID, invitations, app.now())
 	if err != nil {

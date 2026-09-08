@@ -116,7 +116,7 @@ func TestOpenCreatesInvitedPollWorkflowSchema(t *testing.T) {
 	}
 	defer st.Close()
 
-	for _, table := range []string{"moderators", "polls", "options", "participants", "contacts", "grants", "sessions", "ballots", "count_snapshots", "count_decisions", "count_results", "work_items", "deliveries", "link_requests"} {
+	for _, table := range []string{"moderators", "polls", "options", "participants", "contacts", "grants", "sessions", "ballots", "count_snapshots", "count_decisions", "count_results", "work_items", "deliveries", "delivery_recipients", "link_requests"} {
 		var found string
 		if err := st.DB.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&found); err != nil {
 			t.Fatalf("table %s: %v", table, err)

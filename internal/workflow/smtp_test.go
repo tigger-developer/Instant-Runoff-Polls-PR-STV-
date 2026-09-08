@@ -14,7 +14,7 @@ import (
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 )
 
-func TestSMTPTransportSendsOneRecipientInDevelopmentMode(t *testing.T) {
+func TestSMTPTransportSendsOneMessageToMultipleRecipientsInDevelopmentMode(t *testing.T) {
 	address, captured := startSMTPServer(t)
 	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
@@ -25,7 +25,7 @@ func TestSMTPTransportSendsOneRecipientInDevelopmentMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport := SMTPTransport{Settings: config.SMTP{Host: host, Port: port, From: "polls@example.test", TLSMode: "development_plain"}}
-	message, err := InvitationMessage("reader@example.test", "Question", "http://poll.test/link")
+	message, err := InvitationMessage([]string{"reader@example.test", "alias@example.test"}, "Question", "http://poll.test/link")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,12 +33,12 @@ func TestSMTPTransportSendsOneRecipientInDevelopmentMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := <-captured
-	for _, want := range []string{"MAIL FROM:<polls@example.test>", "RCPT TO:<reader@example.test>", "Subject: Vote: Question", "Please vote for Question"} {
+	for _, want := range []string{"MAIL FROM:<polls@example.test>", "RCPT TO:<reader@example.test>", "RCPT TO:<alias@example.test>", "To: reader@example.test, alias@example.test", "Subject: Vote: Question", "Please vote for Question"} {
 		if !strings.Contains(data, want) {
 			t.Fatalf("SMTP capture lacks %q: %q", want, data)
 		}
 	}
-	if strings.Count(data, "RCPT TO:") != 1 {
+	if strings.Count(data, "RCPT TO:") != 2 {
 		t.Fatalf("recipient count in %q", data)
 	}
 }
@@ -54,7 +54,7 @@ func TestSMTPTransportRequiresAdvertisedSTARTTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	transport := SMTPTransport{Settings: config.SMTP{Host: host, Port: port, From: "polls@example.test", TLSMode: "starttls"}}
-	if err := transport.Send(context.Background(), Message{To: "reader@example.test", Subject: "Subject", Body: "Body\n"}); err == nil || !strings.Contains(err.Error(), "STARTTLS") {
+	if err := transport.Send(context.Background(), Message{To: []string{"reader@example.test"}, Subject: "Subject", Body: "Body\n"}); err == nil || !strings.Contains(err.Error(), "STARTTLS") {
 		t.Fatalf("STARTTLS error = %v", err)
 	}
 }

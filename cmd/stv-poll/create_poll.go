@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
@@ -23,19 +25,19 @@ import (
 var adminPollID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 type pollDefinition struct {
-	ID           string                      `json:"id"`
-	OwnerID      string                      `json:"owner_id"`
-	Question     string                      `json:"question"`
-	Options      []string                    `json:"options"`
-	Places       int                         `json:"places"`
-	Deadline     string                      `json:"deadline"`
-	Announce     bool                        `json:"announce"`
-	Participants []pollParticipantDefinition `json:"participants"`
+	ID           string                      `yaml:"id"`
+	OwnerID      string                      `yaml:"owner_id"`
+	Question     string                      `yaml:"question"`
+	Options      []string                    `yaml:"options"`
+	Places       int                         `yaml:"places"`
+	Deadline     string                      `yaml:"deadline"`
+	Announce     bool                        `yaml:"announce"`
+	Participants []pollParticipantDefinition `yaml:"participants"`
 }
 
 type pollParticipantDefinition struct {
-	Name   string   `json:"name"`
-	Emails []string `json:"emails"`
+	Name   string   `yaml:"name"`
+	Emails []string `yaml:"emails"`
 }
 
 type createdPoll struct {
@@ -82,14 +84,14 @@ func createPollFromDefinition(ctx context.Context, st *store.Store, cfg config.C
 		return createdPoll{}, errors.New("poll creation dependencies are required")
 	}
 	var definition pollDefinition
-	decoder := json.NewDecoder(io.LimitReader(input, 1<<20))
-	decoder.DisallowUnknownFields()
+	decoder := yaml.NewDecoder(io.LimitReader(input, 1<<20))
+	decoder.KnownFields(true)
 	if err := decoder.Decode(&definition); err != nil {
 		return createdPoll{}, fmt.Errorf("decode poll definition: %w", err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return createdPoll{}, errors.New("poll definition must contain one JSON object")
+		return createdPoll{}, errors.New("poll definition must contain one YAML document")
 	}
 	definition.ID = strings.TrimSpace(definition.ID)
 	definition.OwnerID = strings.TrimSpace(definition.OwnerID)
@@ -152,14 +154,16 @@ func createPollFromDefinition(ctx context.Context, st *store.Store, cfg config.C
 	}
 	var invitations []store.InvitationWork
 	for _, participant := range participants {
-		for _, contact := range participant.Contacts {
-			workID, workErr := adminID(randomness)
-			deliveryID, deliveryErr := adminID(randomness)
-			if workErr != nil || deliveryErr != nil {
-				return createdPoll{}, errors.New("generate invitation identifiers")
-			}
-			invitations = append(invitations, store.InvitationWork{WorkID: workID, DeliveryID: deliveryID, ContactID: contact.ID})
+		workID, workErr := adminID(randomness)
+		deliveryID, deliveryErr := adminID(randomness)
+		if workErr != nil || deliveryErr != nil {
+			return createdPoll{}, errors.New("generate invitation identifiers")
 		}
+		recipients := make([]string, 0, len(participant.Contacts))
+		for _, contact := range participant.Contacts {
+			recipients = append(recipients, contact.DeliveryEmail)
+		}
+		invitations = append(invitations, store.InvitationWork{WorkID: workID, DeliveryID: deliveryID, ParticipantID: participant.ID, RecipientEmails: recipients})
 	}
 	draft := store.DraftPoll{Question: definition.Question, Deadline: deadline, DisplayOffset: deadline.Format("-07:00"), Places: definition.Places, Announce: definition.Announce, Options: options}
 	if err := st.CreateDraftPoll(ctx, definition.OwnerID, definition.ID, draft, now); err != nil {

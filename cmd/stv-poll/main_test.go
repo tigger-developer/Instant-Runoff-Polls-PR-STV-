@@ -174,7 +174,7 @@ func TestBallotPageContainsVotingAndCountingHelp(t *testing.T) {
 	if err := tmpl.ExecuteTemplate(&rendered, "ballot.html", data); err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"Hello Alex", "Please select your first preference", "one vote", "quota", "next available preference", "Single Transferable Vote", "Start again", "Submit vote"} {
+	for _, required := range []string{"Hello Alex", "Please select your first preference", "one vote", "quota", "next available preference", "Single Transferable Vote", "You do not have to list preferences for all options", "Start again", "Submit vote"} {
 		if !strings.Contains(rendered.String(), required) {
 			t.Fatalf("ballot page missing %q: %s", required, rendered.String())
 		}

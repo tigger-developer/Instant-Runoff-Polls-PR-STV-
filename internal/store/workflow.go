@@ -33,9 +33,10 @@ type ElectorateParticipant struct {
 }
 
 type InvitationWork struct {
-	WorkID     string
-	DeliveryID string
-	ContactID  string
+	WorkID          string
+	DeliveryID      string
+	ParticipantID   string
+	RecipientEmails []string
 }
 
 type CountSnapshot struct {
@@ -65,18 +66,19 @@ type CountWork struct {
 }
 
 type DeliveryAttempt struct {
-	DeliveryID     string
-	PollID         string
-	ContactID      string
-	ParticipantID  string
-	PrincipalID    string
-	GrantPayload   []byte
-	RecipientEmail string
-	MessageKind    string
-	Question       string
-	Winners        []string
-	NoVotes        bool
-	Attempts       int
+	DeliveryID      string
+	PollID          string
+	ContactID       string
+	ParticipantID   string
+	PrincipalID     string
+	GrantPayload    []byte
+	RecipientEmail  string
+	RecipientEmails []string
+	MessageKind     string
+	Question        string
+	Winners         []string
+	NoVotes         bool
+	Attempts        int
 }
 
 type GrantMaterial struct {
@@ -282,19 +284,42 @@ func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVe
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id=?", pollID).Scan(&contactCount); err != nil {
 		return false, err
 	}
-	if optionCount < 2 || places < 1 || places > optionCount || participantCount < 1 || contactCount != len(invitations) {
+	if optionCount < 2 || places < 1 || places > optionCount || participantCount < 1 || participantCount != len(invitations) {
 		return false, ErrConflict
 	}
 	for _, invitation := range invitations {
-		var recipient string
-		if invitation.WorkID == "" || invitation.DeliveryID == "" || tx.QueryRowContext(ctx, "SELECT delivery_email FROM contacts WHERE id=? AND poll_id=?", invitation.ContactID, pollID).Scan(&recipient) != nil {
+		if invitation.WorkID == "" || invitation.DeliveryID == "" || invitation.ParticipantID == "" || len(invitation.RecipientEmails) < 1 {
 			return false, ErrConflict
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,?,?,?,'pending')", invitation.WorkID, pollID, "delivery", "invitation:"+pollID+":"+invitation.ContactID, now.Unix()); err != nil {
+		var participantContacts int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id=? AND participant_id=?", pollID, invitation.ParticipantID).Scan(&participantContacts); err != nil || participantContacts != len(invitation.RecipientEmails) {
+			return false, ErrConflict
+		}
+		seenRecipients := make(map[string]struct{}, len(invitation.RecipientEmails))
+		for _, recipient := range invitation.RecipientEmails {
+			var exists int
+			if recipient == "" || tx.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id=? AND participant_id=? AND delivery_email=?", pollID, invitation.ParticipantID, recipient).Scan(&exists) != nil || exists != 1 {
+				return false, ErrConflict
+			}
+			if _, duplicate := seenRecipients[recipient]; duplicate {
+				return false, ErrConflict
+			}
+			seenRecipients[recipient] = struct{}{}
+		}
+		var representativeContact string
+		if err := tx.QueryRowContext(ctx, "SELECT id FROM contacts WHERE poll_id=? AND participant_id=? AND delivery_email=?", pollID, invitation.ParticipantID, invitation.RecipientEmails[0]).Scan(&representativeContact); err != nil {
+			return false, ErrConflict
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,?,?,?,'pending')", invitation.WorkID, pollID, "delivery", "invitation:"+pollID+":"+invitation.ParticipantID, now.Unix()); err != nil {
 			return false, fmt.Errorf("insert invitation work: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?,?,'pending',?)", invitation.DeliveryID, invitation.WorkID, invitation.ContactID, recipient, "invitation", now.Unix()); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?,?,'pending',?)", invitation.DeliveryID, invitation.WorkID, representativeContact, invitation.RecipientEmails[0], "invitation", now.Unix()); err != nil {
 			return false, fmt.Errorf("insert invitation delivery: %w", err)
+		}
+		for index, recipient := range invitation.RecipientEmails {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO delivery_recipients(delivery_id,email,display_order) VALUES (?,?,?)", invitation.DeliveryID, recipient, index+1); err != nil {
+				return false, fmt.Errorf("insert invitation recipient: %w", err)
+			}
 		}
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?, 'close', ?,?,'pending')", closeWorkID, pollID, "close:"+pollID, deadline); err != nil {
@@ -634,6 +659,24 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 	if err != nil {
 		return DeliveryAttempt{}, ErrConflict
 	}
+	recipientRows, err := tx.QueryContext(ctx, "SELECT email FROM delivery_recipients WHERE delivery_id=? ORDER BY display_order", attempt.DeliveryID)
+	if err != nil {
+		return DeliveryAttempt{}, fmt.Errorf("read delivery recipients: %w", err)
+	}
+	for recipientRows.Next() {
+		var recipient string
+		if err := recipientRows.Scan(&recipient); err != nil {
+			_ = recipientRows.Close()
+			return DeliveryAttempt{}, fmt.Errorf("scan delivery recipient: %w", err)
+		}
+		attempt.RecipientEmails = append(attempt.RecipientEmails, recipient)
+	}
+	if err := finishRows(recipientRows, "delivery recipients"); err != nil {
+		return DeliveryAttempt{}, err
+	}
+	if len(attempt.RecipientEmails) == 0 {
+		attempt.RecipientEmails = []string{attempt.RecipientEmail}
+	}
 	isVotingAccess := attempt.MessageKind == "invitation" || attempt.MessageKind == "participant_return"
 	if isVotingAccess && state == "paused" && now.Unix() < deadline {
 		if err := deferClaimedDelivery(ctx, tx, workID, claimToken, now, now.Add(time.Minute)); err != nil {
@@ -715,11 +758,11 @@ func (s *Store) PrepareDeliveryGrant(ctx context.Context, workID, claimToken, ac
 		return nil, fmt.Errorf("begin delivery grant: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var pollID, contactID, participantID string
+	var pollID, participantID string
 	var existingID, existingKey string
 	var existingPayload []byte
 	var existingExpiry int64
-	err = tx.QueryRowContext(ctx, `SELECT work.poll_id,delivery.contact_id,contact.participant_id,COALESCE(grant.id,''),COALESCE(grant.key_id,''),COALESCE(grant.claims_json,''),COALESCE(grant.expires_at,0) FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN contacts AS contact ON contact.id=delivery.contact_id LEFT JOIN grants AS grant ON grant.id=delivery.grant_id AND grant.revoked_at IS NULL WHERE work.id=? AND work.kind='delivery' AND delivery.message_kind='invitation' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&pollID, &contactID, &participantID, &existingID, &existingKey, &existingPayload, &existingExpiry)
+	err = tx.QueryRowContext(ctx, `SELECT work.poll_id,contact.participant_id,COALESCE(grant.id,''),COALESCE(grant.key_id,''),COALESCE(grant.claims_json,''),COALESCE(grant.expires_at,0) FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN contacts AS contact ON contact.id=delivery.contact_id LEFT JOIN grants AS grant ON grant.id=delivery.grant_id AND grant.revoked_at IS NULL WHERE work.id=? AND work.kind='delivery' AND delivery.message_kind='invitation' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&pollID, &participantID, &existingID, &existingKey, &existingPayload, &existingExpiry)
 	if err != nil {
 		return nil, ErrConflict
 	}
@@ -734,7 +777,7 @@ func (s *Store) PrepareDeliveryGrant(ctx context.Context, workID, claimToken, ac
 			return nil, fmt.Errorf("revoke delivery grant: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO grants(id,purpose,principal_id,poll_id,contact_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES (?,'participant',?,?,?,?,?,?,?,?)`, candidate.ID, participantID, pollID, contactID, candidate.KeyID, candidate.TokenHash, candidate.ClaimsJSON, candidate.IssuedAt.Unix(), candidate.ExpiresAt.Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO grants(id,purpose,principal_id,poll_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES (?,'participant',?,?,?,?,?,?,?)`, candidate.ID, participantID, pollID, candidate.KeyID, candidate.TokenHash, candidate.ClaimsJSON, candidate.IssuedAt.Unix(), candidate.ExpiresAt.Unix()); err != nil {
 		return nil, fmt.Errorf("insert delivery grant: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET grant_id=? WHERE work_id=?", candidate.ID, workID); err != nil {

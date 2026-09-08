@@ -1,5 +1,5 @@
 // ABOUTME: Verifies voter-first poll creation through the emergency CLI boundary.
-// ABOUTME: It protects grouped entitlements and one invitation per address.
+// ABOUTME: It protects grouped entitlements and one multi-recipient invitation per user.
 package main
 
 import (
@@ -23,28 +23,34 @@ func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T)
 	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
 		t.Fatal(err)
 	}
-	definition := strings.NewReader(`{
-		"id":"first-poll",
-		"owner_id":"owner",
-		"question":"Where shall we eat?",
-		"options":["Cafe","Pizza","Sushi"],
-		"places":1,
-		"deadline":"2030-01-01T18:00:00Z",
-		"announce":false,
-		"participants":[
-			{"name":"Alex","emails":["one@example.test","alias@example.test"]},
-			{"name":"Sam","emails":["two@example.test"]}
-		]
-	}`)
+	definition := strings.NewReader(`id: first-poll
+owner_id: owner
+question: Where shall we eat?
+options:
+  - Cafe
+  - Pizza
+  - Sushi
+places: 1
+deadline: 2030-01-01T18:00:00Z
+announce: false
+participants:
+  - name: Alex
+    emails:
+      - one@example.test
+      - alias@example.test
+  - name: Sam
+    emails:
+      - two@example.test
+`)
 	created, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, deterministicIDMaterial(), time.Unix(100, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.PollURL != "https://poll.example/polls/first-poll" || created.Invitations != 3 {
+	if created.PollURL != "https://poll.example/polls/first-poll" || created.Invitations != 2 {
 		t.Fatalf("created=%#v", created)
 	}
 	var state string
-	var participants, contacts, invitations int
+	var participants, contacts, invitations, recipients int
 	var firstName string
 	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id='first-poll'").Scan(&state); err != nil {
 		t.Fatal(err)
@@ -61,8 +67,11 @@ func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T)
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM deliveries WHERE work_id IN (SELECT id FROM work_items WHERE poll_id='first-poll') AND message_kind='invitation'").Scan(&invitations); err != nil {
 		t.Fatal(err)
 	}
-	if state != "open" || participants != 2 || firstName != "Alex" || contacts != 3 || invitations != 3 {
-		t.Fatalf("state=%s participants=%d first name=%s contacts=%d invitations=%d", state, participants, firstName, contacts, invitations)
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM delivery_recipients WHERE delivery_id IN (SELECT id FROM deliveries WHERE message_kind='invitation')").Scan(&recipients); err != nil {
+		t.Fatal(err)
+	}
+	if state != "open" || participants != 2 || firstName != "Alex" || contacts != 3 || invitations != 2 || recipients != 3 {
+		t.Fatalf("state=%s participants=%d first name=%s contacts=%d invitations=%d recipients=%d", state, participants, firstName, contacts, invitations, recipients)
 	}
 }
 
@@ -84,7 +93,7 @@ func TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll(t *testin
 	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
 		t.Fatal(err)
 	}
-	definition := strings.NewReader(`{"id":"bad","owner_id":"owner","question":"Question","options":["A","A"],"places":1,"deadline":"2030-01-01T18:00:00Z","participants":[{"name":"One","emails":["same@example.test"]},{"name":"Two","emails":["SAME@example.test"]}]}`)
+	definition := strings.NewReader("id: bad\nowner_id: owner\nquestion: Question\noptions: [A, A]\nplaces: 1\ndeadline: 2030-01-01T18:00:00Z\nparticipants:\n  - name: One\n    emails: [same@example.test]\n  - name: Two\n    emails: [SAME@example.test]\n")
 	if _, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
 		t.Fatal("invalid definition unexpectedly created a poll")
 	}

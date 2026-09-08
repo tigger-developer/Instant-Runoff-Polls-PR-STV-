@@ -21,7 +21,7 @@ type SMTPTransport struct {
 }
 
 func (transport SMTPTransport) Send(ctx context.Context, message Message) error {
-	if err := validateMessageFields(message.To, message.Subject); err != nil || containsNewline(message.Subject) {
+	if err := validateRecipients(message.To); err != nil || validateValues(message.Subject) != nil {
 		return ErrInvalidMessage
 	}
 	attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -70,15 +70,17 @@ func (transport SMTPTransport) Send(ctx context.Context, message Message) error 
 	if err := client.Mail(transport.Settings.From); err != nil {
 		return fmt.Errorf("set SMTP sender: %w", err)
 	}
-	if err := client.Rcpt(message.To); err != nil {
-		return fmt.Errorf("set SMTP recipient: %w", err)
+	for _, recipient := range message.To {
+		if err := client.Rcpt(recipient); err != nil {
+			return fmt.Errorf("set SMTP recipient: %w", err)
+		}
 	}
 	data, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("start SMTP data: %w", err)
 	}
 	body := strings.ReplaceAll(strings.ReplaceAll(message.Body, "\r\n", "\n"), "\n", "\r\n")
-	wire := "From: " + transport.Settings.From + "\r\nTo: " + message.To + "\r\nSubject: " + message.Subject + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body
+	wire := "From: " + transport.Settings.From + "\r\nTo: " + strings.Join(message.To, ", ") + "\r\nSubject: " + message.Subject + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body
 	if _, err := data.Write([]byte(wire)); err != nil {
 		_ = data.Close()
 		return fmt.Errorf("write SMTP data: %w", err)

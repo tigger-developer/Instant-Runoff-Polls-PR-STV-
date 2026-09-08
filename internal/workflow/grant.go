@@ -115,7 +115,9 @@ func validClaims(claims GrantClaims) bool {
 	case ModeratorGrant:
 		return claims.PollID == "" && claims.ContactID == ""
 	case ParticipantGrant:
-		return claims.PollID != "" && claims.ContactID != ""
+		// ContactID is accepted only for already-issued v1 links. New participant
+		// grants omit it and authenticate the poll participant directly.
+		return claims.PollID != ""
 	default:
 		return false
 	}

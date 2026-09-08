@@ -36,6 +36,10 @@ var migrations = []Migration{
 		`CREATE INDEX link_requests_submitted_at ON link_requests(submitted_at)`,
 		`CREATE INDEX work_items_due ON work_items(status,due_at,id)`,
 	}},
+	{Version: 3, Statements: []string{
+		`CREATE TABLE delivery_recipients (delivery_id TEXT NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE, email TEXT NOT NULL, display_order INTEGER NOT NULL, PRIMARY KEY (delivery_id,email), UNIQUE (delivery_id,display_order))`,
+		`INSERT INTO delivery_recipients(delivery_id,email,display_order) SELECT id,recipient_email,1 FROM deliveries`,
+	}},
 }
 
 type Store struct{ DB *sql.DB }

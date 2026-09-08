@@ -112,7 +112,7 @@ func (s *Store) QueueParticipantReturn(ctx context.Context, contact EligibleCont
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM polls AS poll JOIN contacts AS contact ON contact.poll_id=poll.id WHERE poll.id=? AND contact.id=? AND contact.participant_id=? AND contact.delivery_email=? AND poll.state='open' AND poll.deadline>?`, contact.PollID, contact.ContactID, contact.ParticipantID, contact.Recipient, now.Unix()).Scan(&eligible); err != nil || eligible != 1 {
 		return ErrConflict
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO grants(id,purpose,principal_id,poll_id,contact_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES (?,'participant',?,?,?,?,?,?,?,?)`, material.ID, contact.ParticipantID, contact.PollID, contact.ContactID, material.KeyID, material.TokenHash, material.ClaimsJSON, material.IssuedAt.Unix(), material.ExpiresAt.Unix()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO grants(id,purpose,principal_id,poll_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES (?,'participant',?,?,?,?,?,?,?)`, material.ID, contact.ParticipantID, contact.PollID, material.KeyID, material.TokenHash, material.ClaimsJSON, material.IssuedAt.Unix(), material.ExpiresAt.Unix()); err != nil {
 		return fmt.Errorf("insert participant return grant: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,'delivery',? ,?,'pending')", workID, contact.PollID, "participant-return:"+material.ID, now.Unix()); err != nil {

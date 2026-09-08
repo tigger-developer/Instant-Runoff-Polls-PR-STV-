@@ -35,7 +35,7 @@ func TestDeliveryHandlerPersistsAcceptedTemporaryAndPermanentOutcomes(t *testing
 			st := deliveryHandlerStore(t)
 			defer st.Close()
 			handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error { return tc.sendErr }), func(_ context.Context, _ *store.ClaimedWork, attempt store.DeliveryAttempt) (Message, error) {
-				return InvitationMessage(attempt.RecipientEmail, attempt.Question, "https://poll.example/vote/token")
+				return InvitationMessage(attempt.RecipientEmails, attempt.Question, "https://poll.example/vote/token")
 			}, func() (float64, error) { return 0, nil }, func() time.Time { return time.Unix(100, 0) })
 			summary, err := handler(context.Background(), &store.ClaimedWork{ID: "mail", Kind: "delivery", ClaimToken: "token"})
 			if (err != nil) != tc.wantError || summary.Retrying != tc.wantRetry || summary.SMTPAccepted != tc.wantAccept {
@@ -68,7 +68,7 @@ func TestDeliveryHandlerSixthTemporaryFailureIsTerminal(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error { return &net.DNSError{IsTimeout: true} }), func(context.Context, *store.ClaimedWork, store.DeliveryAttempt) (Message, error) {
-		return Message{To: "reader@example.test", Subject: "Vote", Body: "Body"}, nil
+		return Message{To: []string{"reader@example.test"}, Subject: "Vote", Body: "Body"}, nil
 	}, func() (float64, error) { return 0, nil }, func() time.Time { return time.Unix(100, 0) })
 	_, err := handler(context.Background(), &store.ClaimedWork{ID: "mail", Kind: "delivery", ClaimToken: "token"})
 	if !errors.Is(err, ErrWorkFinalized) {
@@ -90,7 +90,7 @@ func TestDeliveryHandlerFinalizesStateWhenRetrySchedulingFails(t *testing.T) {
 	handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error {
 		return &net.DNSError{IsTimeout: true}
 	}), func(context.Context, *store.ClaimedWork, store.DeliveryAttempt) (Message, error) {
-		return Message{To: "reader@example.test", Subject: "Vote", Body: "Body"}, nil
+		return Message{To: []string{"reader@example.test"}, Subject: "Vote", Body: "Body"}, nil
 	}, func() (float64, error) { return 0, errors.New("randomness unavailable") }, func() time.Time { return time.Unix(100, 0) })
 	_, err := handler(context.Background(), &store.ClaimedWork{ID: "mail", Kind: "delivery", ClaimToken: "token"})
 	if !errors.Is(err, ErrWorkFinalized) {
