@@ -1,4 +1,4 @@
-// ABOUTME: Sends one-recipient poll messages through the configured SMTP policy.
+// ABOUTME: Sends poll messages to their complete recipient list through the configured SMTP policy.
 // ABOUTME: It requires verified TLS except for explicit loopback development capture.
 package workflow
 

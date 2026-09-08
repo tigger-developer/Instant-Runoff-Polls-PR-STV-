@@ -167,16 +167,18 @@ rules or extend the voting period.
 ## Identity and authorization
 
 A poll participant has a stable identifier within that poll. Its associated
-email addresses are contact and authentication routes. Every address-specific
-grant resolves to the same poll and participant identifiers. The ballot is keyed
-by that participant identity, so changing the mailbox used to authenticate does
-not create another ballot.
+email addresses are delivery and authentication routes. An invitation creates
+one participant-scoped grant and sends the same message and magic link to every
+address configured for that participant. The grant identifies the poll and
+participant, not the address used to receive it. The ballot is keyed by that
+participant identity, so changing the mailbox used to authenticate does not
+create another ballot.
 
 The magic-link flow is:
 
-1. The invitation service creates an access grant for an allowed address and its
-   poll participant. Moderator login uses a distinct grant purpose and the
-   configured moderator identity.
+1. The invitation service creates an access grant for the poll participant.
+   Moderator login uses a distinct grant purpose and the configured moderator
+   identity.
 2. The mail adapter sends a link built from the supplied `base_url`.
 3. The verification handler validates the grant's authenticity, purpose,
    validity, and association with the current participant or moderator.
@@ -315,13 +317,13 @@ The processor reconciles current database state on every invocation rather than
 assuming every scheduled tick occurred. Counts that cannot be processed remain
 visible as pending or failed work; the service must not invent a result.
 
-Invitations are recorded for every recipient address before delivery is
-attempted. A durable delivery queue, adapted from writeback's automation pattern,
-keeps email failures separate from poll and ballot transactions. SMTP runs
-outside write transactions with bounded transport time and a configured secure
-transport policy. The workflow specification defines bounded retries and
-owner-visible terminal failure. SMTP acceptance does not prove inbox delivery,
-and a crash after acceptance
+One invitation delivery and its complete recipient list are recorded for every
+participant before delivery is attempted. A durable delivery queue, adapted
+from writeback's automation pattern, keeps email failures separate from poll
+and ballot transactions. SMTP runs outside write transactions with bounded
+transport time and a configured secure transport policy. The workflow
+specification defines bounded retries and owner-visible terminal failure. SMTP
+acceptance does not prove inbox delivery, and a crash after acceptance
 can cause a retry to send a duplicate message; no exactly-once delivery guarantee
 is implied.
 
@@ -381,10 +383,13 @@ one bounded pass per invocation. Count and announcement work may progress in
 the same pass; SMTP availability and pending work can delay the outcome. Voting
 deadlines remain enforced independently of that interval.
 
-The command uses the same runtime contract as `serve`, processes a bounded batch,
-and reports failure through its exit status and structured logs. The application
-does not install host timers, cron jobs, service units, or application-owned SSH,
-deploy, logs, or status wrappers.
+The `create-poll`, `close-poll`, `count-audit`, and `process-due-work` commands
+use the same runtime contract as `serve` and are exposed through Exodan's
+`APP-admin SUBCOMMAND [args...]` wrapper. `process-due-work` processes a bounded
+batch. Each command reports failure through its exit status and emits structured
+JSON output where it returns data. The application does not install host timers,
+cron jobs, service units, or application-owned SSH, deploy, logs, or status
+wrappers.
 
 Application health reports whether the server can use its required state and
 schema; dependency failure must not return a misleading healthy response. Logs

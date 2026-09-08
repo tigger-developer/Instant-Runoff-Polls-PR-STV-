@@ -1,5 +1,5 @@
 // ABOUTME: Constructs approved isolated invitation and result email messages.
-// ABOUTME: It rejects header injection and keeps one envelope recipient per message.
+// ABOUTME: It rejects header injection and supports one participant message with several recipients.
 package workflow
 
 import (

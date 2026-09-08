@@ -86,6 +86,36 @@ The following *first-release policies were approved with this specification* on 
 
 These choices are *approved requirements*. Changes require explicit amendment; the product documents preserve their original questions and resolutions.
 
+** Emergency MVP amendment, 8 September 2026
+
+The operator invoked =BYPASS-GATE-7= and narrowed the immediate delivery to a
+voter-first usable slice. This amendment supersedes conflicting invitation and
+interaction wording above while preserving the earlier signed-off definition
+as history.
+
+- Poll setup is through Exodan's =APP-admin= contract using one YAML document.
+  Each participant has an administrator-supplied display name and one or more
+  email addresses.
+- Opening creates one participant-scoped magic link and one invitation message
+  per participant. The same message is addressed to all of that participant's
+  configured email recipients. The grant authenticates the participant and
+  poll; it does not authenticate an individual contact address.
+- The voting page greets the stored participant name and uses a server-rendered
+  polling card. Each option click reloads the page, moving that choice from the
+  available list into the numbered preference tracker. No JavaScript is used.
+  Submit is available after the first preference; the voter may rank any
+  non-empty subset. Start again clears the in-progress ranking.
+- Submitting records the ballot and says the page may be closed. Returning with
+  the magic link shows that the vote was recorded and offers a protected action
+  to clear it and vote again while the poll remains open.
+- Polls are manually closed through =APP-admin close-poll POLL_ID= for this MVP.
+  Scheduled closure remains in the data model for later use. The bounded worker
+  runs the count. =APP-admin count-audit POLL_ID= exports the option mapping,
+  frozen anonymized input, fingerprint, recorded decisions, and result as JSON.
+- Further moderator-web-interface work is deferred. The existing mail boundary
+  remains replaceable pending the announced Exodan email-provider contract; this
+  amendment does not authorize a new infrastructure connector.
+
 ** Unresolved blockers
 
 - No unresolved product-policy decision remains. The recorded approvals cover the policies above; this refresh does not introduce additional product choices.
@@ -112,12 +142,12 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 - Criterion :: An authenticated moderator can *save and edit a draft poll* with question, options, winner count, participants, deadline, and announcement preference, and receives its unique URL.
 - Proven by :: [[#rt-003-2][RT003.2 - Draft creation and validation]].
 
-** AC003.3 - Several addresses share one participant
+** AC003.3 - Several addresses receive one participant grant
 :PROPERTIES:
 :CUSTOM_ID: ac-003-3
 :END:
 
-- Criterion :: Comma- or colon-separated addresses entered together *belong to one participant*. Every address-specific access grant reaches that same participant and ballot.
+- Criterion :: Addresses configured together *belong to one participant*. One participant-scoped grant and magic link reaches all of those addresses and the same ballot.
 - Proven by :: [[#rt-003-3][RT003.3 - Address grouping and entitlement]].
 
 ** AC003.4 - Reuse a previous electorate
@@ -128,12 +158,12 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 - Criterion :: Copying an owned poll's participant list *preserves address groups and permits draft edits* while leaving the source electorate and ballots unchanged.
 - Proven by :: [[#rt-003-4][RT003.4 - Copy and edit an electorate]].
 
-** AC003.5 - Invite every address once logically
+** AC003.5 - Invite every participant once logically
 :PROPERTIES:
 :CUSTOM_ID: ac-003-5
 :END:
 
-- Criterion :: Opening a valid draft *records an invitation for every listed address* and opens voting atomically. Repeating the opening action creates no additional logical invitations.
+- Criterion :: Opening a valid poll *records one multi-recipient invitation per participant* and opens voting atomically. Repeating the opening action creates no additional logical invitations.
 - Proven by :: [[#rt-003-5][RT003.5 - Opening and invitation recovery]].
 
 ** AC003.6 - Short invitation copy
@@ -141,7 +171,7 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 :CUSTOM_ID: ac-003-6
 :END:
 
-- Criterion :: Each invitation uses *the exact short copy in VISION*, substituting only the poll subject and recipient's link; the message is addressed individually.
+- Criterion :: Each invitation uses *the exact short copy in VISION*, substituting only the poll subject and participant's link; one message is addressed to all configured recipients for that participant.
 - Proven by :: [[#rt-003-5][RT003.5 - Opening and invitation recovery]]; [[#ut-003-1][UT003.1 - Voting and help experience]].
 
 ** AC003.7 - Passwordless participant access
@@ -157,7 +187,10 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 :CUSTOM_ID: ac-003-8
 :END:
 
-- Criterion :: A participant can *submit consecutive unique preferences from 1 onwards*, leaving other options unranked. Invalid rankings return usable errors without changing the accepted ballot.
+- Criterion :: A participant can build consecutive unique preferences by
+  selecting one remaining option per server-rendered request, then *submit any
+  non-empty subset*. The selected tracker, Start again, and Submit vote controls
+  work without JavaScript.
 - Proven by :: [[#rt-003-7][RT003.7 - Ballot validation and feedback]].
 
 ** AC003.9 - Unlimited replacement of one vote
@@ -192,12 +225,14 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 - Criterion :: Pausing an open poll *stops new ballots and revisions* without freezing a result or creating count work. It may resume before the deadline under the approved policy.
 - Proven by :: [[#rt-003-10][RT003.10 - Pause resume and manual close]].
 
-** AC003.13 - Manual close counts paused polls
+** AC003.13 - Manual CLI close freezes the poll
 :PROPERTIES:
 :CUSTOM_ID: ac-003-13
 :END:
 
-- Criterion :: From a paused poll, *Close poll and count results* freezes the eligible ballots and creates count work. A repeated close does not create another snapshot or result.
+- Criterion :: The Exodan-aligned =close-poll POLL_ID= command freezes an open
+  or paused poll's eligible ballots and creates count work. A repeated close
+  does not create another snapshot or result.
 - Proven by :: [[#rt-003-10][RT003.10 - Pause resume and manual close]].
 
 ** AC003.14 - Scheduled close survives missed ticks
@@ -280,6 +315,14 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 - Criterion :: A moderator and participants can *complete the documented workflow locally*, including multiple addresses, ballot revision, pause/close, counting, and the announcement choice.
 - Proven by :: [[#ut-003-2][UT003.2 - Moderator and participant journey]]; [[#ot-003-1][OT003.1 - Local full-poll and packaging review]].
 
+** AC003.24 - Admin CLI supplies the voter-first workflow
+:PROPERTIES:
+:CUSTOM_ID: ac-003-24
+:END:
+
+- Criterion :: Under Exodan's =APP-admin= wrapper, an operator can *create a poll from YAML, close it manually, process its count, and export the durable count audit as JSON* without using the moderator web interface.
+- Proven by :: [[#rt-003-18][RT003.18 - Admin CLI poll lifecycle and count audit]].
+
 * Test Definitions
 :PROPERTIES:
 :CUSTOM_ID: test-definitions
@@ -314,7 +357,7 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 :CUSTOM_ID: rt-003-3
 :END:
 
-- Covers :: [[#ac-003-3][AC003.3 - Several addresses share one participant]].
+- Covers :: [[#ac-003-3][AC003.3 - Several addresses receive one participant grant]].
 - Setup :: Participant P with comma-separated addresses and Q with colon-separated addresses; variants include whitespace, repeated addresses within a group, and a case-insensitive duplicate across two participant rows.
 - Action :: Save the list and authenticate through each allowed address.
 - Expected :: Each group resolves to exactly one poll participant. Whitespace is trimmed, within-group repeats produce one contact route, and ambiguous cross-participant duplicates are rejected before opening. Independently entered people are never merged by inferred identity.
@@ -336,10 +379,10 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 :CUSTOM_ID: rt-003-5
 :END:
 
-- Covers :: [[#ac-003-5][AC003.5 - Invite every address once logically]]; [[#ac-003-6][AC003.6 - Short invitation copy]].
-- Setup :: A valid draft with three participants and five distinct addresses; local mail capture; injected failure before opening commit and interruption after it. Configure a synthetic HTTPS =base_url= through the host YAML while the server listens on a distinct loopback =ADDR=; include requests with attacker-controlled Host and forwarded-host headers.
+- Covers :: [[#ac-003-5][AC003.5 - Invite every participant once logically]]; [[#ac-003-6][AC003.6 - Short invitation copy]].
+- Setup :: A valid poll with three participants and five distinct addresses; local mail capture; injected failure before opening commit and interruption after it. Configure a synthetic HTTPS =base_url= through the host YAML while the server listens on a distinct loopback =ADDR=; include requests with attacker-controlled Host and forwarded-host headers.
 - Action :: Open, repeat the action, and process/retry invitation work.
-- Expected :: Either draft state and no invitations remain, or open state and exactly five logical delivery records commit together. Each captured message has one recipient and the exact VISION body with its own link. Every invitation uses the configured public URL, never the listener address or request headers. No email is sent before commit. Recovery sends pending messages without generating another logical invitation.
+- Expected :: Either draft state and no invitations remain, or open state and exactly three logical delivery records commit together. Each captured message has the participant's complete recipient list, the exact VISION body, and one participant-scoped link without a contact claim. Every invitation uses the configured public URL, never the listener address or request headers. No email is sent before commit. Recovery sends pending messages without generating another logical invitation.
 - Delayed delivery :: Pause before the first attempt, then close before another pending invitation is sent. Paused polls retain pending invitations without consuming attempts; closed polls cancel unsent invitation/replacement deliveries. Already delivered links cannot extend voting eligibility.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
@@ -363,8 +406,8 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 
 - Covers :: [[#ac-003-8][AC003.8 - Rank a subset of options]].
 - Setup :: Open poll with nine options and a participant with an existing ballot.
-- Action :: Submit one preference, all nine, duplicates, gaps, zero/negative/non-numeric ranks, unknown option IDs, and an empty ranking.
-- Expected :: Consecutive subsets succeed; invalid cases return 422 with associated errors and preserve the previous ballot/version. The accepted page clearly identifies the current saved preferences.
+- Action :: Select preferences one at a time, start again, submit one preference and all nine, tamper with duplicated or unknown option IDs, and attempt an empty submission.
+- Expected :: Each selection reloads with the selected option removed from the left and appended to the numbered tracker on the right. Submit becomes available after the first choice. Consecutive subsets succeed; invalid cases preserve the previous ballot/version. The accepted page clearly identifies that the vote was recorded and offers a protected clear-and-revote action.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.8 - Revision and concurrent aliases
@@ -394,10 +437,10 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 :CUSTOM_ID: rt-003-10
 :END:
 
-- Covers :: [[#ac-003-12][AC003.12 - Pause stops voting without counting]]; [[#ac-003-13][AC003.13 - Manual close counts paused polls]].
+- Covers :: [[#ac-003-12][AC003.12 - Pause stops voting without counting]]; [[#ac-003-13][AC003.13 - Manual CLI close freezes the poll]].
 - Setup :: Open poll with accepted ballots, including a paused copy whose deadline passes.
-- Action :: Pause; attempt votes/revisions; resume before deadline; pause again and manually close twice; attempt resume after deadline and after close.
-- Expected :: Pause creates no count work. Before-deadline resume restores voting. Manual close creates one snapshot/job and returns a pending-result page. Repeated close returns existing status. Expired or closed polls cannot resume.
+- Action :: Pause; attempt votes/revisions; resume before deadline; invoke =close-poll POLL_ID= twice against open and paused cases; attempt resume after deadline and after close.
+- Expected :: Pause creates no count work. Before-deadline resume restores voting. Manual CLI close creates one snapshot/job and returns structured closed/pending status. Repeated close returns existing status. Expired or closed polls cannot resume.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.11 - Scheduled recovery and counting
@@ -485,6 +528,17 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 - CSRF oracle :: Missing or wrong-session tokens return 403 regardless of Origin/Referer headers. A valid session, matching token and otherwise valid action succeed whether those headers are absent or arbitrary. Headers alone never authorize a mutation; token verification supplies this boundary.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
+** RT003.18 - Admin CLI poll lifecycle and count audit
+:PROPERTIES:
+:CUSTOM_ID: rt-003-18
+:END:
+
+- Covers :: [[#ac-003-3][AC003.3 - Several addresses receive one participant grant]]; [[#ac-003-5][AC003.5 - Invite every participant once logically]]; [[#ac-003-13][AC003.13 - Manual CLI close freezes the poll]]; [[#ac-003-24][AC003.24 - Admin CLI supplies the voter-first workflow]].
+- Setup :: Exodan-shaped runtime configuration, temporary SQLite, local mail capture, and a YAML poll with two named participants and three total email recipients.
+- Action :: Pipe the YAML to =create-poll=, process deliveries, record a ballot, invoke =close-poll POLL_ID=, process the count, and invoke =count-audit POLL_ID=.
+- Expected :: The CLI accepts exactly one YAML document and emits structured JSON. It creates two participants, three contacts, two invitation deliveries, and three delivery recipients. Each participant receives one shared participant-scoped link. Manual close creates one frozen anonymized snapshot and pending count. The count audit contains the option mapping, rule, fingerprint, input, decisions, and result, but no participant name, email, contact ID, or participant ID.
+- Retention :: Persistent standard Go suite through =make test=; exercise the command services, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
+
 ** UT003.1 - Voting and help experience
 :PROPERTIES:
 :CUSTOM_ID: ut-003-1
@@ -524,7 +578,7 @@ These choices are *approved requirements*. Changes require explicit amendment; t
 :CUSTOM_ID: edge-cases
 :END:
 
-- Several invitations for one participant *never create several ballots*. Covered by [[#ac-003-3][AC003.3 - Several addresses share one participant]] and [[#ac-003-9][AC003.9 - Unlimited replacement of one vote]].
+- Several recipients for one participant's invitation *never create several ballots*. Covered by [[#ac-003-3][AC003.3 - Several addresses receive one participant grant]] and [[#ac-003-9][AC003.9 - Unlimited replacement of one vote]].
 - A stale tab opened before pause or deadline *cannot extend eligibility*. Covered by [[#ac-003-11][AC003.11 - Deadline is enforced at acceptance]].
 - A paused poll passing its deadline *closes during reconciliation* and cannot resume. Covered by [[#ac-003-14][AC003.14 - Scheduled close survives missed ticks]].
 - An email scanner visiting a link *does not consume the grant*. The explicit exchange POST establishes the session. Covered by [[#ac-003-7][AC003.7 - Passwordless participant access]].
