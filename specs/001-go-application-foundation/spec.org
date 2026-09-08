@@ -413,6 +413,15 @@ data_dirs:
 
 * Hands-off mode decision log
 
+** 2026-09-08T08:53:45Z :hands-off:review:
+
+*** Retained-auditor resumption
+
+- Authority :: Taḋg explicitly resumed hands-off delivery.
+- Decision :: Resume the W001 external audit with the recorded harness session identifier =01a07f47-11e2-74c1-8161-53c8f9bbbe98=. Capture its stdout and stderr in an operating-system temporary file so the result can be recorded accurately.
+- Basis :: The audit evidence identifies this UUID as the retained external implementation-audit context. The harness interface requires the exact emitted session identifier and prohibits an agent task name or filesystem path as a substitute.
+- Boundary :: No replacement audit context, product change, or specification amendment is authorized.
+
 ** 2026-09-08T08:40:18Z :hands-off:review:
 
 *** Delivery continuation
