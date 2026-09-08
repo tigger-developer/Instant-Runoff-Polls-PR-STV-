@@ -588,6 +588,49 @@ func (s *Store) RetryDelivery(ctx context.Context, workID, claimToken string, no
 	return nil
 }
 
+func (s *Store) AcceptDelivery(ctx context.Context, workID, claimToken string, now time.Time) error {
+	result, err := s.DB.ExecContext(ctx, `UPDATE deliveries SET status='smtp_accepted',smtp_outcome='accepted' WHERE work_id=? AND EXISTS (SELECT 1 FROM work_items WHERE id=? AND kind='delivery' AND status='claimed' AND claim_token=? AND claim_expires_at>?)`, workID, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("accept delivery: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	return nil
+}
+
+func (s *Store) FailDelivery(ctx context.Context, workID, claimToken string, now time.Time, failureClass string) error {
+	if failureClass == "" {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin terminal delivery failure: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE deliveries SET status='failed',smtp_outcome=? WHERE work_id=? AND EXISTS (SELECT 1 FROM work_items WHERE id=? AND kind='delivery' AND status='claimed' AND claim_token=? AND claim_expires_at>?)`, failureClass, workID, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("record terminal delivery failure: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	result, err = tx.ExecContext(ctx, `UPDATE work_items SET status='failed',failure_class=?,claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?`, failureClass, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("finalize failed delivery work: %w", err)
+	}
+	changed, err = result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit terminal delivery failure: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) LoadCountWork(ctx context.Context, workID, claimToken string, now time.Time) (CountWork, error) {
 	var work CountWork
 	err := s.DB.QueryRowContext(ctx, `SELECT snapshots.id,snapshots.input_json,COALESCE(results.result_json,'') FROM work_items AS work JOIN count_snapshots AS snapshots ON snapshots.poll_id=work.poll_id LEFT JOIN count_results AS results ON results.snapshot_id=snapshots.id WHERE work.id=? AND work.kind='count' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&work.SnapshotID, &work.InputJSON, &work.ExistingResult)
