@@ -99,18 +99,15 @@ audits:
     - work_item: 003-invited-poll-workflow-emergency-20260908
       gate: implementation
       session_id: 01a081cd-a70e-7133-972e-0bd76bfbef20
-      external_round: 1
-      status: active
-      updated: "2026-09-08T16:19:19Z"
+      external_round: 2
+      status: passed
+      updated: "2026-09-08T16:21:28Z"
       revision: cf8e20fe94956fb4bd89262b49cae68b3d122f71
-      verdict: FAIL
+      verdict: PASS
       response: |-
         GATE: implementation
         REVISION: cf8e20fe94956fb4bd89262b49cae68b3d122f71
-        VERDICT: FAIL
-
-        FINDINGS:
-        1. `docs/work.org` duplicates audit state outside `audits.yaml`, including definition-gate PASS, local-review PASS, prior effective definition PASS, and runner-incident history. Remove audit findings, statuses, revisions, rounds, and session references from implementation notes; retain audit state only in `audits.yaml`, then rerun the gate.
+        VERDICT: PASS
       history:
         - round: 1
           revision: cf8e20fe94956fb4bd89262b49cae68b3d122f71
@@ -123,6 +120,14 @@ audits:
             FINDINGS:
             1. `docs/work.org` duplicates audit state outside `audits.yaml`, including definition-gate PASS, local-review PASS, prior effective definition PASS, and runner-incident history. Remove audit findings, statuses, revisions, rounds, and session references from implementation notes; retain audit state only in `audits.yaml`, then rerun the gate.
           updated: "2026-09-08T16:19:19Z"
+        - round: 2
+          revision: cf8e20fe94956fb4bd89262b49cae68b3d122f71
+          verdict: PASS
+          response: |-
+            GATE: implementation
+            REVISION: cf8e20fe94956fb4bd89262b49cae68b3d122f71
+            VERDICT: PASS
+          updated: "2026-09-08T16:21:28Z"
 legacy:
     - path: audits.org
       content: |
