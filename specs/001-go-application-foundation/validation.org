@@ -32,7 +32,7 @@
 - Category :: Bounded one-off verification.
 - Criterion :: [[file:spec.org::#ac-001-10][AC001.10 - Portable build and verification]].
 - Definition :: [[file:spec.org::#ot-001-1][OT001.1 - Build and tooling contract]].
-- Result :: PENDING.
+- Result :: PASS.
 - Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including govulncheck failure propagation and non-mutating locks. Check standalone Biome for CSS and tidy-html5 for rendered HTML; missing applicable tools fail visibly. Oxlint applies only if approved JavaScript/TypeScript source exists. Install twice to a temporary PREFIX: managed binary/assets remain identical, an unrelated sentinel survives, secrets/host configuration are excluded, and installed help/version/serve operate with the documented runtime inputs. No deployment, mail, or metered API.
 - Web-tool failure evidence :: Use disposable fixtures for one CSS violation, one rendered-HTML error and one missing-tool case per applicable web linter. Each fails without rewriting input/output or installing tools. Verify native versions and integrity/provisioning instructions. No source-text regression or browser stack is introduced.
-- Execution evidence :: No execution or human result has been recorded.
+- Execution evidence :: Revision =c24add9= on Darwin arm64 with Go 1.26.6: =make test= passed with the race detector; =make lint= passed with golangci-lint, Biome 2.5.12 and tidy-html5 5.8.0; =make vulncheck= found no reachable vulnerabilities. =GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build= produced a static ELF x86-64 binary. Installation twice to an OS temporary PREFIX preserved an unrelated sentinel and installed help/version. Isolated =make lint BIOME=missing-biome-tool= and =make lint TIDY=missing-tidy-tool= each failed at the intended missing-tool boundary.
