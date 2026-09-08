@@ -33,7 +33,7 @@ func TestDeliveryHandlerPersistsAcceptedTemporaryAndPermanentOutcomes(t *testing
 		t.Run(tc.name, func(t *testing.T) {
 			st := deliveryHandlerStore(t)
 			defer st.Close()
-			handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error { return tc.sendErr }), func(attempt store.DeliveryAttempt) (Message, error) {
+			handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error { return tc.sendErr }), func(_ context.Context, _ *store.ClaimedWork, attempt store.DeliveryAttempt) (Message, error) {
 				return InvitationMessage(attempt.RecipientEmail, attempt.Question, "https://poll.example/vote/token")
 			}, func() float64 { return 0 }, func() time.Time { return time.Unix(100, 0) })
 			summary, err := handler(context.Background(), &store.ClaimedWork{ID: "mail", Kind: "delivery", ClaimToken: "token"})
@@ -57,7 +57,7 @@ func TestDeliveryHandlerSixthTemporaryFailureIsTerminal(t *testing.T) {
 	if _, err := st.DB.Exec("UPDATE work_items SET attempts=5 WHERE id='mail'"); err != nil {
 		t.Fatal(err)
 	}
-	handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error { return &net.DNSError{IsTimeout: true} }), func(store.DeliveryAttempt) (Message, error) {
+	handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error { return &net.DNSError{IsTimeout: true} }), func(context.Context, *store.ClaimedWork, store.DeliveryAttempt) (Message, error) {
 		return Message{To: "reader@example.test", Subject: "Vote", Body: "Body"}, nil
 	}, func() float64 { return 0 }, func() time.Time { return time.Unix(100, 0) })
 	_, err := handler(context.Background(), &store.ClaimedWork{ID: "mail", Kind: "delivery", ClaimToken: "token"})

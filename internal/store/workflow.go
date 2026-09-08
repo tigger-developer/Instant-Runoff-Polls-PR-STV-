@@ -65,10 +65,20 @@ type DeliveryAttempt struct {
 	DeliveryID     string
 	PollID         string
 	ContactID      string
+	ParticipantID  string
 	RecipientEmail string
 	MessageKind    string
 	Question       string
 	Attempts       int
+}
+
+type GrantMaterial struct {
+	ID         string
+	KeyID      string
+	TokenHash  []byte
+	ClaimsJSON []byte
+	IssuedAt   time.Time
+	ExpiresAt  time.Time
 }
 
 type CloseOption struct {
@@ -537,7 +547,7 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 	var attempt DeliveryAttempt
 	var state string
 	var deadline int64
-	err = tx.QueryRowContext(ctx, `SELECT delivery.id,work.poll_id,COALESCE(delivery.contact_id,''),delivery.recipient_email,delivery.message_kind,poll.question,poll.state,poll.deadline,work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN polls AS poll ON poll.id=work.poll_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &attempt.Attempts)
+	err = tx.QueryRowContext(ctx, `SELECT delivery.id,work.poll_id,COALESCE(delivery.contact_id,''),COALESCE(contact.participant_id,''),delivery.recipient_email,delivery.message_kind,poll.question,poll.state,poll.deadline,work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN polls AS poll ON poll.id=work.poll_id LEFT JOIN contacts AS contact ON contact.id=delivery.contact_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.ParticipantID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &attempt.Attempts)
 	if err != nil {
 		return DeliveryAttempt{}, ErrConflict
 	}
@@ -575,6 +585,46 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 		return DeliveryAttempt{}, fmt.Errorf("commit delivery attempt: %w", err)
 	}
 	return attempt, nil
+}
+
+func (s *Store) PrepareDeliveryGrant(ctx context.Context, workID, claimToken, activeKeyID string, now time.Time, candidate GrantMaterial) ([]byte, error) {
+	if workID == "" || claimToken == "" || activeKeyID == "" || candidate.ID == "" || candidate.KeyID != activeKeyID || len(candidate.TokenHash) != 32 || !json.Valid(candidate.ClaimsJSON) || !candidate.ExpiresAt.After(candidate.IssuedAt) {
+		return nil, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin delivery grant: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var pollID, contactID, participantID string
+	var existingID, existingKey string
+	var existingPayload []byte
+	var existingExpiry int64
+	err = tx.QueryRowContext(ctx, `SELECT work.poll_id,delivery.contact_id,contact.participant_id,COALESCE(grant.id,''),COALESCE(grant.key_id,''),COALESCE(grant.claims_json,''),COALESCE(grant.expires_at,0) FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN contacts AS contact ON contact.id=delivery.contact_id LEFT JOIN grants AS grant ON grant.id=delivery.grant_id AND grant.revoked_at IS NULL WHERE work.id=? AND work.kind='delivery' AND delivery.message_kind='invitation' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&pollID, &contactID, &participantID, &existingID, &existingKey, &existingPayload, &existingExpiry)
+	if err != nil {
+		return nil, ErrConflict
+	}
+	if existingID != "" && existingKey == activeKeyID && existingExpiry >= now.Add(5*time.Minute).Unix() {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit existing delivery grant: %w", err)
+		}
+		return append([]byte(nil), existingPayload...), nil
+	}
+	if existingID != "" {
+		if _, err := tx.ExecContext(ctx, "UPDATE grants SET revoked_at=? WHERE id=? AND revoked_at IS NULL", now.Unix(), existingID); err != nil {
+			return nil, fmt.Errorf("revoke delivery grant: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO grants(id,purpose,principal_id,poll_id,contact_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES (?,'participant',?,?,?,?,?,?,?,?)`, candidate.ID, participantID, pollID, contactID, candidate.KeyID, candidate.TokenHash, candidate.ClaimsJSON, candidate.IssuedAt.Unix(), candidate.ExpiresAt.Unix()); err != nil {
+		return nil, fmt.Errorf("insert delivery grant: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET grant_id=? WHERE work_id=?", candidate.ID, workID); err != nil {
+		return nil, fmt.Errorf("attach delivery grant: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit delivery grant: %w", err)
+	}
+	return append([]byte(nil), candidate.ClaimsJSON...), nil
 }
 
 func deferClaimedDelivery(ctx context.Context, tx *sql.Tx, workID, claimToken string, now, nextDue time.Time) error {

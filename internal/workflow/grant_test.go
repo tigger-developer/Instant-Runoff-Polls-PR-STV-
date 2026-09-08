@@ -27,6 +27,20 @@ func TestGrantRoundTripPreservesParticipantScope(t *testing.T) {
 	}
 }
 
+func TestPersistedGrantPayloadReconstructsTheSameToken(t *testing.T) {
+	now := time.Unix(1_789_000_000, 0).UTC()
+	key := bytes.Repeat([]byte{7}, 32)
+	claims := GrantClaims{Version: 1, KeyID: "key-1", Purpose: ParticipantGrant, PrincipalID: "participant-1", PollID: "poll-1", ContactID: "contact-1", IssuedAt: now, ExpiresAt: now.Add(24 * time.Hour)}
+	token, payload, err := IssuePersistableGrant(claims, key, bytes.NewReader(bytes.Repeat([]byte{9}, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := RestoreGrant(payload, key)
+	if err != nil || restored != token {
+		t.Fatalf("restored token matches=%v error=%v", restored == token, err)
+	}
+}
+
 func TestGrantRejectsTamperingKeyRotationExpiryAndOversize(t *testing.T) {
 	now := time.Unix(1_789_000_000, 0).UTC()
 	key := bytes.Repeat([]byte{7}, 32)

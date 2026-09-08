@@ -403,6 +403,50 @@ func TestDeliveryAttemptHoldsPausedAndCancelsIneligibleInvitations(t *testing.T)
 	}
 }
 
+func TestPrepareDeliveryGrantReusesAndRotatesPersistedClaims(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='open',deadline=500 WHERE id='poll-1'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll-1','person','reader@example.test','reader@example.test')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('mail','poll-1','delivery','invitation:poll-1:contact',10,'claimed','token',300)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES ('delivery','mail','contact','reader@example.test','invitation','pending',10)"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(100, 0)
+	first := GrantMaterial{ID: "grant-1", KeyID: "key-1", TokenHash: bytes.Repeat([]byte{1}, 32), ClaimsJSON: []byte(`{"nonce":"one"}`), IssuedAt: now, ExpiresAt: now.Add(time.Hour)}
+	payload, err := st.PrepareDeliveryGrant(ctx, "mail", "token", "key-1", now, first)
+	if err != nil || string(payload) != string(first.ClaimsJSON) {
+		t.Fatalf("first payload=%s error=%v", payload, err)
+	}
+	unused := GrantMaterial{ID: "grant-unused", KeyID: "key-1", TokenHash: bytes.Repeat([]byte{2}, 32), ClaimsJSON: []byte(`{"nonce":"unused"}`), IssuedAt: now, ExpiresAt: now.Add(time.Hour)}
+	payload, err = st.PrepareDeliveryGrant(ctx, "mail", "token", "key-1", now, unused)
+	if err != nil || string(payload) != string(first.ClaimsJSON) {
+		t.Fatalf("reused payload=%s error=%v", payload, err)
+	}
+	rotated := GrantMaterial{ID: "grant-2", KeyID: "key-2", TokenHash: bytes.Repeat([]byte{3}, 32), ClaimsJSON: []byte(`{"nonce":"two"}`), IssuedAt: now, ExpiresAt: now.Add(time.Hour)}
+	payload, err = st.PrepareDeliveryGrant(ctx, "mail", "token", "key-2", now, rotated)
+	if err != nil || string(payload) != string(rotated.ClaimsJSON) {
+		t.Fatalf("rotated payload=%s error=%v", payload, err)
+	}
+	var grants, revoked int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*),sum(CASE WHEN revoked_at IS NOT NULL THEN 1 ELSE 0 END) FROM grants").Scan(&grants, &revoked); err != nil {
+		t.Fatal(err)
+	}
+	if grants != 2 || revoked != 1 {
+		t.Fatalf("grants=%d revoked=%d", grants, revoked)
+	}
+}
+
 func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)

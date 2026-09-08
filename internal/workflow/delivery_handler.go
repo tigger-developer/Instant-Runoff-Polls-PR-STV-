@@ -17,7 +17,7 @@ type MessageSender interface {
 	Send(context.Context, Message) error
 }
 
-type DeliveryMessageBuilder func(store.DeliveryAttempt) (Message, error)
+type DeliveryMessageBuilder func(context.Context, *store.ClaimedWork, store.DeliveryAttempt) (Message, error)
 
 func NewDeliveryHandler(repository *store.Store, sender MessageSender, build DeliveryMessageBuilder, jitter func() float64, now func() time.Time) WorkHandler {
 	return func(ctx context.Context, item *store.ClaimedWork) (Summary, error) {
@@ -35,7 +35,7 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 		if err != nil {
 			return Summary{}, fmt.Errorf("begin delivery attempt: %w", err)
 		}
-		message, err := build(attempt)
+		message, err := build(ctx, item, attempt)
 		if err == nil {
 			err = sender.Send(ctx, message)
 		}

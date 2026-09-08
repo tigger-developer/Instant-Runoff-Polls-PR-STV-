@@ -46,21 +46,38 @@ type grantPayload struct {
 }
 
 func IssueGrant(claims GrantClaims, key []byte, randomness io.Reader) (string, error) {
+	token, _, err := IssuePersistableGrant(claims, key, randomness)
+	return token, err
+}
+
+func IssuePersistableGrant(claims GrantClaims, key []byte, randomness io.Reader) (string, []byte, error) {
 	if !validClaims(claims) || len(key) != 32 || randomness == nil {
-		return "", ErrInvalidGrant
+		return "", nil, ErrInvalidGrant
 	}
 	nonce := make([]byte, 32)
 	if _, err := io.ReadFull(randomness, nonce); err != nil {
-		return "", ErrInvalidGrant
+		return "", nil, ErrInvalidGrant
 	}
 	payload := grantPayload{Version: claims.Version, KeyID: claims.KeyID, Purpose: claims.Purpose, PrincipalID: claims.PrincipalID, PollID: claims.PollID, ContactID: claims.ContactID, IssuedAt: claims.IssuedAt.Unix(), ExpiresAt: claims.ExpiresAt.Unix(), Nonce: base64.RawURLEncoding.EncodeToString(nonce)}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		return "", ErrInvalidGrant
+		return "", nil, ErrInvalidGrant
 	}
 	payloadText := base64.RawURLEncoding.EncodeToString(encoded)
 	signature := signGrant(payloadText, key)
-	return payloadText + "." + base64.RawURLEncoding.EncodeToString(signature), nil
+	return payloadText + "." + base64.RawURLEncoding.EncodeToString(signature), encoded, nil
+}
+
+func RestoreGrant(encodedPayload, key []byte) (string, error) {
+	if len(key) != 32 {
+		return "", ErrInvalidGrant
+	}
+	var payload grantPayload
+	if json.Unmarshal(encodedPayload, &payload) != nil || payload.Nonce == "" {
+		return "", ErrInvalidGrant
+	}
+	payloadText := base64.RawURLEncoding.EncodeToString(encodedPayload)
+	return payloadText + "." + base64.RawURLEncoding.EncodeToString(signGrant(payloadText, key)), nil
 }
 
 func VerifyGrant(token, activeKeyID string, key []byte, now time.Time) (GrantClaims, error) {
