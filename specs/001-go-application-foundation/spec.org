@@ -1,0 +1,345 @@
+#+TITLE: W001 - Establish the Go application foundation
+#+SUBTITLE: Unified change specification
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:nil
+#+DEFINITION_GATE: PENDING
+#+OPERATOR_SIGNOFF: PENDING
+
+* Establish the Go application foundation
+:PROPERTIES:
+:CUSTOM_ID: summary
+:END:
+
+- Outcome :: A *runnable Go service* consumes Exodan configuration and provides persistent storage, server-rendered HTML, and truthful health.
+- Before :: The repository contains *documentation only*.
+- After :: The application can be built and run locally and packaged for Exodan; *polling behaviour follows in W003*.
+- Changes :: Add the Go module, executable, configuration loader, SQLite initialization, templates, health endpoint, and build/verification entry points.
+- Unchanged :: *Exodan retains deployment and host ownership*. This change adds no authentication, live email, ballots, counting, or scheduler.
+- Edge cases :: Invalid layers, unsupported schemas, migration failure, restart, missing assets, IPv4/IPv6 binding, request limits, and shutdown.
+- Decisions :: Follow the *accepted application architecture* and SDLC Go/Web standards; adapt the recorded upload/writeback foundations.
+- Next step :: Definition audit and *operator sign-off*, followed by TDD. Specifications remain on master; implementation branching starts at delivery.
+
+-----
+
+* Context
+:PROPERTIES:
+:CUSTOM_ID: context
+:END:
+
+** Problem
+
+The accepted architecture has *no executable foundation yet*. The first build needs the runtime and verification boundaries that the two subsequent specifications consume.
+
+** Outcome
+
+An operator can *build and run the service locally* with synthetic configuration, observe its health, restart it without losing stored state, and produce the Linux deployment artefact.
+
+** Scope
+
+- In scope :: Application composition, runtime configuration, SQLite initialization and migrations, HTML/CSS landing page, health, CLI behaviour, local documentation, and verification commands.
+- Out of scope :: Poll data, authentication, mail delivery, count processing, live deployment, infrastructure changes, and production secrets.
+- Unchanged :: README and VISION retain the product rules. ARCHITECTURE retains component and ownership decisions.
+
+** Authority and starting point
+
+- Project :: [[file:../../.sdlc/project.yaml][Project profile]].
+- Product :: [[file:../../README.md][README application direction]] and [[file:../../docs/VISION.md][VISION delivery direction]].
+- Architecture :: [[file:../../docs/ARCHITECTURE.md][Application components, runtime contract, and reuse plan]]; accepted by the operator on 8 September 2026: "ok architecture looks good".
+- External contract :: Exodan's =deploy/docs/PROJECT-INTEGRATION.md=, version 1.8, as identified and summarized in ARCHITECTURE.
+- Baseline :: Documentation commit =be75045= (application architecture and consolidated requirements); no application or regression pack existed at definition start.
+- Reuse evidence :: The architecture records upload =3776f42e84d5= and writeback =8bd639af78e4= source snapshots and exact adaptation candidates. They are implementation examples, not requirement authorities.
+
+** Constraints and dependencies
+
+- Use *Go, standard-library HTTP/templates, and SQLite* as selected in the architecture.
+- New modules remain under =internal/=; *no JavaScript or frontend runtime* is needed.
+- No deployment target or host scheduler is introduced. Exodan remains an infrastructure dependency, *not part of this delivery*.
+- This work is the prerequisite for [[file:../002-irish-pr-stv-counting/spec.org][W002 - Reproducible Irish PR-STV counting]] and [[file:../003-invited-poll-workflow/spec.org][W003 - Invited poll workflow]].
+
+** Decisions
+
+- Operator direction :: Draft specifications *on master*. Create implementation branches when coding starts; this overrides global feature-branch timing for this definition batch.
+- Design proposal for sign-off :: The precise CLI, endpoint, configuration keys, and bounds below refine the accepted architecture. They are *new interface definitions*, not claims of existing behaviour.
+
+** Unresolved blockers
+
+- None within this foundation scope. Open voting and announcement policies belong to W003.
+
+* Acceptance Criteria
+:PROPERTIES:
+:CUSTOM_ID: acceptance-criteria
+:END:
+
+** AC001.1 - Exodan configuration
+:PROPERTIES:
+:CUSTOM_ID: ac-001-1
+:END:
+
+- Criterion :: Given supplied runtime paths, the application *merges defaults, host YAML, and secrets in that order* and uses the resulting application values.
+- Proven by :: [[#rt-001-1][RT001.1 - Layered configuration]].
+
+** AC001.2 - Invalid configuration fails visibly
+:PROPERTIES:
+:CUSTOM_ID: ac-001-2
+:END:
+
+- Criterion :: Given a missing required value, malformed application value, or unreadable explicitly supplied layer, startup *fails before listening* and identifies the field or layer without disclosing its value.
+- Proven by :: [[#rt-001-1][RT001.1 - Layered configuration]].
+
+** AC001.3 - Configured listener and page
+:PROPERTIES:
+:CUSTOM_ID: ac-001-3
+:END:
+
+- Criterion :: Given valid configuration, =serve= *binds the supplied ADDR* and serves an HTML landing page and its local CSS through that listener.
+- Proven by :: [[#rt-001-2][RT001.2 - Executable HTTP boundary]].
+
+** AC001.4 - Persistent state survives restart
+:PROPERTIES:
+:CUSTOM_ID: ac-001-4
+:END:
+
+- Criterion :: Given an existing application database, restarting *preserves its state* and applies each supported migration once.
+- Proven by :: [[#rt-001-3][RT001.3 - Storage lifecycle]].
+
+** AC001.5 - Unusable storage prevents operation
+:PROPERTIES:
+:CUSTOM_ID: ac-001-5
+:END:
+
+- Criterion :: Given unavailable storage, a newer unsupported schema, or a failed migration, the application *does not accept work against that state*.
+- Proven by :: [[#rt-001-3][RT001.3 - Storage lifecycle]].
+
+** AC001.6 - Truthful health
+:PROPERTIES:
+:CUSTOM_ID: ac-001-6
+:END:
+
+- Criterion :: The health endpoint returns *200 only when required storage and schema are usable*; dependency failure returns 503 without configuration or database details.
+- Proven by :: [[#rt-001-4][RT001.4 - Health reflects storage]].
+
+** AC001.7 - Safe CLI behaviour
+:PROPERTIES:
+:CUSTOM_ID: ac-001-7
+:END:
+
+- Criterion :: Help and version requests *exit successfully without runtime configuration or writes*. Invalid invocation exits 2; operational failure exits 1.
+- Proven by :: [[#rt-001-5][RT001.5 - CLI outcomes]].
+
+** AC001.8 - Bounded server lifecycle
+:PROPERTIES:
+:CUSTOM_ID: ac-001-8
+:END:
+
+- Criterion :: Requests and shutdown *respect the specified size and time bounds*. A normal termination closes the listener and database without accepting further work.
+- Proven by :: [[#rt-001-6][RT001.6 - Limits and shutdown]].
+
+** AC001.9 - Accessible page without JavaScript
+:PROPERTIES:
+:CUSTOM_ID: ac-001-9
+:END:
+
+- Criterion :: The landing page *works without JavaScript*, has semantic structure and visible keyboard focus, and remains readable at narrow widths and 200% zoom.
+- Proven by :: [[#rt-001-2][RT001.2 - Executable HTTP boundary]]; [[#ut-001-1][UT001.1 - Landing-page usability]].
+
+** AC001.10 - Portable build and verification
+:PROPERTIES:
+:CUSTOM_ID: ac-001-10
+:END:
+
+- Criterion :: Repository-owned commands *build, lint, test, and check vulnerabilities* with failures propagated. The application can be cross-compiled for Linux amd64 without a target Go installation.
+- Proven by :: [[#ot-001-1][OT001.1 - Build and tooling contract]].
+
+* Test Definitions
+:PROPERTIES:
+:CUSTOM_ID: test-definitions
+:END:
+
+** RT001.1 - Layered configuration
+:PROPERTIES:
+:CUSTOM_ID: rt-001-1
+:END:
+
+- Covers :: [[#ac-001-1][AC001.1 - Exodan configuration]]; [[#ac-001-2][AC001.2 - Invalid configuration fails visibly]].
+- Boundary :: The configuration loader and executable startup.
+- Setup :: Temporary defaults, host, and synthetic secrets files with overlapping scalar and nested values; cases with absent optional paths, an empty explicit file, malformed YAML, wrong types, missing required fields, and unreadable paths.
+- Action :: Load the layers and start the executable with each invalid case.
+- Expected :: Rightmost supplied values win, omitted values remain inherited, optional absent layers are allowed, and all invalid cases fail before listener readiness. Diagnostics contain field names but no synthetic secret values. Unrelated Exodan keys are tolerated.
+- Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
+
+** RT001.2 - Executable HTTP boundary
+:PROPERTIES:
+:CUSTOM_ID: rt-001-2
+:END:
+
+- Covers :: [[#ac-001-3][AC001.3 - Configured listener and page]]; [[#ac-001-9][AC001.9 - Accessible page without JavaScript]].
+- Boundary :: Requests to the built executable on an OS-assigned loopback port.
+- Setup :: Temporary runtime tree and database; one IPv4 case and one IPv6 loopback case on a host supporting both.
+- Action :: Wait for observable readiness, request the root page, CSS, an unknown path, and an unsupported method; repeat with templates absent or malformed.
+- Expected :: Correct HTML/CSS content types, local asset links, one h1, labelled navigation, no script-dependent interaction, 404/405 for invalid routes, and startup failure when required templates cannot be parsed. Listener address matches ADDR.
+- Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
+
+** RT001.3 - Storage lifecycle
+:PROPERTIES:
+:CUSTOM_ID: rt-001-3
+:END:
+
+- Covers :: [[#ac-001-4][AC001.4 - Persistent state survives restart]]; [[#ac-001-5][AC001.5 - Unusable storage prevents operation]].
+- Boundary :: Store initialization using a real local SQLite database.
+- Setup :: Fresh, initialized, unsupported-newer, read-only, and deliberately failed-migration databases in test-owned directories.
+- Action :: Initialize twice, persist and reopen a synthetic record through the store boundary, and exercise the failure cases.
+- Expected :: Persistence survives restart, migration version advances only after commit, repeated initialization is harmless, and failures preserve the previous committed schema and data. Foreign-key violations fail on every pooled connection.
+- Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
+
+** RT001.4 - Health reflects storage
+:PROPERTIES:
+:CUSTOM_ID: rt-001-4
+:END:
+
+- Covers :: [[#ac-001-6][AC001.6 - Truthful health]].
+- Boundary :: HTTP health response using the real store.
+- Setup :: A ready server and a store subsequently made unavailable through its lifecycle boundary.
+- Action :: Request /healthz before and after store closure.
+- Expected :: 200 with {"status":"ok"} when ready; 503 with {"status":"unavailable"} afterwards; neither response exposes paths, configuration, or SQL errors.
+- Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
+
+** RT001.5 - CLI outcomes
+:PROPERTIES:
+:CUSTOM_ID: rt-001-5
+:END:
+
+- Covers :: [[#ac-001-7][AC001.7 - Safe CLI behaviour]].
+- Boundary :: Executable process, exit status, stdout, stderr, and temporary-directory contents.
+- Setup :: No runtime configuration; help/version, unknown command, unknown flag, and malformed serve configuration cases.
+- Action :: Invoke each case once.
+- Expected :: -h and --help provide equivalent usage; --version identifies the build; these exit 0 with no state writes. Invalid invocation exits 2, operational failure exits 1, and diagnostics use stderr.
+- Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
+
+** RT001.6 - Limits and shutdown
+:PROPERTIES:
+:CUSTOM_ID: rt-001-6
+:END:
+
+- Covers :: [[#ac-001-8][AC001.8 - Bounded server lifecycle]].
+- Boundary :: HTTP requests and termination of the executable.
+- Setup :: Temporary runtime with short test-configured server timeouts, a slow header connection, and an ordinary request.
+- Action :: Exceed the header bound, allow the configured header deadline to expire, then terminate the server during an active request.
+- Expected :: Oversized headers and timeout cases are rejected or disconnected, accepted work receives only its configured grace period, the listener closes, the process exits within its shutdown bound, and the database can be reopened. No fixed sleep is used as readiness evidence.
+- Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
+
+** UT001.1 - Landing-page usability
+:PROPERTIES:
+:CUSTOM_ID: ut-001-1
+:END:
+
+- Covers :: [[#ac-001-9][AC001.9 - Accessible page without JavaScript]].
+- Reviewer :: Operator.
+- Procedure :: View the local landing page in Safari or Firefox with JavaScript disabled, at a narrow mobile width and 200% zoom; navigate by keyboard.
+- Expected :: Text and navigation remain readable and operable, focus is visible, and the page meets the selected Web standards' contrast and semantic requirements.
+- Record :: PENDING in =validation.org= until the operator reports the result.
+
+** OT001.1 - Build and tooling contract
+:PROPERTIES:
+:CUSTOM_ID: ot-001-1
+:END:
+
+- Covers :: [[#ac-001-10][AC001.10 - Portable build and verification]].
+- Boundary :: Local repository commands and generated binary, without deployment.
+- Procedure :: Run build, lint, test, and vulncheck targets; cross-compile Linux amd64; inspect the binary format. Verify missing-scanner failure in an isolated invocation and review the sync target against the SDLC contract without executing a repository synchronization test.
+- Expected :: Real checks run, failures propagate, go.mod/go.sum remain unchanged by vulncheck, and the Linux artefact is produced without CGo. Source and configuration retain the documented provenance and ignore rules.
+- Bounds :: One local verification session; at most one successful vulnerability-database retrieval and one bounded failure-path invocation; no mail, deployment, metered API, or global installation. Use OS temporary directories for disposable artefacts.
+- Record :: PENDING in =validation.org=; this review is not a permanent test of Makefile text.
+
+* Edge Cases
+:PROPERTIES:
+:CUSTOM_ID: edge-cases
+:END:
+
+- A supplied but unreadable configuration layer *fails startup*, even if lower layers contain usable values. Covered by [[#ac-001-2][AC001.2 - Invalid configuration fails visibly]].
+- A database created by a newer application version *is not downgraded*. Covered by [[#ac-001-5][AC001.5 - Unusable storage prevents operation]].
+- A dependency failure after startup *changes health to unavailable*. Covered by [[#ac-001-6][AC001.6 - Truthful health]].
+- An IPv6 address *is passed intact to the listener*. Covered by [[#ac-001-3][AC001.3 - Configured listener and page]].
+- Help and version requests *do not initialize storage*. Covered by [[#ac-001-7][AC001.7 - Safe CLI behaviour]].
+
+* Solution Design
+:PROPERTIES:
+:CUSTOM_ID: solution-design
+:END:
+
+** Architecture context
+
+- Components :: =cmd/stv-poll=, =internal/config=, =internal/store=, and =internal/web=.
+- Reuse :: Adapt upload's layered configuration and writeback's explicit application wiring, cached templates, migration pattern, and bounded HTTP lifecycle. Preserve source provenance and applicable licence obligations. Do not copy their domain schemas or legacy configuration fallbacks.
+- Dependency direction :: The entry point constructs typed configuration, store, templates, and HTTP handlers. Handlers do not access environment variables or execute SQL.
+
+** High-level design
+
+*** Flow
+
+1. Parse invocation; *help and version return before configuration*.
+2. Load and validate YAML, initialize the database transactionally, and parse templates.
+3. Bind the supplied address and serve until cancellation.
+4. Stop accepting requests, allow bounded draining, and close owned resources.
+
+*** Interfaces and configuration
+
+- Commands :: =stv-poll serve=, =stv-poll -h=, =stv-poll --help=, and =stv-poll --version=. No successful placeholder =process-due-work= command; W003 adds that operation.
+- Routes :: =GET /= serves the landing page; =GET /healthz= returns the JSON health contract; =GET /static/*= serves only packaged public assets. Unsupported methods return 405; unknown routes return 404.
+- Runtime paths :: =DEFAULT_CONFIG_PATH= and =STATE_DIRECTORY= are required for serve; =CONFIG_PATH= and =SECRETS_PATH= are optional when absent, mandatory to read when explicitly supplied. =ADDR= is required. Relative runtime asset paths resolve from process cwd.
+- YAML :: =base_url= is required and must be an absolute URL without userinfo, query, or fragment. HTTPS is required except for an explicitly configured loopback development URL. Known app values are type-checked; unrelated Exodan keys remain tolerated.
+- HTTP defaults :: Header timeout 5 seconds, request read/write timeouts 15 seconds, idle timeout 60 seconds, shutdown grace 10 seconds, maximum header size 64 KiB. Nested =http= YAML permits positive timeout overrides; the header maximum is fixed.
+- Configuration layering :: Recursively merge maps; a supplied scalar or sequence replaces its previous value. Reject non-string map keys, incompatible known types, and null required values. Do not use legacy environment overrides for application values.
+- Assets :: Declare =templates= and =static= in =data_dirs=; cache parsed templates at startup. Their absence or syntax error is a startup failure.
+
+*** Data and state
+
+- Database :: =STATE_DIRECTORY/stv-poll.sqlite= using =database/sql= and =modernc.org/sqlite=. Use the architecture's selected driver; pin the implemented versions and retain =go.sum=.
+- Connection policy :: Enforce foreign keys on *every connection*, a bounded busy timeout, and a small pool. Begin with one connection per process; later independent web/worker processes still coordinate through database transactions.
+- Migration ownership :: Embedded, ordered migrations and a schema-version record. Apply an outstanding migration and its version update in one transaction, serializing initialization. No poll-domain tables are introduced by this ticket.
+- Permissions :: State directory and database are accessible only to the application identity; never serve state paths as static assets.
+
+*** Failure behaviour
+
+- Startup failures exit 1 with safe context. Invocation errors exit 2; unknown flags are not ignored.
+- Health uses a bounded store check and returns its small documented response. Detailed diagnostics remain in structured stderr logs with credentials and data redacted.
+- Cancellation propagates to owned work. A forced shutdown after the grace period remains visible in logs.
+
+** Architecture impact
+
+*** Security impact
+
+- Threat boundary :: First HTTP listener, filesystem state, and configuration inputs.
+- Data and secrets :: Only synthetic/local configuration is needed for this delivery. No production secret is generated, committed, or displayed.
+- Access :: Public landing page and minimal health only; no administrative, polling, filesystem browsing, or configuration-inspection route.
+- Mitigation :: Contextual HTML escaping, restricted static paths, no raw Host-derived links, bounded requests, and deliberate state permissions.
+
+*** Other relevant qualities
+
+- Reliability :: Transactional migrations, bounded startup/health/shutdown, and fail-closed schema compatibility.
+- Performance :: Small local service and bounded connections; this ticket makes no measured capacity claim.
+- Operability :: README gains exact local prerequisites, build/run instructions, runtime keys, and failure recovery. Add =config/localhost.yaml.example= and a synthetic development example. Do not create live host files.
+- Accessibility :: Semantic HTML, responsive CSS, keyboard focus, and Web-standard contrast; UT001.1 covers presentation.
+- Portability :: Local Darwin development and Linux amd64 build, with IPv4 and IPv6 listener verification.
+- Maintainability :: Standard =testing= and =httptest=, real temporary SQLite, injected clocks/roots when needed; no new browser test framework.
+
+** Build and verification contract
+
+- Commands :: =make build=, =make lint=, =make test=, =make vulncheck=, and the SDLC-defined operator-only =make sync=.
+- Build :: Produce the local executable under ignored =bin/=; document Linux cross-compilation with CGo disabled. Do not install a target-side toolchain.
+- Lint :: Apply gofmt checking, go vet, golangci-lint with the Go standard's required checks, and CSS linting under the Web standard. Provision tool versions explicitly outside check targets.
+- Test :: Retained behavioural RTs only; use the race detector for concurrent code. Apply the SDLC coverage floor and complete branch evidence for durable state changes.
+- Security gate :: =govulncheck ./...= plus any additional applicable dependency set introduced by build tooling. The target installs nothing, changes no locks, fails on missing tooling or incomplete scans, and remains separate from =make test=.
+- Tooling dependencies :: Prefer a separately provisioned CSS linter; if npm-managed tooling is introduced, pin it, apply the Node standard, and include its dependency scan. This does not authorize browser JavaScript.
+- Ignore rules :: Ignore binary output, local plaintext secrets, caches, and entire project-local agent runtime directories. Keep module checksums tracked.
+
+* Delivery Handoff
+:PROPERTIES:
+:CUSTOM_ID: delivery-handoff
+:END:
+
+- Required reading :: This specification, the project profile, named architecture sections, Exodan's integration contract, and selected SDLC Go/Web/security standards.
+- First implementation step :: Write [[#rt-001-5][RT001.5 - CLI outcomes]] and observe RED before creating the executable.
+- Definition evidence :: [[file:audits.org][W001 - Foundation definition audit]].
+- Validation evidence :: [[file:validation.org][W001 - Foundation user and one-off validation]].
+- Documentation impact :: Update README with working local instructions and replace architecture proposals only where implementation establishes the stated component.
+- Delivery boundary :: Operator sign-off and an effective definition PASS are required. Do not implement W002 counting or W003 poll behaviour in this ticket.

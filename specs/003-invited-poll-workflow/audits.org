@@ -1,0 +1,14 @@
+#+TITLE: W003 - Invited poll workflow audit evidence
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+* Definition gate
+
+- Execution :: No composite verdict has been issued for this draft.
+- Artefact :: [[file:spec.org][W003 - Invited poll workflow specification]].
+- Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
+- Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
+
+* Implementation gate
+
+- Execution :: Not started; this batch defines specifications only.

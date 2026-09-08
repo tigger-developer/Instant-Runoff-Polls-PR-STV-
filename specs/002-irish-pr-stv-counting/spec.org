@@ -1,0 +1,399 @@
+#+TITLE: W002 - Implement reproducible Irish PR-STV counting
+#+SUBTITLE: Unified change specification
+#+STARTUP: overview
+#+OPTIONS: toc:2 num:nil
+#+DEFINITION_GATE: PENDING
+#+OPERATOR_SIGNOFF: PENDING
+
+* Implement reproducible Irish PR-STV counting
+:PROPERTIES:
+:CUSTOM_ID: summary
+:END:
+
+- Outcome :: A *Go counting engine* selects winning options and records an explainable, reproducible Irish PR-STV count.
+- Before :: The system and counting authority are documented; *no engine exists*.
+- After :: A validated frozen ballot input and recorded decisions produce winners and the full count record.
+- Changes :: Add the counting model, validation, quota, transfers, exclusions, last-vacancy handling, explicit decision requests, and independent fixtures.
+- Unchanged :: The engine has *no HTTP, database, email, participant identity, or scheduling ownership*. Irish PR-STV remains the selected system.
+- Edge cases :: Single winner, surplus rounding, last parcels, exhausted preferences, historical and unresolved ties, last vacancies, malformed decisions, replay, cancellation, and input bounds.
+- Decisions :: External selections are *explicit inputs*, never hidden randomness. The source edition and detailed statutory rule mapping require a conformance record.
+- Next step :: Definition gate and operator sign-off. Delivery depends on W001's Go module and verification entry points.
+
+-----
+
+* Context
+:PROPERTIES:
+:CUSTOM_ID: context
+:END:
+
+** Problem
+
+The application needs a *correct count independent of web and storage code*. A similar-looking STV variant would not satisfy the documented voting-system choice.
+
+** Outcome
+
+For the documented rule set, a fresh caller can *reproduce both winners and intermediate counts* using only the count input and decision record.
+
+** Scope
+
+- In scope :: The internal Go counting API, versioned input/output model, rule mapping, validation, decision requests, and count fixtures.
+- Out of scope :: Poll acceptance, ballot revisions, participant contact data, authentication, announcements, scheduled execution, and statutory administration of an actual election.
+- Unchanged :: Automation replaces manual execution; *the selected counting rules remain authoritative*.
+
+** Authority and starting point
+
+- Project :: [[file:../../.sdlc/project.yaml][Project profile]].
+- Product :: [[file:../../docs/VISION.md][VISION: Why Irish PR-STV]] and [[file:../../README.md][README: Pause, close, and count]].
+- Architecture :: [[file:../../docs/ARCHITECTURE.md][ARCHITECTURE: Counting, work processing, and announcement]].
+- Normative source :: Part XIX of the [[https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html][Electoral Act 1992]], with the applicable amendments required by VISION. The public overview remains [[https://www.electoralcommission.ie/irelands-voting-system/][the Electoral Commission's explanation]].
+- Baseline :: Documentation commit =be75045= (accepted application architecture); the sibling reuse plan supplies application foundations, *not an established counting engine*.
+
+** Constraints and dependencies
+
+- Prerequisite :: [[file:../001-go-application-foundation/spec.org][W001 - Go application foundation]] supplies the module and test commands.
+- Consumer :: [[file:../003-invited-poll-workflow/spec.org][W003 - Invited poll workflow]] supplies final snapshots and persists decisions/results.
+- Separation :: The engine receives *opaque ballot and option identifiers only*. It cannot read a clock, database, network, or OS randomness.
+- Limits proposed for sign-off :: 1 through 50 options, 1 through 1000 non-empty ballots, and 1 through option-count winning places. W003 handles a poll with no submitted ballots before invoking this API.
+
+** Decisions
+
+- Established :: Moderator-defined place count; Irish PR-STV; automatic counting; reproducibility through recorded selection inputs.
+- Design proposal :: Use a deterministic engine that returns an *explicit decision request* when the rule needs an external selection. The workflow obtains and durably records that selection before resuming.
+- Rule authority :: References below are normative. No amendment or discretionary interpretation is silently inferred from a generic STV library.
+
+** Unresolved blockers
+
+- The architecture explicitly deferred the *detailed statutory rule mapping and applicable amendments*. This draft captures its required coverage and concrete core fixtures; the conformance packet must identify the exact adopted source edition and resolve every applicable arithmetic/selection branch before this ticket receives definition PASS.
+- This is a *counting-definition dependency*, not permission for the delivery agent to select an alternative counting system. W001's foundation definition does not depend on resolving it.
+
+* Acceptance Criteria
+:PROPERTIES:
+:CUSTOM_ID: acceptance-criteria
+:END:
+
+** AC002.1 - Validated count input
+:PROPERTIES:
+:CUSTOM_ID: ac-002-1
+:END:
+
+- Criterion :: The engine *rejects invalid input without a result*: missing or duplicate identifiers, unknown preferences, repeated options within a ballot, empty ballots, unsupported rule versions, or a winner count outside 1 through the number of options.
+- Proven by :: [[#rt-002-1][RT002.1 - Count input boundaries]].
+
+** AC002.2 - Quota derives from ballots and places
+:PROPERTIES:
+:CUSTOM_ID: ac-002-2
+:END:
+
+- Criterion :: For a non-empty valid input with N ballots and S winning places, the engine uses *floor(N/(S+1)) + 1* as the quota throughout the count.
+- Proven by :: [[#rt-002-2][RT002.2 - Quota and single-winner termination]].
+
+** AC002.3 - Selected national counting rules
+:PROPERTIES:
+:CUSTOM_ID: ac-002-3
+:END:
+
+- Criterion :: The engine applies *the Irish PR-STV counting rules identified in VISION*, preserving their transfer, exclusion, tie, and last-vacancy rules. It does not substitute fractional-transfer STV or a generic instant-runoff algorithm.
+- Proven by :: [[#rt-002-3][RT002.3 - Original-vote surplus]]; [[#rt-002-4][RT002.4 - Last-parcel surplus]]; [[#rt-002-5][RT002.5 - Exclusions and exhaustion]]; [[#rt-002-6][RT002.6 - Last vacancies and multiple exclusions]]; [[#rt-002-7][RT002.7 - Ties and decision replay]]; [[#ot-002-1][OT002.1 - Rule-to-fixture conformance]].
+
+** AC002.4 - Original-vote surplus
+:PROPERTIES:
+:CUSTOM_ID: ac-002-4
+:END:
+
+- Criterion :: When a winner's relevant votes are all original votes, the engine *examines the original parcel* and apportions transferable surplus using the selected rules' whole-ballot and remainder procedure.
+- Proven by :: [[#rt-002-3][RT002.3 - Original-vote surplus]].
+
+** AC002.5 - Transferred-vote surplus
+:PROPERTIES:
+:CUSTOM_ID: ac-002-5
+:END:
+
+- Criterion :: When the rules select the last received parcel, surplus processing *uses that parcel alone*, preserving its recorded provenance and ballot order.
+- Proven by :: [[#rt-002-4][RT002.4 - Last-parcel surplus]].
+
+** AC002.6 - Exclusion transfers preserve preferences
+:PROPERTIES:
+:CUSTOM_ID: ac-002-6
+:END:
+
+- Criterion :: Exclusion transfers go to the *next continuing ranked option*. A ballot with no remaining usable preference becomes non-transferable; the engine never invents a preference.
+- Proven by :: [[#rt-002-5][RT002.5 - Exclusions and exhaustion]].
+
+** AC002.7 - Last vacancies terminate the count
+:PROPERTIES:
+:CUSTOM_ID: ac-002-7
+:END:
+
+- Criterion :: The engine *stops when all places are filled*, including the applicable last-vacancy rules for options below quota. It does not transfer a surplus after the sole winning place is filled.
+- Proven by :: [[#rt-002-2][RT002.2 - Quota and single-winner termination]]; [[#rt-002-6][RT002.6 - Last vacancies and multiple exclusions]].
+
+** AC002.8 - Unresolved lots require explicit decisions
+:PROPERTIES:
+:CUSTOM_ID: ac-002-8
+:END:
+
+- Criterion :: A rule requiring a lot or other external selection *requests a bounded eligible decision* when none is supplied. It never silently chooses by option name, ID, input position, or an unrecorded random value.
+- Proven by :: [[#rt-002-7][RT002.7 - Ties and decision replay]].
+
+** AC002.9 - Replay preserves the full result
+:PROPERTIES:
+:CUSTOM_ID: ac-002-9
+:END:
+
+- Criterion :: The *same input and valid decision record* produce the same winners and structured count record, including after serialization and replay.
+- Proven by :: [[#rt-002-7][RT002.7 - Ties and decision replay]]; [[#rt-002-8][RT002.8 - Conservation and replay]].
+
+** AC002.10 - Count record explains the arithmetic
+:PROPERTIES:
+:CUSTOM_ID: ac-002-10
+:END:
+
+- Criterion :: The engine returns *count-by-count totals, elections, exclusions, transfers, non-transferable totals, quota, and decision provenance*, with no participant contact data.
+- Proven by :: [[#rt-002-3][RT002.3 - Original-vote surplus]]; [[#rt-002-8][RT002.8 - Conservation and replay]].
+
+** AC002.11 - Invalid decision records fail closed
+:PROPERTIES:
+:CUSTOM_ID: ac-002-11
+:END:
+
+- Criterion :: A decision naming an ineligible option or ballot, the wrong decision request, or surplus unused decisions *fails explicitly without an authoritative result*.
+- Proven by :: [[#rt-002-7][RT002.7 - Ties and decision replay]].
+
+** AC002.12 - Bounded computation
+:PROPERTIES:
+:CUSTOM_ID: ac-002-12
+:END:
+
+- Criterion :: The engine *supports the declared input limits*, honours cancellation, and reports resource or internal consistency failure without partial success.
+- Proven by :: [[#rt-002-9][RT002.9 - Bounds and cancellation]].
+
+* Test Definitions
+:PROPERTIES:
+:CUSTOM_ID: test-definitions
+:END:
+
+** RT002.1 - Count input boundaries
+:PROPERTIES:
+:CUSTOM_ID: rt-002-1
+:END:
+
+- Covers :: [[#ac-002-1][AC002.1 - Validated count input]].
+- Boundary :: The counting package's Run interface.
+- Setup :: Synthetic option and ballot identifiers; cases for every rejected input class, winner counts 0 and greater than option count, zero ballots, one valid ballot, and the declared maxima.
+- Action :: Run each input without changing the supplied collections.
+- Expected :: Invalid input returns its typed error and no final result; valid minimum input succeeds. Input slices and ballot order remain unchanged.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.2 - Quota and single-winner termination
+:PROPERTIES:
+:CUSTOM_ID: rt-002-2
+:END:
+
+- Covers :: [[#ac-002-2][AC002.2 - Quota derives from ballots and places]]; [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
+- Boundary :: Run.
+- Setup :: Ten valid ballots, tested with one, two, and three places; separately use eight A-first ballots and two B-first ballots for one place.
+- Action :: Count each input.
+- Expected :: Quotas are respectively 6, 4, and 3. In the 8-to-2 single-winner case, A wins at the first count; the surplus of 2 is recorded but not transferred after the place is filled. Quota is not recomputed when later ballots exhaust.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.3 - Original-vote surplus
+:PROPERTIES:
+:CUSTOM_ID: rt-002-3
+:END:
+
+- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-4][AC002.4 - Original-vote surplus]]; [[#ac-002-10][AC002.10 - Count record explains the arithmetic]].
+- Boundary :: Run and its structured count record.
+- Setup :: Two places; ballots 4 x A>B, 2 x A>C, 2 x B, 1 x C, 1 x D>B; input order is explicit.
+- Action :: Count without any tie decision unless the selected rules actually require one.
+- Expected :: N=10, quota=4, first totals A6/B2/C1/D1. A's surplus of 2 apportions one whole ballot to B and one to C; totals then B3/C2/D1. D's ballot transfers to B, which reaches 4. Winners are A and B. Check parcel sizes, remainder allocation, and per-count conservation as well as winners.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.4 - Last-parcel surplus
+:PROPERTIES:
+:CUSTOM_ID: rt-002-4
+:END:
+
+- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-5][AC002.5 - Transferred-vote surplus]].
+- Boundary :: Run and decision requests.
+- Setup :: Two places; 4 x A>B, 3 x B, 3 x C, 1 x D>A>B, 1 x D>A>C. For an unresolved B/C remainder lot, provide B as the recorded eligible selection.
+- Action :: Count and replay with the same decision record.
+- Expected :: N=12, quota=5; D's exclusion raises A from 4 to 6. A's surplus is drawn only from the two D-origin ballots, not its four original A ballots. One transfers to B under the supplied remainder decision. Final winners are A and B. A different eligible lot may produce a different permitted path and must be recorded distinctly.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.5 - Exclusions and exhaustion
+:PROPERTIES:
+:CUSTOM_ID: rt-002-5
+:END:
+
+- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-6][AC002.6 - Exclusion transfers preserve preferences]].
+- Boundary :: Run.
+- Setup :: One place; 4 x A, 3 x B, 1 x C. Separately use a ballot whose next listed option has already been elected or excluded.
+- Action :: Count the first fixture and a fixed hand-tabulated skip fixture.
+- Expected :: N=8, quota=5; C's ballot exhausts, then B's three ballots exhaust, and A takes the last place with 4. Skipped options receive no transfer and no unranked option receives invented support. The skip fixture's full expected path is written before its implementation.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.6 - Last vacancies and multiple exclusions
+:PROPERTIES:
+:CUSTOM_ID: rt-002-6
+:END:
+
+- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
+- Boundary :: Run.
+- Setup :: A last-vacancy fixture from RT002.5; an exactly-as-many-options-as-places input; and two places with 20 x A, 20 x B, 18 x C, 1 x D>A, 1 x E>B.
+- Action :: Apply the selected national rules, including all conditions on multiple exclusion.
+- Expected :: Last-vacancy termination fills the permitted places without demanding quota. For the 60-ballot fixture quota is 21; the eligible D/E exclusion transfers one ballot each to A and B, which win. Record whether the national rule treats the exclusion as one operation and check that no candidate outside the permitted exclusion set is removed.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.7 - Ties and decision replay
+:PROPERTIES:
+:CUSTOM_ID: rt-002-7
+:END:
+
+- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]]; [[#ac-002-9][AC002.9 - Replay preserves the full result]]; [[#ac-002-11][AC002.11 - Invalid decision records fail closed]].
+- Boundary :: Run(input, decisions).
+- Setup :: One place with 2 x A>B and 2 x B>A; no prior count separates A and B. Add fixtures where historical totals do resolve a tie, and malformed decision records.
+- Action :: Run with no decision, then with the eligible exclusion choice B, replay that choice, and try an ineligible C, a mismatched request fingerprint, and unused trailing decisions.
+- Expected :: The unresolved case requests a decision over A/B. Choosing B gives A the place; replay is identical. Historical comparison is used before asking for lots. Invalid records fail rather than being ignored; no lexical fallback selects a winner.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.8 - Conservation and replay
+:PROPERTIES:
+:CUSTOM_ID: rt-002-8
+:END:
+
+- Covers :: [[#ac-002-9][AC002.9 - Replay preserves the full result]]; [[#ac-002-10][AC002.10 - Count record explains the arithmetic]].
+- Boundary :: Serialized input, decisions, and count output.
+- Setup :: Fixed hand-calculated fixtures from the tests above plus bounded generated valid ballots with a retained generation seed.
+- Action :: Run, serialize, deserialize, and replay; examine every intermediate record.
+- Expected :: Ballots are accounted for exactly once among current parcels, retained elected parcels, and non-transferable parcels; transfer totals match movements. No option both wins and is excluded; at most S distinct winners are returned. Identical inputs and decisions reproduce the full record. Generated checks supplement, rather than replace, fixed expected results.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** RT002.9 - Bounds and cancellation
+:PROPERTIES:
+:CUSTOM_ID: rt-002-9
+:END:
+
+- Covers :: [[#ac-002-12][AC002.12 - Bounded computation]].
+- Boundary :: Run.
+- Setup :: Exactly 50 options and 1000 non-empty ballots; over-limit variants; cancelled context and cancellation during a multi-count fixture.
+- Action :: Count or cancel.
+- Expected :: Supported input completes or returns a legitimate decision request; oversized input and cancellation return explicit errors. No final result is returned on cancellation or failed conservation. The implementation cannot loop without count progress.
+- Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
+
+** OT002.1 - Rule-to-fixture conformance
+:PROPERTIES:
+:CUSTOM_ID: ot-002-1
+:END:
+
+- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]].
+- Boundary :: The implementation's rule mapping and human-calculated fixture expectations against the counting authority already named in VISION.
+- Procedure :: Review the mapping of sections 118 through 124, including surplus eligibility/order, parcel selection, remainder ties, exclusion ties, multiple exclusions, non-transferability, and last vacancies. Check each mapped branch has fixed input, expected intermediate totals/selection, and a source reference before accepting its implementation evidence.
+- Expected :: Every applicable rule has a mapped implementation responsibility and independent fixture; administrative provisions are identified separately without silently dropping arithmetic conditions. The mapping records the source edition and applicable amendments used for this release.
+- Bounds :: One local conformance review of this ticket's rule packet and fixtures, with one remediation review if required; no deployed poll, real ballots, external email, or metered service.
+- Record :: PENDING in =validation.org=. This one-off review does not replace retained behavioural tests or the definition audit.
+
+* Edge Cases
+:PROPERTIES:
+:CUSTOM_ID: edge-cases
+:END:
+
+- A winner may have a surplus in a one-place poll, but *no transfer is needed after that place is filled*. Covered by [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
+- A ballot exhausting its preferences *remains accounted for* and does not lower the fixed quota. Covered by [[#ac-002-2][AC002.2 - Quota derives from ballots and places]] and [[#ac-002-6][AC002.6 - Exclusion transfers preserve preferences]].
+- Equal totals do not automatically mean lots: *apply the source's historical comparisons first*. Covered by [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]].
+- A persisted decision may be syntactically valid but belong to another stage. The engine *rejects a mismatched request identity*. Covered by [[#ac-002-11][AC002.11 - Invalid decision records fail closed]].
+- Empty input *returns an input error*, not invented winners. The poll-level zero-turnout outcome is specified in W003.
+
+* Solution Design
+:PROPERTIES:
+:CUSTOM_ID: solution-design
+:END:
+
+** Architecture context
+
+- Component :: =internal/count= with application-owned models and standard Go tests.
+- Ownership :: W003 owns final ballot selection, storage, and execution. The engine owns *only the count transition and result*.
+- Reuse :: No selected upload/writeback component supplies this rule implementation. Their application code must not become a dependency of the counting package.
+
+** High-level design
+
+*** Flow
+
+1. Validate the rule version, options, place count, ballot IDs, and ranked preferences.
+2. Create original parcels from the *explicit input ballot order* and calculate the fixed quota.
+3. Apply the source-defined count transitions. Preserve parcel provenance and intermediate totals.
+4. On a required external selection, *return a decision request* rather than a final result.
+5. Replay from the same input with the extended decision record; return the final count only when all required decisions have been validated and termination is established.
+
+*** Interfaces and configuration
+
+- API :: =Run(ctx, Input, []Decision) (Outcome, error)=.
+- Input :: Schema version, rule-set identifier, immutable option IDs in declared order, winner count, and ballots containing opaque ID plus ordered option IDs. Ballot order is explicit and preserved.
+- Outcome :: Exactly one of =Result= or =DecisionRequest=. A request is *not a counted result*. Invalid input, cancellation, and internal inconsistency return typed errors.
+- Decision request :: Sequence number, kind, request fingerprint, eligible items, and required number of selections. Distinguish a candidate lot from any rule-required ballot-order/selection operation.
+- Decision :: Matching request identity and selected eligible items. Reject duplicates, out-of-set selections, missing required selections, and trailing decisions after termination.
+- Result :: Input fingerprint, schema/rule version, quota, winning IDs, ordered count records, and used decisions.
+- Count record :: Totals, election/exclusion events, parcel transfers, non-transferable changes, and selection provenance. Do not serialize email addresses, participant IDs, or browser-facing text.
+- Compatibility :: Version persisted structures explicitly. Unsupported versions fail; do not reinterpret an earlier count using a changed algorithm.
+
+*** Normative rule mapping
+
+| Source | Required responsibility |
+|--------+-------------------------|
+| Section 118 | Definitions of continuing candidates, original/transferred votes, surplus, next available preference, and transferable papers. |
+| Sections 119 and 120 | First allocation, election at quota, and the fixed quota. |
+| Section 121 | Whether and which surplus is transferred; original versus last-received parcel; transferable/non-transferable treatment; whole-ballot apportionment, remainders, and selection ties. |
+| Section 122 | Single and permitted multiple exclusions, source-defined comparison thresholds, and exclusion tie resolution. |
+| Section 123 | Transfer ordering, parcel/subparcel preservation, and non-transferable handling. |
+| Section 124 | Filling the last vacancies and terminating without unnecessary transfers. |
+
+This table specifies *coverage, not a claim that the detailed mapping is verified*.
+The release's rule packet must enumerate the exact relevant branches and their
+fixture references. Conditions expressed through electoral financial thresholds
+must be assessed explicitly for their effect on the arithmetic; their absence
+from this product's UI does not authorize deleting them from the count.
+
+*** Data and state
+
+- Use *integer ballot counts* and exact quotient/remainder arithmetic; do not introduce fractional ballot weights.
+- Maintain original/received parcel boundaries and ballot identities throughout transfer operations.
+- Capture explicit decision inputs rather than relying on map iteration, identifier sorting, or hidden randomness.
+- Per-count invariants account for every ballot among retained parcels, continuing parcels, and non-transferable parcels.
+- The engine returns newly owned output and *does not mutate caller input*.
+
+*** Failure behaviour
+
+- Invalid inputs and unsupported rules fail before a count begins.
+- A missing decision returns only the bounded request and diagnostic progress; it is not an exception or a provisional winner.
+- Invalid decisions fail closed. A different valid decision record is a different count execution and remains distinguishable.
+- Cancellation and failed conservation produce no authoritative result. W003 retains the frozen input for diagnosis and replay.
+
+** Architecture impact
+
+*** Security impact
+
+- Threat boundary :: Untrusted ballot structure and persisted count inputs.
+- Data and secrets :: Opaque ballot IDs and preferences are sufficient. No credentials or contact data enter the engine.
+- Access :: No public route or database privilege is introduced.
+- Mitigation :: Bounded collections, validated identifiers/decisions, exact arithmetic, cancellation, and explicit output versions.
+
+*** Other relevant qualities
+
+- Reliability :: Deterministic transitions and independently calculated fixtures; later retries reproduce the recorded path.
+- Performance :: Bound the input and require progress through elections, exclusions, surplus processing, or a decision request. No unbounded retry loop lives in the engine.
+- Operability :: Structured records permit diagnosis without rerunning against live mutable ballots.
+- Accessibility :: No direct UI; W003 renders results and plain-language help.
+- Portability :: Standard Go computation without native libraries or external commands.
+- Maintainability :: Keep rule stages explicit and trace each unusual branch to its normative source and fixture. Use no external counting dependency without a separately reviewed equivalence justification.
+
+* Delivery Handoff
+:PROPERTIES:
+:CUSTOM_ID: delivery-handoff
+:END:
+
+- Required reading :: This specification, project profile, VISION's named counting authority, ARCHITECTURE's counting boundary, and W001's module/test contract.
+- Before definition PASS :: Resolve the source-edition and rule-mapping blocker above. Do not hand that unresolved choice to an implementation agent.
+- First implementation step :: After sign-off, write [[#rt-002-2][RT002.2 - Quota and single-winner termination]] and observe RED.
+- Definition evidence :: [[file:audits.org][W002 - Counting definition audit]].
+- Validation evidence :: [[file:validation.org][W002 - Rule conformance validation]].
+- Documentation impact :: Record the adopted rule version and mapping in the count package documentation, linking back to VISION's authority. Preserve voter-facing help and keep national/legal references out of it.
+- Integration :: W003 consumes this API and persists snapshots, decision requests/answers, and final results. The engine does not send announcements.

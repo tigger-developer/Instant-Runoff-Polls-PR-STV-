@@ -1,0 +1,47 @@
+#+TITLE: W003 - Invited poll workflow validation evidence
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+* Automated regression
+
+- Execution :: Not run; test definitions precede implementation.
+
+* User tests
+
+** UT003.1 - Voting and help experience
+:PROPERTIES:
+:CUSTOM_ID: ut-003-1-result
+:END:
+
+- Category :: Human user test.
+- Criterion :: [[file:spec.org::#ac-003-19][AC003.6 - Short invitation copy; AC003.19 - Help is available without JavaScript]].
+- Definition :: [[file:spec.org::#ut-003-1][UT003.1 - Voting and help experience]].
+- Result :: PENDING.
+- Procedure and expected result :: Operator reads the captured invitation, submits and revises through two addresses, and checks both help articles without JavaScript at narrow width, 200% zoom, and by keyboard.
+- Execution evidence :: No execution or human result has been recorded.
+
+** UT003.2 - Moderator and participant journey
+:PROPERTIES:
+:CUSTOM_ID: ut-003-2-result
+:END:
+
+- Category :: Human user test.
+- Criterion :: [[file:spec.org::#ac-003-23][AC003.23 - Local end-to-end poll is usable]].
+- Definition :: [[file:spec.org::#ut-003-2][UT003.2 - Moderator and participant journey]].
+- Result :: PENDING.
+- Procedure and expected result :: Operator creates, copies/edits, opens, pauses/resumes, closes, and reviews a synthetic poll; repeats with announcement disabled and confirms the intended privacy boundaries.
+- Execution evidence :: No execution or human result has been recorded.
+
+* One-off tests
+
+** OT003.1 - Local full-poll and packaging review
+:PROPERTIES:
+:CUSTOM_ID: ot-003-1-result
+:END:
+
+- Category :: Bounded one-off verification.
+- Criterion :: [[file:spec.org::#ac-003-22][AC003.22 - Deployment remains Exodan-owned; AC003.23 - Local end-to-end poll is usable]].
+- Definition :: [[file:spec.org::#ot-003-1][OT003.1 - Local full-poll and packaging review]].
+- Result :: PENDING.
+- Procedure and expected result :: One local integration session with at most two polls and 20 synthetic addresses, local SMTP capture, packaged runtime paths, and one stopped-service backup/restore. No real email, deployment, production data, or metered API.
+- Execution evidence :: No execution or human result has been recorded.

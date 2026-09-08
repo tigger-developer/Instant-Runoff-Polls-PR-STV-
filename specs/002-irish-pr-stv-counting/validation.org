@@ -1,0 +1,25 @@
+#+TITLE: W002 - Irish PR-STV counting validation evidence
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+* Automated regression
+
+- Execution :: Not run; test definitions precede implementation.
+
+* User tests
+
+- Selection :: None; this component has no user interface.
+
+* One-off tests
+
+** OT002.1 - Rule-to-fixture conformance
+:PROPERTIES:
+:CUSTOM_ID: ot-002-1-result
+:END:
+
+- Category :: Bounded one-off verification.
+- Criterion :: [[file:spec.org::#ac-002-3][AC002.3 - Selected national counting rules]].
+- Definition :: [[file:spec.org::#ot-002-1][OT002.1 - Rule-to-fixture conformance]].
+- Result :: PENDING.
+- Procedure and expected result :: Review the adopted source edition and every applicable counting-rule branch against independent fixture expectations. One conformance review and at most one remediation review; no live polls or external service calls.
+- Execution evidence :: No execution or human result has been recorded.

@@ -4,12 +4,15 @@ STV Poll will help an invited group choose one or more winning options by rankin
 preferences. Each participant has a **Single Transferable Vote (STV)**. The
 application will count votes automatically using Ireland's national PR-STV rules.
 
-**Project stage:** product vision and application architecture. This repository
-currently contains documentation; the Go application has not been implemented.
-Specification sheets are the next stage.
+**Project stage:** specification drafting. The product vision, application
+architecture, and three build specifications are recorded. The Go application
+has not been implemented; definition audits and operator sign-off remain pending.
 
 ## Documentation
 
+- [Build work ledger](docs/work.org): the three specifications for the Go
+  foundation, Irish PR-STV counting, and the invited poll workflow, with links to
+  their definitions and dependencies.
 - [Vision](docs/VISION.md): purpose, desired experience, voter-facing copy,
   product boundaries, and unresolved product decisions.
 - [Architecture](docs/ARCHITECTURE.md): the Go application's components,

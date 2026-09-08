@@ -1,0 +1,35 @@
+#+TITLE: W001 - Go application foundation validation evidence
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+* Automated regression
+
+- Execution :: Not run; test definitions precede implementation.
+
+* User tests
+
+** UT001.1 - Landing-page usability
+:PROPERTIES:
+:CUSTOM_ID: ut-001-1-result
+:END:
+
+- Category :: Human user test.
+- Criterion :: [[file:spec.org::#ac-001-9][AC001.9 - Accessible page without JavaScript]].
+- Definition :: [[file:spec.org::#ut-001-1][UT001.1 - Landing-page usability]].
+- Result :: PENDING.
+- Procedure and expected result :: Operator views the local page without JavaScript at narrow width and 200% zoom, using a keyboard; readable layout, semantic structure, contrast, and visible focus are required.
+- Execution evidence :: No execution or human result has been recorded.
+
+* One-off tests
+
+** OT001.1 - Build and tooling contract
+:PROPERTIES:
+:CUSTOM_ID: ot-001-1-result
+:END:
+
+- Category :: Bounded one-off verification.
+- Criterion :: [[file:spec.org::#ac-001-10][AC001.10 - Portable build and verification]].
+- Definition :: [[file:spec.org::#ot-001-1][OT001.1 - Build and tooling contract]].
+- Result :: PENDING.
+- Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including missing-scanner failure and non-mutating locks. No deployment, mail, or metered API.
+- Execution evidence :: No execution or human result has been recorded.

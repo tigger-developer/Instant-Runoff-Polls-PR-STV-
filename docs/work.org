@@ -78,6 +78,45 @@ classification; it is provenance, not current state.
 
 * Work items
 
+** TODO W001 - Establish the Go application foundation :feature:
+:PROPERTIES:
+:CUSTOM_ID: w-001
+:PRIORITY: P1
+:SOURCE: operator
+:CREATED: 2026-09-08
+:END:
+
+- Specification :: [[file:../specs/001-go-application-foundation/spec.org][W001 - Establish the Go application foundation]].
+- Scope :: Go executable, Exodan configuration, SQLite initialization, server-rendered landing page, health, and build/verification commands.
+- Definition :: Draft written; definition gate and operator sign-off are pending.
+- Dependencies :: None within this build batch.
+
+** TODO W002 - Implement reproducible Irish PR-STV counting :feature:
+:PROPERTIES:
+:CUSTOM_ID: w-002
+:PRIORITY: P1
+:SOURCE: operator
+:CREATED: 2026-09-08
+:END:
+
+- Specification :: [[file:../specs/002-irish-pr-stv-counting/spec.org][W002 - Implement reproducible Irish PR-STV counting]].
+- Scope :: Counting engine, quota, transfers, exclusions, recorded decisions, replay, and independent count fixtures.
+- Definition :: Draft written; definition gate and operator sign-off are pending. The exact statutory rule mapping and source edition remain explicitly unresolved in the draft.
+- Dependencies :: [[#w-001][W001 - Establish the Go application foundation]].
+
+** TODO W003 - Deliver the invited poll workflow :feature:
+:PROPERTIES:
+:CUSTOM_ID: w-003
+:PRIORITY: P1
+:SOURCE: operator
+:CREATED: 2026-09-08
+:END:
+
+- Specification :: [[file:../specs/003-invited-poll-workflow/spec.org][W003 - Deliver the invited poll workflow]].
+- Scope :: Moderator and participant access, grouped email addresses, list reuse, invitations, ballot revisions, pause/close, counting, results, announcements, and help.
+- Definition :: Draft written; definition gate and operator sign-off are pending. Proposed policies are labelled for operator review, rather than recorded as prior decisions.
+- Dependencies :: [[#w-001][W001 - Establish the Go application foundation]] and [[#w-002][W002 - Implement reproducible Irish PR-STV counting]].
+
 * Migration record
 :PROPERTIES:
 :VISIBILITY: folded
