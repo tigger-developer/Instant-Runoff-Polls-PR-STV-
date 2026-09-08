@@ -314,6 +314,41 @@ func TestCountEvidenceIsClaimBoundUniqueAndReplayable(t *testing.T) {
 	}
 }
 
+func TestCountResultCreatesOneAnnouncementPerContactAfterCommit(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	statements := []string{
+		"UPDATE polls SET state='closed',announce=1 WHERE id='poll-1'",
+		"INSERT INTO options(poll_id,id,label,display_order) VALUES ('poll-1','a','Alice',1),('poll-1','b','Bob',2)",
+		"INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')",
+		"INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll-1','person','reader@example.test','reader@example.test')",
+		`INSERT INTO count_snapshots(id,poll_id,schema_version,rule,input_fingerprint,input_json,created_at) VALUES ('snapshot','poll-1',1,'irish-guided-stv-v1','fingerprint','{}',10)`,
+		"INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('count','poll-1','count','count:poll-1',10,'claimed','count-token',300)",
+	}
+	for _, statement := range statements {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result := []byte(`{"winners":["a"]}`)
+	if created, err := st.CommitCountResult(ctx, "count", "count-token", time.Unix(100, 0), result); err != nil || !created {
+		t.Fatalf("created=%v error=%v", created, err)
+	}
+	claimed, err := st.ClaimDueWork(ctx, "delivery", "mail-token", time.Unix(100, 0))
+	if err != nil || claimed == nil {
+		t.Fatalf("claimed=%#v error=%v", claimed, err)
+	}
+	attempt, err := st.BeginDeliveryAttempt(ctx, claimed.ID, claimed.ClaimToken, time.Unix(100, 0))
+	if err != nil || attempt.MessageKind != "announcement" || len(attempt.Winners) != 1 || attempt.Winners[0] != "Alice" || attempt.NoVotes {
+		t.Fatalf("attempt=%#v error=%v", attempt, err)
+	}
+	var workCount int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE logical_key LIKE 'announcement:%'").Scan(&workCount); err != nil || workCount != 1 {
+		t.Fatalf("announcement work=%d error=%v", workCount, err)
+	}
+}
+
 func TestDeliveryAttemptPersistsBeforeRetryAndReleasesClaim(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)

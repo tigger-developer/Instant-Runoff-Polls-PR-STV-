@@ -69,6 +69,8 @@ type DeliveryAttempt struct {
 	RecipientEmail string
 	MessageKind    string
 	Question       string
+	Winners        []string
+	NoVotes        bool
 	Attempts       int
 }
 
@@ -529,6 +531,9 @@ func (s *Store) ClosePollNoVotes(ctx context.Context, ownerID, pollID string, ex
 	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',counting_status='no_votes',closed_at=?,version=version+1 WHERE id=? AND version=?", now.Unix(), pollID, expectedVersion); err != nil {
 		return false, fmt.Errorf("close zero-turnout poll: %w", err)
 	}
+	if err := insertAnnouncementWork(ctx, tx, pollID, "no-votes", now); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit zero-turnout close: %w", err)
 	}
@@ -547,7 +552,9 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 	var attempt DeliveryAttempt
 	var state string
 	var deadline int64
-	err = tx.QueryRowContext(ctx, `SELECT delivery.id,work.poll_id,COALESCE(delivery.contact_id,''),COALESCE(contact.participant_id,''),delivery.recipient_email,delivery.message_kind,poll.question,poll.state,poll.deadline,work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN polls AS poll ON poll.id=work.poll_id LEFT JOIN contacts AS contact ON contact.id=delivery.contact_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.ParticipantID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &attempt.Attempts)
+	var countingStatus string
+	var resultJSON []byte
+	err = tx.QueryRowContext(ctx, `SELECT delivery.id,work.poll_id,COALESCE(delivery.contact_id,''),COALESCE(contact.participant_id,''),delivery.recipient_email,delivery.message_kind,poll.question,poll.state,poll.deadline,poll.counting_status,COALESCE((SELECT result_json FROM count_results WHERE snapshot_id=(SELECT id FROM count_snapshots WHERE poll_id=poll.id)),''),work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN polls AS poll ON poll.id=work.poll_id LEFT JOIN contacts AS contact ON contact.id=delivery.contact_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.ParticipantID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &countingStatus, &resultJSON, &attempt.Attempts)
 	if err != nil {
 		return DeliveryAttempt{}, ErrConflict
 	}
@@ -568,6 +575,24 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 			return DeliveryAttempt{}, fmt.Errorf("commit cancelled delivery: %w", err)
 		}
 		return DeliveryAttempt{}, ErrDeliveryCancelled
+	}
+	if attempt.MessageKind == "announcement" {
+		attempt.NoVotes = countingStatus == "no_votes"
+		if !attempt.NoVotes {
+			var result struct {
+				Winners []string `json:"winners"`
+			}
+			if countingStatus != "succeeded" || json.Unmarshal(resultJSON, &result) != nil || len(result.Winners) == 0 {
+				return DeliveryAttempt{}, ErrConflict
+			}
+			for _, optionID := range result.Winners {
+				var label string
+				if err := tx.QueryRowContext(ctx, "SELECT label FROM options WHERE poll_id=? AND id=?", attempt.PollID, optionID).Scan(&label); err != nil {
+					return DeliveryAttempt{}, ErrConflict
+				}
+				attempt.Winners = append(attempt.Winners, label)
+			}
+		}
 	}
 	attempt.Attempts++
 	result, err := tx.ExecContext(ctx, "UPDATE work_items SET attempts=? WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", attempt.Attempts, workID, claimToken, now.Unix())
@@ -819,10 +844,55 @@ func (s *Store) CommitCountResult(ctx context.Context, workID, claimToken string
 	if _, err := tx.ExecContext(ctx, "UPDATE polls SET counting_status='succeeded' WHERE id=(SELECT poll_id FROM count_snapshots WHERE id=?)", snapshotID); err != nil {
 		return false, fmt.Errorf("mark count succeeded: %w", err)
 	}
+	var pollID string
+	if err := tx.QueryRowContext(ctx, "SELECT poll_id FROM count_snapshots WHERE id=?", snapshotID).Scan(&pollID); err != nil {
+		return false, fmt.Errorf("read counted poll: %w", err)
+	}
+	if err := insertAnnouncementWork(ctx, tx, pollID, snapshotID, now); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit count result: %w", err)
 	}
 	return true, nil
+}
+
+func insertAnnouncementWork(ctx context.Context, tx *sql.Tx, pollID, resultKey string, now time.Time) error {
+	var announce bool
+	if err := tx.QueryRowContext(ctx, "SELECT announce FROM polls WHERE id=?", pollID).Scan(&announce); err != nil {
+		return fmt.Errorf("read announcement preference: %w", err)
+	}
+	if !announce {
+		return nil
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT id,delivery_email FROM contacts WHERE poll_id=? ORDER BY id", pollID)
+	if err != nil {
+		return fmt.Errorf("read announcement contacts: %w", err)
+	}
+	type recipient struct{ contactID, email string }
+	var recipients []recipient
+	for rows.Next() {
+		var contactID, recipient string
+		if err := rows.Scan(&contactID, &recipient); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("scan announcement contact: %w", err)
+		}
+		recipients = append(recipients, struct{ contactID, email string }{contactID: contactID, email: recipient})
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close announcement contacts: %w", err)
+	}
+	for _, recipient := range recipients {
+		workID := "announcement-work:" + resultKey + ":" + recipient.contactID
+		deliveryID := "announcement-delivery:" + resultKey + ":" + recipient.contactID
+		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,'delivery',? ,?,'pending')", workID, pollID, "announcement:"+resultKey+":"+recipient.contactID, now.Unix()); err != nil {
+			return fmt.Errorf("insert announcement work: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?, 'announcement','pending',?)", deliveryID, workID, recipient.contactID, recipient.email, now.Unix()); err != nil {
+			return fmt.Errorf("insert announcement delivery: %w", err)
+		}
+	}
+	return nil
 }
 
 func claimedSnapshotID(ctx context.Context, tx *sql.Tx, workID, claimToken string, now time.Time) (string, error) {

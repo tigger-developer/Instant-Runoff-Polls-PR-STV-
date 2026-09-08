@@ -41,3 +41,11 @@ func TestInvitationBuilderPersistsClaimsAndReusesExactBearer(t *testing.T) {
 		t.Fatalf("grant count=%d raw bearer persisted=%v", count, bytes.Contains(storedPayload, []byte(link)))
 	}
 }
+
+func TestInvitationBuilderRoutesAnnouncementWithoutGrant(t *testing.T) {
+	builder := NewInvitationMessageBuilder(nil, "", "", nil, nil, nil)
+	message, err := builder(context.Background(), &store.ClaimedWork{}, store.DeliveryAttempt{RecipientEmail: "reader@example.test", MessageKind: "announcement", Question: "Question", Winners: []string{"Alice"}})
+	if err != nil || !strings.Contains(message.Body, "Alice") || message.Subject != "Result: Question" {
+		t.Fatalf("message=%#v error=%v", message, err)
+	}
+}

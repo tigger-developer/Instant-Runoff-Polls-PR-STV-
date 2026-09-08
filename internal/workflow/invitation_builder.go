@@ -17,6 +17,9 @@ import (
 
 func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string, key []byte, randomness io.Reader, now func() time.Time) DeliveryMessageBuilder {
 	return func(ctx context.Context, item *store.ClaimedWork, attempt store.DeliveryAttempt) (Message, error) {
+		if attempt.MessageKind == "announcement" {
+			return ResultMessage(attempt.RecipientEmail, attempt.Question, attempt.Winners, attempt.NoVotes)
+		}
 		if ctx == nil || repository == nil || strings.TrimSpace(baseURL) == "" || keyID == "" || len(key) != 32 || randomness == nil || now == nil || item == nil || item.ID == "" || item.ClaimToken == "" || attempt.MessageKind != "invitation" {
 			return Message{}, errors.New("invitation builder dependencies are invalid")
 		}
