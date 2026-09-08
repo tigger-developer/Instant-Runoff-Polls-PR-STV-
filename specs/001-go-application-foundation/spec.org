@@ -413,6 +413,15 @@ data_dirs:
 
 * Hands-off mode decision log
 
+** 2026-09-08T08:40:18Z :hands-off:review:
+
+*** Delivery continuation
+
+- Authority :: Taḋg invoked =deliver-change= for W001, W002 and W003.
+- Decision :: Continue the admitted delivery sequence from W001's current implementation evidence. Treat the earlier audit-limit history as revision-specific evidence, not a reason to leave this invocation while its local and retained-auditor actions remain executable.
+- Basis :: W001 is ACTIVE with a current definition PASS and explicit sign-off. The current branch follows the established =w001-go-application-foundation= feature-branch convention; W002 and W003 remain sequenced after their stated dependencies.
+- Boundary :: This invocation does not alter signed-off requirements, product policy, architecture, security, access, persistence, or external contracts.
+
 ** 2026-09-08T04:07:40Z :hands-off:review:
 
 *** Delivery admission and audit reset
