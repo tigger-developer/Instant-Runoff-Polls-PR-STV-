@@ -138,19 +138,22 @@ func TestOpenPollCommitsOneMultiRecipientInvitationPerParticipant(t *testing.T) 
 		t.Fatalf("repeat open changed=%v error=%v", changed, err)
 	}
 	var state string
-	var workCount int
+	var workCount, deliveryCount int
 	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id='poll-1'").Scan(&state); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE poll_id='poll-1' AND kind='delivery'").Scan(&workCount); err != nil {
 		t.Fatal(err)
 	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM deliveries WHERE work_id='work-1'").Scan(&deliveryCount); err != nil {
+		t.Fatal(err)
+	}
 	var recipientCount int
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM delivery_recipients WHERE delivery_id='delivery-1'").Scan(&recipientCount); err != nil {
 		t.Fatal(err)
 	}
-	if state != "open" || workCount != 1 || recipientCount != 2 {
-		t.Fatalf("state=%s work=%d", state, workCount)
+	if state != "open" || workCount != 1 || deliveryCount != 1 || recipientCount != 2 {
+		t.Fatalf("state=%s work=%d deliveries=%d recipients=%d", state, workCount, deliveryCount, recipientCount)
 	}
 	var firstRecipient, secondRecipient, logicalKey string
 	if err := st.DB.QueryRowContext(ctx, "SELECT email FROM delivery_recipients WHERE delivery_id='delivery-1' AND display_order=1").Scan(&firstRecipient); err != nil {

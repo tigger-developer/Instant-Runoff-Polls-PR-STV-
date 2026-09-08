@@ -62,8 +62,8 @@ participants:
 			t.Fatalf("SMTP transcript missing %q: %s", evidence, transcript)
 		}
 	}
-	if strings.Count(transcript, "DATA\n") != 1 {
-		t.Fatalf("SMTP message count in %s", transcript)
+	if strings.Count(transcript, "RCPT TO:") != 2 || strings.Count(transcript, "/auth/verify?grant=") != 1 || strings.Count(transcript, "DATA\n") != 1 {
+		t.Fatalf("SMTP cardinality mismatch in %s", transcript)
 	}
 
 	ctx := context.Background()

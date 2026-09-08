@@ -3,25 +3,19 @@ audits:
     - work_item: 003-invited-poll-workflow
       gate: implementation
       session_id: 01a080db-7b67-78f0-8c1b-8ad95858b5a4
-      external_round: 4
-      status: active
-      updated: "2026-09-08T16:01:09Z"
-      revision: d735254245a058b097e9477efb7a19c5f94864fd
+      external_round: 5
+      status: exhausted
+      updated: "2026-09-08T16:13:05Z"
+      revision: 2f9d3ff649cd285530d90f78610e1ee3b27320d5
       verdict: FAIL
       response: |-
         GATE: implementation
-        REVISION: d735254245a058b097e9477efb7a19c5f94864fd
+        REVISION: 2f9d3ff649cd285530d90f78610e1ee3b27320d5
         VERDICT: FAIL
 
         FINDINGS:
-        1. `docs/work.org` duplicates audit status and implementation revisions by recording checkpoint commits and stating that the implementation audit remains open. Remove audit status and revision records; retain audit data only in `audits.yaml`.
-        2. `validation.org` records revision `d9db7853…`, not the audited revision. Rerun and record automated, RED/GREEN, lint, security, and coverage evidence for `d735254…`.
-        3. `create-poll` accepts any YAML `owner_id` without verifying that it is a configured moderator. Reject unconfigured owners before persistence and add a no-partial-write regression.
-        4. The RT003.18 lifecycle test directly marks invitation delivery and work as succeeded, bypassing delivery processing. Invoke the worker through the command boundary and assert the captured multi-recipient message.
-        5. The identity-free audit test checks names and one email but not participant IDs, contact IDs, or parsed JSON fields. Assert every prohibited identity field and validate the JSON structure.
-        6. Clear-and-revote is tested through internal storage and template rendering, not the HTTP action. Add request-boundary coverage for valid clear, CSRF failure, stale version, closed poll, and redirect behaviour.
-        7. The changed delivery-recipient migration and repeated-open idempotency lack upgrade/repetition regressions. Add a real legacy-schema migration test and repeat-open test asserting preserved recipients and one logical invitation.
-        8. The validation record provides selected helper coverage but does not establish the required 80% changed-code floor or complete branch evidence for the new durable and security paths. Provide changed-line coverage at or above 80% and targeted behavioural branch evidence.
+        1. Repeat-open preservation is not regression-tested. The cited `TestOpenPollCommitsOneMultiRecipientInvitationPerParticipant` invokes `OpenPoll` only once. Remediation: invoke opening twice and assert preserved recipients plus exactly one logical invitation/work item.
+        2. The integrated CLI test does not assert exact cardinality for two recipients and one grant link; it only checks their presence. Remediation: count SMTP recipients and grant-link occurrences exactly, then update the validation traceability.
       history:
         - round: 1
           revision: cc2d73d
@@ -90,6 +84,18 @@ audits:
             7. The changed delivery-recipient migration and repeated-open idempotency lack upgrade/repetition regressions. Add a real legacy-schema migration test and repeat-open test asserting preserved recipients and one logical invitation.
             8. The validation record provides selected helper coverage but does not establish the required 80% changed-code floor or complete branch evidence for the new durable and security paths. Provide changed-line coverage at or above 80% and targeted behavioural branch evidence.
           updated: "2026-09-08T16:01:09Z"
+        - round: 5
+          revision: 2f9d3ff649cd285530d90f78610e1ee3b27320d5
+          verdict: FAIL
+          response: |-
+            GATE: implementation
+            REVISION: 2f9d3ff649cd285530d90f78610e1ee3b27320d5
+            VERDICT: FAIL
+
+            FINDINGS:
+            1. Repeat-open preservation is not regression-tested. The cited `TestOpenPollCommitsOneMultiRecipientInvitationPerParticipant` invokes `OpenPoll` only once. Remediation: invoke opening twice and assert preserved recipients plus exactly one logical invitation/work item.
+            2. The integrated CLI test does not assert exact cardinality for two recipients and one grant link; it only checks their presence. Remediation: count SMTP recipients and grant-link occurrences exactly, then update the validation traceability.
+          updated: "2026-09-08T16:13:05Z"
 legacy:
     - path: audits.org
       content: |
