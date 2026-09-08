@@ -30,6 +30,21 @@ func TestRunRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestRunTransfersOriginalSurplusUsingWholeBallots(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C", "D"}, Places: 2, Ballots: []Ballot{
+		{ID: "b1", Preferences: []string{"A", "B"}}, {ID: "b2", Preferences: []string{"A", "B"}}, {ID: "b3", Preferences: []string{"A", "B"}}, {ID: "b4", Preferences: []string{"A", "B"}},
+		{ID: "b5", Preferences: []string{"A", "C"}}, {ID: "b6", Preferences: []string{"A", "C"}},
+		{ID: "b7", Preferences: []string{"B"}}, {ID: "b8", Preferences: []string{"B"}}, {ID: "b9", Preferences: []string{"C"}}, {ID: "b10", Preferences: []string{"D", "B"}},
+	}}
+	outcome, err := Run(context.Background(), input, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Result == nil || len(outcome.Result.Winners) != 2 || outcome.Result.Winners[0] != "A" || outcome.Result.Winners[1] != "B" {
+		t.Fatalf("outcome = %#v", outcome)
+	}
+}
+
 func ballots(preferences ...string) []Ballot {
 	result := make([]Ballot, 0, len(preferences))
 	for index, preference := range preferences {

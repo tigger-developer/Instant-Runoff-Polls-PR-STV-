@@ -457,6 +457,20 @@ reproducible selections, without requiring legislative equivalence.
 - Portability :: Standard Go computation without native libraries or external commands.
 - Maintainability :: Keep rule stages explicit and trace each unusual branch to its application rule and fixture. Any external counting dependency must implement those specified rules; legislative equivalence is not required.
 
+* Hands-off mode decision log
+
+** 2026-09-08T04:36:29Z :hands-off:review:
+
+*** Delivery order
+
+- Authority :: Taḋg invoked =deliver-change= for W002 and W003 and directed that work must continue until all tickets are delivered and remediated.
+- Decision :: Deliver the pure W002 counting engine before W003. W003 consumes W002's frozen-input, decision-request and structured-result interface.
+- Boundary :: W001's retained external audit context remains preserved. W002 implementation continues from the current application-foundation branch because its approved dependency is already present there; no signed-off W002 rule is changed.
+
+*** Implementation choices
+
+- Decision :: Start with the approved pure =internal/count= boundary and fixed quota fixture. Keep the engine free of HTTP, SQLite, clocks, filesystem access and randomness.
+
 * Delivery Handoff
 :PROPERTIES:
 :CUSTOM_ID: delivery-handoff
