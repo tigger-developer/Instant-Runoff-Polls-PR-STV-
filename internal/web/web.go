@@ -15,10 +15,19 @@ import (
 func Handler(baseURL string, st *store.Store, page *template.Template, assets http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		if err := page.Execute(w, struct{ BaseURL string }{baseURL}); err != nil {
+		if err := page.ExecuteTemplate(w, "index.html", struct{ BaseURL string }{baseURL}); err != nil {
 			slog.Error("render landing page", "error", err)
 		}
 	})
+	for path, templateName := range map[string]string{"/help/voting": "voting.html", "/help/counting": "counting.html"} {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			if err := page.ExecuteTemplate(w, templateName, nil); err != nil {
+				slog.Error("render help page", "template", templateName, "error", err)
+			}
+		})
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()

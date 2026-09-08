@@ -71,7 +71,7 @@ func TestCLIHelpFormsAreEquivalent(t *testing.T) {
 	}
 }
 
-func TestRenderedLandingPassesTidy(t *testing.T) {
+func TestRenderedPagesPassTidy(t *testing.T) {
 	tidy := os.Getenv("STV_POLL_TIDY")
 	if tidy == "" {
 		t.Skip("tidy is run through make lint")
@@ -80,14 +80,16 @@ func TestRenderedLandingPassesTidy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rendered bytes.Buffer
-	if err := tmpl.Execute(&rendered, struct{ BaseURL string }{"https://poll.example"}); err != nil {
-		t.Fatal(err)
-	}
-	command := exec.Command(tidy, "-errors", "-quiet", "-")
-	command.Stdin = &rendered
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("tidy rendered landing page: %v\n%s", err, output)
+	for _, name := range []string{"index.html", "voting.html", "counting.html"} {
+		var rendered bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&rendered, name, struct{ BaseURL string }{"https://poll.example"}); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command(tidy, "-errors", "-quiet", "-")
+		command.Stdin = &rendered
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("tidy rendered %s: %v\n%s", name, err, output)
+		}
 	}
 }
 

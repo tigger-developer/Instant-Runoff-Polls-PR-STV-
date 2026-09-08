@@ -24,7 +24,7 @@ lint:
 	command -v "$(BIOME)" >/dev/null
 	"$(BIOME)" check cmd/stv-poll/static
 	command -v "$(TIDY)" >/dev/null
-	cd cmd/stv-poll && STV_POLL_TIDY="$(TIDY)" go test -run '^TestRenderedLandingPassesTidy$$'
+	cd cmd/stv-poll && STV_POLL_TIDY="$(TIDY)" go test -run '^TestRenderedPagesPassTidy$$'
 
 test:
 	go test -race ./...
