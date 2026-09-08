@@ -2,7 +2,7 @@
 #+SUBTITLE: Unified change specification
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
-#+DEFINITION_GATE: PENDING
+#+DEFINITION_GATE: PASS
 #+OPERATOR_SIGNOFF: PENDING
 
 * Implement reproducible Irish PR-STV counting
@@ -16,7 +16,7 @@
 - Changes :: Add the counting model, validation, quota, transfers, exclusions, last-vacancy handling, explicit decision requests, and independent fixtures.
 - Unchanged :: The engine has *no HTTP, database, email, participant identity, or scheduling ownership*. Irish PR-STV remains the guide; *legislative conformity is not required*.
 - Edge cases :: Single winner, surplus rounding, last parcels, exhausted preferences, historical and unresolved ties, last vacancies, malformed decisions, replay, cancellation, and input bounds.
-- Decisions :: External selections are *explicit inputs*, never hidden randomness. This specification defines the application's counting rules and worked cases; legislation and Wikipedia provide guidance.
+- Decisions :: Use *fixed Droop quota and whole-ballot transfers*, largest-remainder apportionment, recorded initial ballot order, and historical comparison followed by recorded lots. This specification defines the online-poll rules; legislation and Wikipedia provide guidance.
 - Next step :: Definition gate and operator sign-off. Delivery depends on W001's Go module and verification entry points.
 
 -----
@@ -59,14 +59,13 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 ** Decisions
 
 - Established :: Moderator-defined place count; Irish PR-STV; automatic counting; reproducibility through recorded selection inputs.
-- Design proposal :: Use a deterministic engine that returns an *explicit decision request* when the rule needs an external selection. The workflow obtains and durably records that selection before resuming.
+- Design proposal :: Use a deterministic engine that returns an *explicit decision request* for unresolved candidate ties. The workflow obtains and durably records the lot before resuming. Surplus ballot selection uses the frozen ballot order, randomized once by W003 before the count.
 - Rule authority :: This specification, once approved, defines the required application behaviour. Reference material does not independently impose requirements, and changes to the chosen algorithm must be explicit.
 - Operator clarification, 8 September 2026 :: This is an online poll. The earlier requirement for legislative conformity, applicable-amendment verification, and a statutory source edition is *withdrawn*. Legislation remains guidance, and election-administration or financial-threshold requirements do not apply.
 
 ** Unresolved blockers
 
-- The remaining definition work is to make the *application's arithmetic, selection, and termination rules and worked cases explicit*. No legislative compliance review, amendment research, or source-edition determination is required for definition PASS.
-- The delivery agent must implement the approved application rules rather than silently selecting another variant. W001's foundation definition does not depend on this counting detail.
+- None within the specified algorithm. The concrete rules below are proposals for operator sign-off, not a legislative-equivalence claim. The earlier deferred algorithm wording is superseded by the explicit online-poll rules in this revision.
 
 * Acceptance Criteria
 :PROPERTIES:
@@ -193,7 +192,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 - Covers :: [[#ac-002-2][AC002.2 - Quota derives from ballots and places]]; [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
 - Boundary :: Run.
-- Setup :: Ten valid ballots, tested with one, two, and three places; separately use eight A-first ballots and two B-first ballots for one place.
+- Setup :: 8 x A>B>C, 1 x B, 1 x C, tested with one, two, and three places; separately use 8 x A and 2 x B for one place.
 - Action :: Count each input.
 - Expected :: Quotas are respectively 6, 4, and 3. In the 8-to-2 single-winner case, A wins at the first count; the surplus of 2 is recorded but not transferred after the place is filled. Quota is not recomputed when later ballots exhaust.
 - Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
@@ -229,9 +228,9 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 - Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-6][AC002.6 - Exclusion transfers preserve preferences]].
 - Boundary :: Run.
-- Setup :: One place; 4 x A, 3 x B, 1 x C. Separately use a ballot whose next listed option has already been elected or excluded.
-- Action :: Count the first fixture and a fixed hand-tabulated skip fixture.
-- Expected :: N=8, quota=5; C's ballot exhausts, then B's three ballots exhaust, and A takes the last place with 4. Skipped options receive no transfer and no unranked option receives invented support. The skip fixture's full expected path is written before its implementation.
+- Setup :: One place; 4 x A, 3 x B, 1 x C. For skipping an excluded option use 4 x A, 3 x B, 1 x C, 2 x D>C>B. For skipping an elected option use two places with 4 x A, 3 x B, 2 x C, 1 x D>A>B.
+- Action :: Count all three fixed fixtures.
+- Expected :: First: N=8, quota=5; C exhausts, then B exhausts; A wins with 4. Second: N=10, quota=6; C exhausts, then D's two ballots skip C and raise B to 5; A exhausts and B wins below quota. Third: N=10, quota=4; A wins exactly, D's ballot skips elected A and raises B to 4, electing B. No transfer invents a preference.
 - Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
 
 ** RT002.6 - Last vacancies and multiple exclusions
@@ -241,9 +240,9 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 - Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
 - Boundary :: Run.
-- Setup :: A last-vacancy fixture from RT002.5; an exactly-as-many-options-as-places input; and two places with 20 x A, 20 x B, 18 x C, 1 x D>A, 1 x E>B.
+- Setup :: RT002.5's last-vacancy fixture; three places/options A/B/C with one ballot A; and two places with 20 x A, 20 x B, 18 x C, 1 x D>A, 1 x E>B. A bulk-boundary variant has two places with 3 x A, 3 x B, 2 x C, 1 x D>A, 1 x E>B.
 - Action :: Apply the specified application rules, including the explicit conditions on multiple exclusion.
-- Expected :: Last-vacancy termination fills the permitted places without demanding quota. For the 60-ballot fixture quota is 21; the eligible D/E exclusion transfers one ballot each to A and B, which win. The application rule must specify the operation order and permitted exclusion set before implementation; no statutory financial threshold is an acceptance condition.
+- Expected :: The three-option/three-place fixture elects all options, including B and C with zero votes. For N=60, quota=21, D/E are excluded together in one count, raising A/B to 21 and electing both. In the N=10 boundary variant, D+E equals C's tally, so bulk exclusion is disallowed; a D/E lot choosing D transfers one to A, which wins at 4. E then transfers one to B, which wins at 4. Strict inequality matters; no statutory financial threshold applies.
 - Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
 
 ** RT002.7 - Ties and decision replay
@@ -253,9 +252,9 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 - Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]]; [[#ac-002-9][AC002.9 - Replay preserves the full result]]; [[#ac-002-11][AC002.11 - Invalid decision records fail closed]].
 - Boundary :: Run(input, decisions).
-- Setup :: One place with 2 x A>B and 2 x B>A; no prior count separates A and B. Add fixtures where historical totals do resolve a tie, and malformed decision records.
+- Setup :: One place with 2 x A>B and 2 x B>A; no prior count separates A and B. A historical fixture has one place with 3 x A, 2 x B>A, 1 x C>B. Use the tied-surplus and tied-remainder fixtures below, plus malformed decision records.
 - Action :: Run with no decision, then with the eligible exclusion choice B, replay that choice, and try an ineligible C, a mismatched request fingerprint, and unused trailing decisions.
-- Expected :: The unresolved case requests a decision over A/B. Choosing B gives A the place; replay is identical. Historical comparison is used before asking for lots. Invalid records fail rather than being ignored; no lexical fallback selects a winner.
+- Expected :: The unresolved case requests an exclusion lot over A/B; choosing B elects A with 4. In the historical fixture quota=4; C transfers to B, producing A3/B3. First-count history A3/B2 excludes B without a lot. Its two original B>A ballots raise A to 5; the C>B ballot exhausts because it has no further preference. The final accounting is A5 plus one exhausted ballot. Tied-surplus/remainder outcomes follow the fixed fixtures below. Invalid records fail rather than being ignored; no lexical fallback selects a winner.
 - Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
 
 ** RT002.8 - Conservation and replay
@@ -331,11 +330,59 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 - API :: =Run(ctx, Input, []Decision) (Outcome, error)=.
 - Input :: Schema version, rule-set identifier, immutable option IDs in declared order, winner count, and ballots containing opaque ID plus ordered option IDs. Ballot order is explicit and preserved.
 - Outcome :: Exactly one of =Result= or =DecisionRequest=. A request is *not a counted result*. Invalid input, cancellation, and internal inconsistency return typed errors.
-- Decision request :: Sequence number, kind, request fingerprint, eligible items, and required number of selections. Distinguish a candidate lot from any rule-required ballot-order/selection operation.
+- Decision request :: Sequence number starting at 1, kind (=exclusion_lot=, =surplus_order_lot=, or =remainder_lot=), request fingerprint, eligible option IDs, and required selections (always 1). Candidate lots do not choose ballot order.
 - Decision :: Matching request identity and selected eligible items. Reject duplicates, out-of-set selections, missing required selections, and trailing decisions after termination.
 - Result :: Input fingerprint, schema/rule version, quota, winning IDs, ordered count records, and used decisions.
 - Count record :: Totals, election/exclusion events, parcel transfers, non-transferable changes, and selection provenance. Do not serialize email addresses, participant IDs, or browser-facing text.
 - Compatibility :: Version persisted structures explicitly. Unsupported versions fail; do not reinterpret an earlier count using a changed algorithm.
+
+*** Online-poll counting rules
+
+These rules define *irish-guided-stv-v1*. They are the complete application
+procedure proposed for sign-off, using whole votes. Statutory administrative
+rules and optional surplus-deferral thresholds are not part of this algorithm.
+
+1. *Allocate and set quota.* Assign every ballot to its first preference. Each ballot has value 1. With N ballots and S places, set Q=floor(N/(S+1))+1 once. Keep this quota even as ballots exhaust.
+2. *Recognize winners.* After the initial allocation or each complete transfer operation, elect every continuing option with tally at least Q. Elected options cannot receive later transfers. Record their election count and the incoming parcel that caused their election; original votes form that parcel for first-count winners.
+3. *Check termination.* Stop immediately once S options are elected. Otherwise, if continuing options equal remaining places, elect all of them and stop, including options with zero votes. Winners form a set, not an ordinal ranking; output them in declared option order for stable presentation.
+4. *Process pending surpluses before exclusions.* Among elected options with a positive unprocessed surplus, select the largest surplus. Break a surplus-size tie by the historical-high rule below, then request a surplus-order lot if needed. Examine all original ballots for a first-count winner, otherwise only the parcel received in the operation that elected it. Process each surplus once, even if no ballot can transfer.
+5. *Apportion a surplus.* For the selected parcel, group transferable ballots by their next continuing preference, skipping elected/excluded options. Let U be the winner's tally minus Q, T the number of transferable ballots in the parcel, and p_i the count for destination i. If T=0, transfer nothing. If T<=U, transfer every transferable ballot. Otherwise assign floor(U*p_i/T) ballots to each destination, then allocate the remaining whole ballots in descending remainder order, where remainder=(U*p_i) mod T. Each destination receives at most one rounding increment. A remainder tie uses historical-high comparison, then a remainder lot for each unresolved boundary place.
+6. *Choose and move ballots.* Within a destination group, choose the required number in the frozen input's ballot order. Move those whole ballots together. Unselected and non-transferable surplus ballots remain with the elected option, which may retain more than Q when T<U. Record destination counts, quotient/remainder calculations and selected ballot IDs. Each recipient's ballots from this operation form one incoming parcel. Return to winner recognition.
+7. *Exclude when no pending surplus remains.* Sort continuing options by current tally only to identify the lowest set. Bulk-exclude the largest set of at least two lowest options whose combined tally is strictly less than the next option's tally, provided at least as many options as remaining places survive. A bulk boundary cannot split a tied tally. If no such set exists, exclude one lowest option, using historical-low comparison and then an exclusion lot if needed.
+8. *Transfer exclusions as one operation.* Mark every option in the exclusion set excluded before locating next preferences. Move all their ballots to the next continuing preference. Ballots with none join the exhausted pile. Combine arrivals per destination into one parcel for this operation, preserving frozen input order. Return to winner recognition.
+
+- Historical comparison :: Use completed count totals from earliest to latest, excluding the current count. At each count, keep only the tied options with the greatest total for historical-high, or the least total for historical-low. Continue until one remains or history is exhausted. A surplus comparison uses elected options' recorded historical totals; remainder/exclusion comparisons use the relevant continuing options. Never resolve a remaining tie by name, identifier or display order.
+- Lot scope :: Request a lot only when its choice can change the next operation. If every member of a tied remainder group will receive an increment, give them all an increment without a lot. A supplied lot selects exactly one currently eligible ID. Recompute any following request after applying that choice.
+- Ordered ballots :: The input order is an explicit count input, not a timestamp-based preference or candidate tie-break. W003 randomizes it once while constructing the snapshot and persists it. API tests provide a fixed order, making selected ballots and subsequent preferences reproducible.
+- Progress :: Each operation elects/excludes an option or marks an elected option's surplus processed. There are at most 50 exclusion operations and 50 surplus operations; lot requests are bounded by the 50 options per operation. Cancellation is checked during validation, each operation, and each ballot scan.
+
+*** Fixed arithmetic and selection fixtures
+
+Expand each grouped fixture in written order, giving its ballots sequential
+IDs b1, b2 and so on. Expected selections refer to that order. Check every
+count's totals and movements, not only the winning set.
+
+| Fixture | Input and expected count |
+|---------+--------------------------|
+| Original surplus | RT002.3: A6/B2/C1/D1, Q4. U2/T6 gives B quotient1 remainder2 and C quotient0 remainder4. Transfer b1 to B and b5 to C; D then transfers b10 to B. Winners A/B. |
+| Last parcel and rounding lot | RT002.4: A4/B3/C3/D2, Q5. D transfers b11 and b12 to A. U1/T2 gives equal B/C remainders and equal history; request remainder lot. Choosing B moves b11 only; totals B4/C3. Exclude C, whose three ballots exhaust; B takes the last place. Choosing C symmetrically elects A/C. |
+| Historical-high rounding | Two places: 4 x A, 4 x B, 3 x C, 1 x D>A>B, 1 x D>A>C. N13/Q5. Exclude D; A reaches6. The last parcel has U1/T2 and tied B/C remainders. First-count history B4/C3 awards the increment to B without a lot; transfer b12 to B, electing A/B. |
+| No usable surplus | Two places: 6 x A, 3 x B, 1 x C>B. Q4; A elected, U2/T0 is processed with no movement and A retains6. C transfers to B, electing B at4. |
+| Transferable parcel below surplus | Two places: 5 x A, 1 x A>B, 3 x B, 1 x C. Q4; A6 has U2/T1. Transfer b6 to B, retain5 on A, elect B at4. |
+| Transferable parcel equals surplus | Two places: 4 x A, 2 x A>B, 3 x B, 1 x C. Q4; A6 has U2/T2. Transfer b5/b6 to B; B wins at5. Stop without distributing B's surplus after all places are filled. |
+| Largest pending surplus | Three places: 5 x A>C, 4 x B>D, 2 x C, 1 x D. N12/Q4. A5 and B4 win; A's surplus1 moves b1 to C, giving C3/D1. D exhausts and C fills the last place below quota. |
+| Equal pending surpluses | Three places: 5 x A>C, 5 x B>D, 1 x C, 1 x D. N12/Q4. A/B each have surplus1 and equal history; request surplus-order lot. Choosing A transfers b1 to C; B then transfers b6 to D. C2/D2 have equal history only until A's transfer: C2/D1 then resolves exclusion to D. D's two ballots exhaust and C wins. Choosing B first instead elects D as the third winner. Record this outcome-sensitive lot. |
+| Rounding tie without a lot | Two places: 3 x A>B, 3 x A>C, 3 x B, 1 x C. N10/Q4. A6 has U2/T6; both destinations have quotient1 and no remaining increment. Move b1 to B and b4 to C; B reaches4. No lot is needed despite equal remainders. |
+
+- Coverage :: RT002.3 additionally covers the three transferable-parcel boundary fixtures, largest/equal pending surpluses, and rounding without a lot. RT002.7 covers both choices of every outcome-sensitive lot and historical comparisons. RT002.4 covers last-parcel selection and its exact selected ballot IDs.
+
+*** Serialization and fingerprints
+
+- Versions :: Input/output schema version is integer 1; rule identifier is =irish-guided-stv-v1=. IDs contain 1 through 64 ASCII letters, digits, underscores or hyphens. Reject other IDs, duplicate option/ballot IDs, overlong preference lists, and unsupported versions before counting.
+- Input fingerprint :: SHA-256, lowercase hexadecimal, of compact UTF-8 JSON representing the array =[1,"irish-guided-stv-v1",optionIDs,S,ballots]=. Each ballot is =[ballotID,preferenceIDs]=. Arrays retain their declared order; no spaces or trailing newline are included. Restricted ASCII IDs make string encoding unambiguous. N derives from ballots and is not an independently mutable field.
+- Request fingerprint :: Hash the same JSON encoding of =[inputFingerprint,sequence,kind,countIndex,eligibleIDs,1]=. Use declared option order for the eligible list; this orders the request presentation only and never selects the answer. Count 1 is the initial allocation; each completed surplus or exclusion operation increments the count index.
+- Persistence :: Result and decision DTOs use explicit JSON field tags, slices for ordered records, integers for quantities and no map-dependent ordering. Store schema/rule version, fingerprints and decision provenance. W003 stores the input and returned structures without recomputing them under a different rule version.
+- Invalid decisions :: Reject wrong sequence/kind/fingerprint, duplicate or ineligible selection, wrong selection count, and any unused trailing decision. Result is nil on error. A missing decision returns only DecisionRequest; a successful termination returns only Result.
 
 *** Counting reference guide
 
@@ -398,7 +445,7 @@ reproducible selections, without requiring legislative equivalence.
 :END:
 
 - Required reading :: This specification, project profile, VISION's counting direction, ARCHITECTURE's counting boundary, and W001's module/test contract. Wikipedia and legislation are guidance, not independent compliance gates.
-- Before definition PASS :: Finalize the exact application counting rules and worked cases above. Do not hand unresolved algorithm choices to an implementation agent. A statutory source edition or legislative conformity record is not required.
+- Before implementation :: Obtain definition PASS and operator sign-off for the explicit online-poll rules and fixtures above. A statutory source edition or legislative conformity record is not required.
 - First implementation step :: After sign-off, write [[#rt-002-2][RT002.2 - Quota and single-winner termination]] and observe RED.
 - Definition evidence :: [[file:audits.org][W002 - Counting definition audit]].
 - Validation evidence :: [[file:validation.org][W002 - Application counting validation]].

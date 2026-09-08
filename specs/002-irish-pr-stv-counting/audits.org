@@ -4,10 +4,79 @@
 
 * Definition gate
 
-- Execution :: No composite verdict has been issued for this draft.
+- Execution :: Effective definition PASS; operator sign-off pending.
 - Artefact :: [[file:spec.org][W002 - Irish PR-STV counting specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
+
+** Local review, round 1
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =5a7664dc14634f2db91cb6645dfb38e9a2e228403ccd396a2da672eea76c02d7=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: FAIL.
+- [audit-spec] [BLOCKING] Counting contract :: The draft delegates algorithm choices to future definition work instead of specifying a deliverable rule set.
+- [audit-design] [BLOCKING] Reproducibility :: The rule version, canonical fingerprint, surplus order, selection, rounding and tie resolution are not explicit enough for independent implementations to agree.
+- [audit-test-definitions] [BLOCKING] Missing oracles :: Historical ties, skip transfers, bulk exclusion and boundary surplus cases lack fixed expected paths.
+- Remediation :: Define the online-poll algorithm and fixed examples directly, using the existing Wikipedia/Irish guidance. Legislative conformity remains outside scope.
+
+** Local review, round 2
+:PROPERTIES:
+:ROUND: 2
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =37bfc2e787233dce7796c69275866593ff8ee0e447168e54d161354a4a09d632=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS.
+- Findings :: No local blocking or conditional finding remains. The online-poll procedure specifies quota, surplus priority, parcel selection, whole-ballot apportionment, rounding, initial order, lots, exclusions, exhaustion and termination.
+- Remediation receipt :: Added explicit version/fingerprint conventions and fixed oracles for original/last parcels, T=0/T<U/T=U, historical-high/low comparisons, surplus and remainder lots, skip transfers, bulk-exclusion inequality and zero-tally last places. Independently checked grouped ballot totals, quotas, selected ballot IDs and resulting winners by hand.
+- Limitation :: Independent audit and operator sign-off remain pending; no counting implementation or regression execution is claimed.
+
+** External review, round 1
+:PROPERTIES:
+:CONTEXT: /root/counting_definition_audit
+:ROUND: 1
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =37bfc2e787233dce7796c69275866593ff8ee0e447168e54d161354a4a09d632=.
+- Audits :: Requested composite =audit-spec=, =audit-design=, =audit-test-definitions= in one retained context.
+- Verdict :: FAIL.
+- [audit-spec] [BLOCKING] Historical fixture arithmetic :: RT002.7 incorrectly counted the C>B ballot as transferring onward to A. Only the two original B>A ballots transfer: A finishes with5 and one ballot exhausts, not A6.
+- Remediation :: Corrected the expected total and explicitly required the exhausted-ballot/conservation record.
+
+** Local review, round 3
+:PROPERTIES:
+:ROUND: 3
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =ab0ffef9c4eea6cd883760de5f675a3b49ed8c88f6a12e91383a6a37333eda97=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS.
+- Findings :: No additional local blocking finding after rechecking the revised historical example and its conservation. The other skip/exhaustion fixtures already specify their exhausted ballots separately.
+- Limitation :: Retained independent review of the correction remains pending; no execution evidence is claimed.
+
+** External review, round 2
+:PROPERTIES:
+:CONTEXT: /root/counting_definition_audit
+:ROUND: 2
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =ab0ffef9c4eea6cd883760de5f675a3b49ed8c88f6a12e91383a6a37333eda97=, before lifecycle-only DEFINITION_GATE update.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=; the retained auditor explicitly confirmed all three were applied.
+- Verdict :: PASS.
+- Findings :: No further blocking or advisory finding. The corrected historical fixture accounts for A5 plus one exhausted C-origin ballot.
+- Scope :: Online-poll counting rules, determinism, arithmetic and test definitions. Legislative conformity is excluded by operator direction.
+- Limitation :: Operator sign-off and implementation/one-off validation remain pending.
 
 * Implementation gate
 

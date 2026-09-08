@@ -2,7 +2,7 @@
 #+SUBTITLE: Unified change specification
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
-#+DEFINITION_GATE: PENDING
+#+DEFINITION_GATE: PASS
 #+OPERATOR_SIGNOFF: PENDING
 
 * Establish the Go application foundation
@@ -93,7 +93,7 @@ An operator can *build and run the service locally* with synthetic configuration
 :CUSTOM_ID: ac-001-3
 :END:
 
-- Criterion :: Given valid configuration, =serve= *binds the supplied ADDR* and serves an HTML landing page and its local CSS through that listener.
+- Criterion :: Given valid configuration, =serve= *binds the supplied ADDR* and serves an HTML landing page and local CSS. The page's canonical link uses the supplied =base_url= independently of request headers or the listener address.
 - Proven by :: [[#rt-001-2][RT001.2 - Executable HTTP boundary]].
 
 ** AC001.4 - Persistent state survives restart
@@ -141,7 +141,7 @@ An operator can *build and run the service locally* with synthetic configuration
 :CUSTOM_ID: ac-001-9
 :END:
 
-- Criterion :: The landing page *works without JavaScript*, has semantic structure and visible keyboard focus, and remains readable at narrow widths and 200% zoom.
+- Criterion :: The landing page *works without JavaScript*, has semantic structure and visible keyboard focus, and remains readable at 320 CSS pixels and 200% zoom. Apply WCAG 2.1 AA: text contrast at least 4.5:1, or 3:1 for large text; keyboard access, meaningful labels/alt text, one h1 and ordered headings are required.
 - Proven by :: [[#rt-001-2][RT001.2 - Executable HTTP boundary]]; [[#ut-001-1][UT001.1 - Landing-page usability]].
 
 ** AC001.10 - Portable build and verification
@@ -149,7 +149,7 @@ An operator can *build and run the service locally* with synthetic configuration
 :CUSTOM_ID: ac-001-10
 :END:
 
-- Criterion :: Repository-owned commands *build, lint, test, and check vulnerabilities* with failures propagated. The application can be cross-compiled for Linux amd64 without a target Go installation.
+- Criterion :: Repository-owned commands *build, install locally, lint, test, and check vulnerabilities* with failures propagated. Repeating local installation preserves the same installed content and unrelated files. The application can be cross-compiled for Linux amd64 without a target Go installation.
 - Proven by :: [[#ot-001-1][OT001.1 - Build and tooling contract]].
 
 * Test Definitions
@@ -177,9 +177,9 @@ An operator can *build and run the service locally* with synthetic configuration
 
 - Covers :: [[#ac-001-3][AC001.3 - Configured listener and page]]; [[#ac-001-9][AC001.9 - Accessible page without JavaScript]].
 - Boundary :: Requests to the built executable on an OS-assigned loopback port.
-- Setup :: Temporary runtime tree and database; one IPv4 case and one IPv6 loopback case on a host supporting both.
+- Setup :: Temporary runtime tree and database, with test-owned valid HTML templates and a small CSS/static fixture matching the packaged paths; one IPv4 case and one IPv6 loopback case on a host supporting both. Use separate absent/malformed template copies for failure cases.
 - Action :: Wait for observable readiness, request the root page, CSS, an unknown path, and an unsupported method; repeat with templates absent or malformed.
-- Expected :: Correct HTML/CSS content types, local asset links, one h1, labelled navigation, no script-dependent interaction, 404/405 for invalid routes, and startup failure when required templates cannot be parsed. Listener address matches ADDR.
+- Expected :: Correct HTML/CSS content types, local asset links, one h1, labelled navigation, no script-dependent interaction, 404/405 for invalid routes, and startup failure when required templates cannot be parsed. Listener address matches ADDR; the canonical link equals configured base_url even under a different request Host.
 - Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
 
 ** RT001.3 - Storage lifecycle
@@ -189,8 +189,8 @@ An operator can *build and run the service locally* with synthetic configuration
 
 - Covers :: [[#ac-001-4][AC001.4 - Persistent state survives restart]]; [[#ac-001-5][AC001.5 - Unusable storage prevents operation]].
 - Boundary :: Store initialization using a real local SQLite database.
-- Setup :: Fresh, initialized, unsupported-newer, read-only, and deliberately failed-migration databases in test-owned directories.
-- Action :: Initialize twice, persist and reopen a synthetic record through the store boundary, and exercise the failure cases.
+- Setup :: Fresh, initialized, unsupported-newer, read-only, and deliberately failed-migration databases in test-owned directories. Supply a test-owned migration that creates a small parent/child table; this fixture does not add a production domain table.
+- Action :: Initialize twice, insert and reopen a fixture row, and exercise the failure cases through the migration/store boundary. The migration runner accepts an explicit ordered migration collection, enabling a failing fixture without a production test switch.
 - Expected :: Persistence survives restart, migration version advances only after commit, repeated initialization is harmless, and failures preserve the previous committed schema and data. Foreign-key violations fail on every pooled connection.
 - Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
 
@@ -225,9 +225,9 @@ An operator can *build and run the service locally* with synthetic configuration
 
 - Covers :: [[#ac-001-8][AC001.8 - Bounded server lifecycle]].
 - Boundary :: HTTP requests and termination of the executable.
-- Setup :: Temporary runtime with short test-configured server timeouts, a slow header connection, and an ordinary request.
-- Action :: Exceed the header bound, allow the configured header deadline to expire, then terminate the server during an active request.
-- Expected :: Oversized headers and timeout cases are rejected or disconnected, accepted work receives only its configured grace period, the listener closes, the process exits within its shutdown bound, and the database can be reopened. No fixed sleep is used as readiness evidence.
+- Setup :: Temporary runtime with short test-configured timeouts. Use the shared HTTP-server constructor with test-owned handlers to hold a request body or response at synchronization points; separately exercise process termination through the executable.
+- Action :: Exceed the header bound; stall headers, body reads, response writes and idle keep-alive connections in separate cases; then terminate during an active request. These are real socket interactions, not assertions about timeout field values.
+- Expected :: Oversized headers and timeout cases are rejected or disconnected, accepted work receives only its configured grace period, the listener closes, and the database can be reopened. Successful draining exits 0; expiry of shutdown grace exits 1 with a safe diagnostic. No fixed sleep is used as readiness evidence.
 - Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
 
 ** UT001.1 - Landing-page usability
@@ -238,7 +238,7 @@ An operator can *build and run the service locally* with synthetic configuration
 - Covers :: [[#ac-001-9][AC001.9 - Accessible page without JavaScript]].
 - Reviewer :: Operator.
 - Procedure :: View the local landing page in Safari or Firefox with JavaScript disabled, at a narrow mobile width and 200% zoom; navigate by keyboard.
-- Expected :: Text and navigation remain readable and operable, focus is visible, and the page meets the selected Web standards' contrast and semantic requirements.
+- Expected :: At 320 CSS pixels and 200% zoom, text remains readable, content is not clipped, and keyboard navigation has visible focus. Verify WCAG 2.1 AA contrast of at least 4.5:1 for body text or 3:1 for large text, meaningful labels/alt text, one h1 and ordered headings.
 - Record :: PENDING in =validation.org= until the operator reports the result.
 
 ** OT001.1 - Build and tooling contract
@@ -248,9 +248,9 @@ An operator can *build and run the service locally* with synthetic configuration
 
 - Covers :: [[#ac-001-10][AC001.10 - Portable build and verification]].
 - Boundary :: Local repository commands and generated binary, without deployment.
-- Procedure :: Run build, lint, test, and vulncheck targets; cross-compile Linux amd64; inspect the binary format. Verify missing-scanner failure in an isolated invocation and review the sync target against the SDLC contract without executing a repository synchronization test.
-- Expected :: Real checks run, failures propagate, go.mod/go.sum remain unchanged by vulncheck, and the Linux artefact is produced without CGo. Source and configuration retain the documented provenance and ignore rules.
-- Bounds :: One local verification session; at most one successful vulnerability-database retrieval and one bounded failure-path invocation; no mail, deployment, metered API, or global installation. Use OS temporary directories for disposable artefacts.
+- Procedure :: Run build, lint, test, and vulncheck targets; cross-compile Linux amd64; inspect the binary format. Run install twice with PREFIX inside an OS temporary directory; compare installed content, verify an unrelated sentinel survives, and run installed help/version plus serve from its packaged working directory. Verify missing-scanner failure in an isolated invocation and review sync without executing a repository synchronization test.
+- Expected :: Real checks run, failures propagate, go.mod/go.sum remain unchanged by vulncheck, and the Linux artefact is produced without CGo. Source and configuration retain the documented provenance and ignore rules. The managed binary/assets exist under PREFIX; repeating installation preserves their content and unrelated files. Secrets and host configuration are excluded. Installed help/version work, and installed serve operates from the packaged asset directory with the supplied runtime variables.
+- Bounds :: One local verification session; at most one successful invocation and one bounded failure-path invocation per selected scanner (Go and npm); no mail, deployment, metered API, or global installation. Use OS temporary directories for disposable artefacts.
 - Record :: PENDING in =validation.org=; this review is not a permanent test of Makefile text.
 
 * Edge Cases
@@ -289,10 +289,38 @@ An operator can *build and run the service locally* with synthetic configuration
 - Commands :: =stv-poll serve=, =stv-poll -h=, =stv-poll --help=, and =stv-poll --version=. No successful placeholder =process-due-work= command; W003 adds that operation.
 - Routes :: =GET /= serves the landing page; =GET /healthz= returns the JSON health contract; =GET /static/*= serves only packaged public assets. Unsupported methods return 405; unknown routes return 404.
 - Runtime paths :: =DEFAULT_CONFIG_PATH= and =STATE_DIRECTORY= are required for serve; =CONFIG_PATH= and =SECRETS_PATH= are optional when absent, mandatory to read when explicitly supplied. =ADDR= is required. Relative runtime asset paths resolve from process cwd.
+- Compatibility :: This new application deliberately requires DEFAULT_CONFIG_PATH and does not implement Exodan's fallback for older applications. Exodan supplies this variable to the service, admin wrapper and timers. Local instructions supply it explicitly; omission fails before listening.
 - YAML :: Consume the required =base_url= string supplied through Exodan configuration for link construction. The application does not validate the URL or domain or impose scheme, host, or deployment policy. Known application settings are type-checked; unrelated Exodan keys remain tolerated.
-- HTTP defaults :: Header timeout 5 seconds, request read/write timeouts 15 seconds, idle timeout 60 seconds, shutdown grace 10 seconds, maximum header size 64 KiB. Nested =http= YAML permits positive timeout overrides; the header maximum is fixed.
+- HTTP settings :: Use the exact duration keys and defaults in the table below. Durations are positive Go duration strings; zero, negative, empty, and malformed supplied durations fail startup. The header maximum is fixed at 64 KiB.
 - Configuration layering :: Recursively merge maps; a supplied scalar or sequence replaces its previous value. Reject non-string map keys, incompatible known types, and null required values. Do not use legacy environment overrides for application values.
 - Assets :: Declare =templates= and =static= in =data_dirs=; cache parsed templates at startup. Their absence or syntax error is a startup failure.
+
+| Application YAML key | Default / contract |
+|----------------------+--------------------|
+| base_url | Required non-empty string, consumed for links without URL/domain validation. |
+| http.read_header_timeout | 5s |
+| http.read_timeout | 15s |
+| http.write_timeout | 15s |
+| http.idle_timeout | 60s |
+| http.shutdown_timeout | 10s |
+
+- Configuration parsing :: Use =gopkg.in/yaml.v3=. Accept one mapping document per layer; an empty optional document is an empty overlay. Reject duplicate keys, non-string keys, malformed YAML, and multiple documents. Defaults must be a non-empty mapping. Unknown keys are tolerated for Exodan and later application features.
+- Example and loading :: The example below is complete for foundation startup when runtime paths and =ADDR= are supplied. Load configuration once per process; changes take effect on restart. Neither =serve= nor a later worker rewrites configuration or decrypts age files.
+
+#+begin_src yaml
+# config/defaults.yaml; illustrative base_url only
+base_url: https://polls.example.com
+data_dirs: [templates, static]
+http:
+  read_header_timeout: 5s
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+#+end_src
+
+- Regression detail :: RT001.1 exercises every duration key, duplicate keys, multiple documents, an empty optional overlay, and a required empty defaults file. Its expected outcomes follow these parsing rules; no URL-policy cases are added.
+- Page and assets :: The landing page identifies STV Poll and explains that it collects ranked preferences; it contains no non-working poll controls. Package CSS and a generic Open Graph image under =static/=. Include semantic HTML, language/viewport metadata, and generic Open Graph metadata. Reject traversal and symlinks escaping the public asset root; RT001.2 covers those requests and a missing asset without exposing state/configuration files.
 
 *** Public URL and deployment handoff
 
@@ -321,15 +349,15 @@ data_dirs:
 *** Data and state
 
 - Database :: =STATE_DIRECTORY/stv-poll.sqlite= using =database/sql= and =modernc.org/sqlite=. Use the architecture's selected driver; pin the implemented versions and retain =go.sum=.
-- Connection policy :: Enforce foreign keys on *every connection*, a bounded busy timeout, and a small pool. Begin with one connection per process; later independent web/worker processes still coordinate through database transactions.
+- Connection policy :: Enforce foreign keys on *every connection*, a 5-second busy timeout, and one connection per process. Use SQLite's default rollback-journal mode initially. Later independent web/worker processes coordinate through write transactions. A health check has a separate 500 ms context deadline.
 - Migration ownership :: Embedded, ordered migrations and a schema-version record. Apply an outstanding migration and its version update in one transaction, serializing initialization. No poll-domain tables are introduced by this ticket.
-- Permissions :: State directory and database are accessible only to the application identity; never serve state paths as static assets.
+- Permissions :: Exodan owns the state directory, identity, ownership and access policy. The app requires the supplied directory to exist and be writable; it does not create/chmod/chown infrastructure directories. Create its database with mode 0600 and preserve existing file modes. Never serve state paths as static assets. Local development instructions create an operator-owned temporary state directory.
 
 *** Failure behaviour
 
 - Startup failures exit 1 with safe context. Invocation errors exit 2; unknown flags are not ignored.
 - Health uses a bounded store check and returns its small documented response. Detailed diagnostics remain in structured stderr logs with credentials and data redacted.
-- Cancellation propagates to owned work. A forced shutdown after the grace period remains visible in logs.
+- Cancellation propagates to owned work. Successful draining exits 0; shutdown-grace expiry closes remaining connections and exits 1. Both paths release the database and emit safe structured stderr diagnostics.
 
 ** Architecture impact
 
@@ -351,12 +379,14 @@ data_dirs:
 
 ** Build and verification contract
 
-- Commands :: =make build=, =make lint=, =make test=, =make vulncheck=, and the SDLC-defined operator-only =make sync=.
-- Build :: Produce the local executable under ignored =bin/=; document Linux cross-compilation with CGo disabled. Do not install a target-side toolchain.
+- Commands :: =make build=, =make install=, =make lint=, =make test=, =make vulncheck=, and the SDLC-defined operator-only =make sync=.
+- Local installation :: =make install= builds, installs the executable at =PREFIX/bin/stv-poll=, and copies templates, static assets and non-secret defaults under =PREFIX/share/stv-poll/=. PREFIX defaults to the repository's ignored =.local/= directory. Repeated installation updates only these managed paths, preserves unrelated files, and never installs plaintext secrets or host configuration. Document serve from the installed asset directory with explicit runtime variables. No privileged/global installation or deployment is implied.
+- Build :: Use module path =github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-= and entry point =cmd/stv-poll=. Produce the local executable under ignored =bin/=; document Linux cross-compilation with CGo disabled. Do not install a target-side toolchain. Keep CLI help in =docs/stv-poll-help.md= and package it at build time; version output includes the build revision, or =dev= for an untagged local build.
 - Lint :: Apply gofmt checking, go vet, golangci-lint with the Go standard's required checks, and CSS linting under the Web standard. Provision tool versions explicitly outside check targets.
 - Test :: Retained behavioural RTs only; use the race detector for concurrent code. Apply the SDLC coverage floor and complete branch evidence for durable state changes.
 - Security gate :: =govulncheck ./...= plus any additional applicable dependency set introduced by build tooling. The target installs nothing, changes no locks, fails on missing tooling or incomplete scans, and remains separate from =make test=.
-- Tooling dependencies :: Prefer a separately provisioned CSS linter; if npm-managed tooling is introduced, pin it, apply the Node standard, and include its dependency scan. This does not authorize browser JavaScript.
+- Tooling dependencies :: Use npm only for development-time =stylelint= and =stylelint-config-standard=, under =tools/= with =package.json= and =package-lock.json=. Record exact supported Node/npm and tool versions during delivery and install through =npm ci --ignore-scripts= as an explicit setup step. Lint uses the installed local executable and the Web standard's configuration; missing tooling fails. No Node runtime, JavaScript source, bundler, or browser automation is introduced.
+- Tooling security :: Include =npm audit= for the committed tooling lockfile in =make vulncheck= alongside govulncheck. Both scans run and the target fails if either fails; neither installs, edits lockfiles, or applies fixes. Document isolated project/OS-temporary cache paths. OT001.1 verifies both missing-tool and scanner failure propagation.
 - Ignore rules :: Ignore binary output, local plaintext secrets, caches, and entire project-local agent runtime directories. Keep module checksums tracked.
 
 * Delivery Handoff

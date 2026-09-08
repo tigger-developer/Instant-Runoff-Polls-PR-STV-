@@ -17,7 +17,7 @@
 - Criterion :: [[file:spec.org::#ac-001-9][AC001.9 - Accessible page without JavaScript]].
 - Definition :: [[file:spec.org::#ut-001-1][UT001.1 - Landing-page usability]].
 - Result :: PENDING.
-- Procedure and expected result :: Operator views the local page without JavaScript at narrow width and 200% zoom, using a keyboard; readable layout, semantic structure, contrast, and visible focus are required.
+- Procedure and expected result :: Operator views the local page without JavaScript at 320 CSS pixels and 200% zoom, using a keyboard. Verify visible focus, unclipped content, one h1 and ordered headings, meaningful labels/alt text, and WCAG 2.1 AA text contrast of at least 4.5:1 or 3:1 for large text.
 - Execution evidence :: No execution or human result has been recorded.
 
 * One-off tests
@@ -31,5 +31,5 @@
 - Criterion :: [[file:spec.org::#ac-001-10][AC001.10 - Portable build and verification]].
 - Definition :: [[file:spec.org::#ot-001-1][OT001.1 - Build and tooling contract]].
 - Result :: PENDING.
-- Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including missing-scanner failure and non-mutating locks. No deployment, mail, or metered API.
+- Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including both scanners' failure propagation and non-mutating locks. Install twice to a temporary PREFIX: managed binary/assets remain identical, an unrelated sentinel survives, secrets/host configuration are excluded, and installed help/version/serve operate with the documented runtime inputs. No deployment, mail, or metered API.
 - Execution evidence :: No execution or human result has been recorded.

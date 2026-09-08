@@ -78,7 +78,7 @@ classification; it is provenance, not current state.
 
 * Work items
 
-** TODO W001 - Establish the Go application foundation :feature:
+** REVIEW W001 - Establish the Go application foundation :feature:
 :PROPERTIES:
 :CUSTOM_ID: w-001
 :PRIORITY: P1
@@ -88,10 +88,10 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/001-go-application-foundation/spec.org][W001 - Establish the Go application foundation]].
 - Scope :: Go executable, Exodan configuration, SQLite initialization, server-rendered landing page, health, and build/verification commands.
-- Definition :: Draft written; definition gate and operator sign-off are pending.
+- Definition :: Definition gate PASS after local review and retained independent audit; operator sign-off pending. See the specification's linked audit evidence.
 - Dependencies :: None within this build batch.
 
-** TODO W002 - Implement reproducible Irish PR-STV counting :feature:
+** REVIEW W002 - Implement reproducible Irish PR-STV counting :feature:
 :PROPERTIES:
 :CUSTOM_ID: w-002
 :PRIORITY: P1
@@ -101,7 +101,7 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/002-irish-pr-stv-counting/spec.org][W002 - Implement reproducible Irish PR-STV counting]].
 - Scope :: Counting engine, quota, transfers, exclusions, recorded decisions, replay, and independent count fixtures.
-- Definition :: Draft written; definition gate and operator sign-off are pending. The exact application counting rules and worked cases remain to be finalized. The operator withdrew legislative conformity and source-edition verification as requirements on 8 September 2026; legislation is guidance.
+- Definition :: Definition gate PASS after explicit application rules, worked cases and retained independent audit; operator sign-off pending. The operator withdrew legislative conformity and source-edition verification on 8 September 2026; legislation remains guidance.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]].
 
 ** TODO W003 - Deliver the invited poll workflow :feature:

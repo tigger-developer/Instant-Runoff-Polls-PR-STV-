@@ -4,10 +4,85 @@
 
 * Definition gate
 
-- Execution :: No composite verdict has been issued for this draft.
+- Execution :: Effective definition PASS; operator sign-off pending.
 - Artefact :: [[file:spec.org][W001 - Go application foundation specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
+
+** Local review, round 1
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =dfd18965a08d837676591561d730fbe0a9232e940947b07345bd09959d198131=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: FAIL.
+- [audit-design] [BLOCKING] Foundation configuration :: Duration keys, parsing semantics and CSS-tool provisioning were insufficiently explicit for delivery.
+- [audit-design] [BLOCKING] Infrastructure ownership :: The state-directory permissions requirement crossed Exodan's ownership boundary.
+- [audit-test-definitions] [BLOCKING] Storage oracle :: Synthetic persistent records lacked a defined test migration seam; shutdown exit outcomes were unspecified.
+- [audit-spec] [ADVISORY] Packaging :: Give the help source, module path and landing-page scope explicitly.
+- Remediation :: Specify configuration and tooling, preserve Exodan directory ownership, define migration fixtures and shutdown outcomes, and capture package/page boundaries. Re-review the amended definition before external audit.
+
+** Local review, round 2
+:PROPERTIES:
+:ROUND: 2
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =9f533e7dba59bdfb34da4734d822178113871a03b18805c0ceaefe7784701443=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS.
+- Findings :: No blocking or conditional finding remains in the local review. Configuration, loader failures, Exodan ownership, SQLite restart/migration, HTTP/time bounds, CLI outcomes, rendered accessibility and mixed-tooling verification have defined boundaries and traced checks.
+- Remediation receipt :: Round 1 findings are addressed in the configuration table/example, migration fixture definition, infrastructure-owned state-directory policy, explicit exit outcomes, and pinned delivery tooling contract. Tool versions are routine delivery-time selections that must be recorded before use.
+- Limitation :: This is local definition evidence only. Independent audit and operator sign-off remain pending; no implementation tests have run.
+
+** External review, round 1
+:PROPERTIES:
+:CONTEXT: /root/foundation_definition_audit
+:ROUND: 1
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =9f533e7dba59bdfb34da4734d822178113871a03b18805c0ceaefe7784701443=.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: FAIL.
+- [audit-spec] [BLOCKING] FND-001 - Local install contract :: Required make install behaviour and verification were missing.
+- [audit-spec] [BLOCKING] FND-002 - Observable base URL :: Configuration merging did not prove any foundation link consumed base_url.
+- [audit-spec] [BLOCKING] FND-003 - Accessibility oracle :: Name WCAG level, contrast ratios and observable keyboard/semantic requirements.
+- [audit-design] [ADVISORY] FND-004 - Defaults compatibility :: Explain why the legacy DEFAULT_CONFIG_PATH fallback is deliberately absent.
+- [audit-test-definitions] [ADVISORY] FND-005 - Asset fixtures :: State how valid test assets are provided.
+
+** Local review, round 3
+:PROPERTIES:
+:ROUND: 3
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =b8205b4f5f48f21c90edf4453ac0cc94d840d89696b66f531ad7c6589203dae9=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS.
+- Remediation :: Added local PREFIX installation and repeat-install OT, canonical-link HTTP behaviour, WCAG 2.1 AA observations/ratios, explicit runtime-path compatibility rationale, and valid asset fixtures. The independent findings remain open pending retained-context review.
+- Findings :: No further local blocking or conditional finding. Implementation and user verification are still future work.
+
+** External review, round 2
+:PROPERTIES:
+:CONTEXT: /root/foundation_definition_audit
+:ROUND: 2
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =b8205b4f5f48f21c90edf4453ac0cc94d840d89696b66f531ad7c6589203dae9=.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PROVISIONAL.
+- Prior findings :: The retained auditor confirmed FND-001 through FND-005 addressed.
+- [audit-test-definitions] [CONDITION] FND-006 - Installation expected evidence :: Add explicit expected managed paths/content, repeat-install preservation, unrelated-file survival, excluded secrets/host config, and installed command behaviour to OT001.1.
+- Condition receipt :: Added exactly those outcomes to OT001.1's Expected field. No other substantive change. Verified the revised field against the condition and confirmed sanitize produces identical text.
+- Condition-satisfied revision :: SHA-256 =aaf5037d12a574d767eb77d6b4db828705ade01666ff9a5f721406af5bb8b685=, before lifecycle-only DEFINITION_GATE update.
+- Effective verdict :: PASS under AUDITS.md's deterministic-condition rule. Operator sign-off and all implementation/user validation remain pending.
 
 * Implementation gate
 
