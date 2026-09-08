@@ -1,0 +1,42 @@
+#+TITLE: Project foundation audit evidence
+#+STARTUP: content
+#+OPTIONS: toc:2 num:nil
+
+* Foundation gate
+
+- Scope :: Paired review of [[file:VISION.md][Product vision]] and [[file:ARCHITECTURE.md][Application architecture]] under the operator-invoked audit-project-foundation skill on 8 September 2026.
+- Current verdict :: FAIL after local review; no external context started because local checks have not passed.
+- Timing :: Retrospective review of this greenfield project's foundation. Feature specifications and initial implementation already exist; this record does not claim that the new foundation gate ran before them.
+- Authority :: Project profile; README; work ledger and recorded specification approvals; SDLC MAIN, AUDITS, CODING, DOCUMENTATION, SECURITY, ORGMODE and GIT; selected API, GO, JAVASCRIPT, SHELL, WEB and NODE standards; Exodan Project Integration Contract version 1.8 read in full.
+- Standards baseline :: Installed SDLC release v3.1.10. WEB SHA-256 =c474f4646fae1e318c78c18b68cfe75d7100b2b7dd85d8ad264326fa375bc000=; NODE SHA-256 =e3d431358ba23fde0c798ba519d76455c75517de8ee12ec991bcda7f2b441d30=; Exodan contract SHA-256 =1c9b02d1924b9e81d05b14645e17c06e104f56acccec4309d6c3f12f807604c5=.
+- Review boundary :: No fresh voting-system research, feature definitions, tests or application code. The existing counting specification remains the application's rule authority.
+
+** Local review, round 1
+
+- GATE :: foundation.
+- REVISION :: VISION SHA-256 =b3782e3468f667e2eb0a68d6cd38ad7c2cfa992226091fb8ced83d084475a7e8=; ARCHITECTURE SHA-256 =b29a867061a071283ae0acb62e078fc5d4f12508b151e23e11b3f2ac7578b019= at =10e083c= (foundation implementation audit incident checkpoint).
+- VERDICT :: FAIL.
+- Criteria :: Vision, architecture, alignment, risk and handoff reviewed together in the current context.
+- [risk] [BLOCKING] FOUNDATION-001 - Node/npm tooling conflict :: The profile selects NODE and the foundation specification requires npm-managed Stylelint. The current Web standard instead selects Biome with an approved toolchain and prohibits introducing Node/npm merely for CSS linting. The documents contain no exhausted-alternatives justification. Earlier specification approval is recorded and is not treated as absent; the new standards conflict and the operator's explicit rejection of Node/npm require reconciliation.
+- [handoff] [BLOCKING] FOUNDATION-002 - Stale current authority :: VISION's status, introductory text, privacy boundary and decision list still describe privacy, announcements, ownership, deadlines and access lifetimes as unresolved. ARCHITECTURE repeats those deferrals and says the repository contains no application code. The approved poll-workflow specification already resolves those policies, and the current branch contains an initial Go implementation. Neither foundation document directly links those resolutions as its current decision authority. A reader can reopen settled choices or miss approved privacy obligations.
+- [vision] [ADVISORY] FOUNDATION-003 - First-release scope and roadmap :: VISION describes the desired experience and non-goals, but does not explicitly distinguish the first usable release from later possibilities or state that no further roadmap is committed. Add that distinction using the existing approved scope; do not invent features.
+- Positive evidence :: The paired documents identify the problem and users, a single Go application, server-rendered forms, SQLite ownership, scoped participant identity, transaction boundaries, reproducible counts, durable work, SMTP limitations and clear Exodan responsibility for URL/domain policy, deployment, scheduling and host operations.
+
+** Operator-directed remediation between rounds
+
+- Authority :: "remove node, there is no justification for it here" followed by "remove npm".
+- Change :: Removed NODE from the profile, removed the npm audit commands from Makefile, and moved the untracked tools/package.json containing only Stylelint dependencies to Trash. Replaced the foundation specification's npm requirements with standalone Biome and Go dependency scanning. Added the explicit exclusion of Node/npm to the architecture's development-tooling boundary.
+- Preservation :: Other concurrent implementation edits were left untouched. The former tooling choice and prior specification approval remain in dated history. This audit does not install Biome or claim its checks have run.
+- Definition impact :: The materially amended Go-foundation specification requires re-audit; its gate/sign-off fields are PENDING and its work item is REVIEW. Counting and workflow approvals are unchanged.
+
+** Local review, round 2
+
+- GATE :: foundation.
+- REVISION :: VISION SHA-256 =b3782e3468f667e2eb0a68d6cd38ad7c2cfa992226091fb8ced83d084475a7e8=; ARCHITECTURE SHA-256 =64da9749c8305cb966ec2264426baa596e8a1b8470b533c459a2374fed5c465e=; project profile SHA-256 =5d9ca046f220d1eaca99767db254604db852449119fab7973552d4f61ff365a2=.
+- VERDICT :: FAIL.
+- Criteria :: Vision, architecture, alignment, risk and handoff reapplied to the amended pair and adjacent authority.
+- Remediation receipt :: FOUNDATION-001 - Node/npm tooling conflict is addressed by explicit removal and the standalone tooling boundary. No npm package manifest or command remains in the inspected project tooling.
+- Remaining finding :: FOUNDATION-002 - Stale current authority remains BLOCKING. FOUNDATION-003 - First-release scope and roadmap remains ADVISORY.
+- Required authoring correction :: Preserve the old open-question history, identify it as superseded, link the approved policy and counting decisions, and distinguish intended architecture from implementation status. No new privacy, voting or infrastructure decision is needed for that reconciliation.
+- External review :: Not started; SESSION_ID not issued. The skill permits an external foundation reviewer only after all local checks pass.
+- Boundary :: The audit skill states: "Do not edit the audited documents as an auditor; remediation belongs to the authoring workflow between rounds." The operator explicitly authorized the Node/npm removal; other foundation edits were not inferred from the audit invocation.

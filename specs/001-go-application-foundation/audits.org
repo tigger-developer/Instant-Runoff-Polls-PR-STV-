@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Effective definition PASS; operator sign-off recorded in spec.org on 2026-09-08.
+- Execution :: Tooling amendment pending definition re-audit. The earlier effective PASS and operator sign-off are preserved below for their reviewed revisions.
 - Artefact :: [[file:spec.org][W001 - Go application foundation specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -90,6 +90,13 @@
 - Scope :: Approval of all three specifications, including their labelled proposals.
 - Revision :: Audited specification at =ec0bfd8= (three audited build specifications for review); only lifecycle/sign-off metadata changes accompany this receipt.
 - Delivery :: Reserved for another session by operator instruction. No code or implementation-test evidence is added.
+
+** Operator-directed removal of Node and npm, 8 September 2026
+
+- Authority :: Taḋg: "remove node, there is no justification for it here" and "remove npm".
+- Change :: Withdraw npm-managed Stylelint and npm audit; specify standalone Biome for CSS checks and retain govulncheck for Go dependencies. Remove NODE from the project profile, the uncommitted npm audit commands from Makefile, and the untracked tools/package.json containing only Stylelint dependencies.
+- Gate impact :: This material specification amendment resets DEFINITION_GATE and OPERATOR_SIGNOFF to PENDING and moves the foundation work item to REVIEW. Earlier approvals remain historical; counting and workflow definitions are unchanged.
+- Scope :: No application implementation changes. The concurrent build session's other edits are preserved. Biome installation and execution have not been claimed.
 
 * Implementation gate
 

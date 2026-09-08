@@ -2,8 +2,8 @@
 #+SUBTITLE: Unified change specification
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
-#+DEFINITION_GATE: PASS
-#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08
+#+DEFINITION_GATE: PENDING
+#+OPERATOR_SIGNOFF: PENDING
 
 #+begin_comment
 Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".
@@ -257,7 +257,7 @@ An operator can *build and run the service locally* with synthetic configuration
 - Boundary :: Local repository commands and generated binary, without deployment.
 - Procedure :: Run build, lint, test, and vulncheck targets; cross-compile Linux amd64; inspect the binary format. Run install twice with PREFIX inside an OS temporary directory; compare installed content, verify an unrelated sentinel survives, and run installed help/version plus serve from its packaged working directory. Verify missing-scanner failure in an isolated invocation and review sync without executing a repository synchronization test.
 - Expected :: Real checks run, failures propagate, go.mod/go.sum remain unchanged by vulncheck, and the Linux artefact is produced without CGo. Source and configuration retain the documented provenance and ignore rules. The managed binary/assets exist under PREFIX; repeating installation preserves their content and unrelated files. Secrets and host configuration are excluded. Installed help/version work, and installed serve operates from the packaged asset directory with the supplied runtime variables.
-- Bounds :: One local verification session; at most one successful invocation and one bounded failure-path invocation per selected scanner (Go and npm); no mail, deployment, metered API, or global installation. Use OS temporary directories for disposable artefacts.
+- Bounds :: One local verification session; at most one successful invocation and one bounded failure-path invocation of govulncheck; no mail, deployment, metered API, or global installation. Use OS temporary directories for disposable artefacts.
 - Record :: PENDING in =validation.org=; this review is not a permanent test of Makefile text.
 
 * Edge Cases
@@ -392,8 +392,9 @@ data_dirs:
 - Lint :: Apply gofmt checking, go vet, golangci-lint with the Go standard's required checks, and CSS linting under the Web standard. Provision tool versions explicitly outside check targets.
 - Test :: Retained behavioural RTs only; use the race detector for concurrent code. Apply the SDLC coverage floor and complete branch evidence for durable state changes.
 - Security gate :: =govulncheck ./...= plus any additional applicable dependency set introduced by build tooling. The target installs nothing, changes no locks, fails on missing tooling or incomplete scans, and remains separate from =make test=.
-- Tooling dependencies :: Use npm only for development-time =stylelint= and =stylelint-config-standard=, under =tools/= with =package.json= and =package-lock.json=. Record exact supported Node/npm and tool versions during delivery and install through =npm ci --ignore-scripts= as an explicit setup step. Lint uses the installed local executable and the Web standard's configuration; missing tooling fails. No Node runtime, JavaScript source, bundler, or browser automation is introduced.
-- Tooling security :: Include =npm audit= for the committed tooling lockfile in =make vulncheck= alongside govulncheck. Both scans run and the target fails if either fails; neither installs, edits lockfiles, or applies fixes. Document isolated project/OS-temporary cache paths. OT001.1 verifies both missing-tool and scanner failure propagation.
+- Tooling dependencies :: Use the standalone Biome executable for development-time CSS linting and formatting, with no Node.js or npm dependency. Enable the CSS linter and formatter in project configuration. Record the exact tool version, platform artefact and checksum during delivery; provision it outside check targets through an approved native distribution. Missing tooling fails the check. No browser JavaScript, bundler or browser automation is introduced.
+- Tooling security :: Run =govulncheck ./...= through =make vulncheck= for the Go application dependencies. Checks do not install tools, edit locks or apply fixes. Pin and verify the standalone CSS tool separately; no package-manager dependency graph is introduced for linting. OT001.1 verifies missing-tool and scanner failure propagation.
+- Tooling decision history :: The former npm-managed Stylelint proposal is withdrawn by the operator's instructions to remove Node and npm on 8 September 2026. Standalone Biome follows the current Web standard. The earlier specification approval remains historical; this material tooling amendment requires a current definition gate before renewed delivery sign-off.
 - Ignore rules :: Ignore binary output, local plaintext secrets, caches, and entire project-local agent runtime directories. Keep module checksums tracked.
 
 * Delivery Handoff

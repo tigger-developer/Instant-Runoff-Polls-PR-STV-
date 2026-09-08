@@ -410,6 +410,13 @@ emerges; extracting one is not a prerequisite for the first application.
 
 ## Verification boundaries and further design
 
+Development tooling uses the Go checks and standalone Biome for CSS linting and
+formatting. Node.js and npm are excluded, including from development tooling,
+by the operator's direction on 8 September 2026. The former npm-managed
+Stylelint choice in the foundation specification is withdrawn. Native tool
+versions and integrity checks belong to the reproducible development setup;
+they introduce no production runtime or frontend build system.
+
 The architecture provides separate verification points: pure counting fixtures,
 SQLite transaction and recovery checks, HTTP form/authentication checks, and a
 local mail substitute. Deadline races, simultaneous use of two email addresses,

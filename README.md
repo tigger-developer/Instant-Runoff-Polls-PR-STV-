@@ -6,12 +6,13 @@ application will count votes automatically using PR-STV guided by the Irish
 counting system. This is an online poll; conformity to election legislation is
 not a product requirement.
 
-**Project stage:** approved for implementation. The product vision, application
-architecture, and three build specifications are recorded. All three have passed
-the definition gate covering requirements, design, and test definitions, with
-local and retained independent audit evidence. Taḋg approved all three on
-8 September 2026 and reserved the build for another session. The Go application
-has not been implemented.
+**Project stage:** initial implementation underway. The product vision,
+application architecture, and three build specifications are recorded. All three
+passed the definition gate and were approved on 8 September 2026. A subsequent
+operator-directed amendment removes Node/npm and selects standalone Biome for
+CSS checks; the foundation specification's amended tooling contract awaits
+re-audit. Counting and poll-workflow approvals remain recorded. Implementation
+and validation status are tracked in the work ledger and audit records.
 
 ## Documentation
 
