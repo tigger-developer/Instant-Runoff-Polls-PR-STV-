@@ -4,57 +4,57 @@ package main
 
 import (
 	"context"
-	"embed"
 	"fmt"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/web"
 	"html/template"
-	"io/fs"
-	"log/slog"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 )
 
-//go:embed templates static
-var assets embed.FS
 var version = "dev"
 
 func main() {
-	if len(os.Args) == 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
-		fmt.Println("Usage: stv-poll serve\n       stv-poll --version")
-		return
-	}
-	if len(os.Args) == 2 && os.Args[1] == "--version" {
-		fmt.Println(version)
-		return
-	}
-	if len(os.Args) == 2 && os.Args[1] == "render-html" {
-		if err := renderHTML(os.Stdout); err != nil {
-			slog.Error("render HTML failed", "error", err)
-			os.Exit(1)
-		}
-		return
-	}
-	if len(os.Args) < 2 || os.Args[1] != "serve" {
-		fmt.Fprintln(os.Stderr, "invalid invocation: expected serve")
-		os.Exit(2)
-	}
-	if err := serve(); err != nil {
-		slog.Error("serve failed", "error", err)
-		os.Exit(1)
-	}
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func renderHTML(output *os.File) error {
-	tmpl, err := template.ParseFS(assets, "templates/*.html")
-	if err != nil {
-		return fmt.Errorf("parse templates: %w", err)
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
+		if err := writeHelp(stdout); err != nil {
+			fmt.Fprintf(stderr, "read help: %v\n", err)
+			return 1
+		}
+		return 0
 	}
-	return tmpl.Execute(output, struct{ BaseURL string }{"http://localhost:8080"})
+	if len(args) == 1 && args[0] == "--version" {
+		fmt.Fprintln(stdout, version)
+		return 0
+	}
+	if len(args) != 1 || args[0] != "serve" {
+		fmt.Fprintln(stderr, "invalid invocation: expected serve")
+		return 2
+	}
+	if err := serve(); err != nil {
+		fmt.Fprintf(stderr, "serve failed: %v\n", err)
+		return 1
+	}
+	return 0
 }
+
+func writeHelp(output io.Writer) error {
+	help, err := os.ReadFile(filepath.Join("docs", "stv-poll-help.md"))
+	if err != nil {
+		return err
+	}
+	_, err = output.Write(help)
+	return err
+}
+
 func serve() error {
 	defaults := os.Getenv("DEFAULT_CONFIG_PATH")
 	if defaults == "" {
@@ -77,15 +77,15 @@ func serve() error {
 		return err
 	}
 	defer st.Close()
-	tmpl, err := template.ParseFS(assets, "templates/*.html")
-	if err != nil {
-		return fmt.Errorf("parse templates: %w", err)
-	}
-	staticFS, err := fs.Sub(assets, "static")
+	templateDirectory, staticDirectory, err := assetDirectories(cfg.DataDirs)
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: addr, Handler: web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.FS(staticFS))), ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout, ReadTimeout: cfg.HTTP.ReadTimeout, WriteTimeout: cfg.HTTP.WriteTimeout, IdleTimeout: cfg.HTTP.IdleTimeout, MaxHeaderBytes: 64 * 1024}
+	tmpl, err := template.ParseGlob(filepath.Join(templateDirectory, "*.html"))
+	if err != nil {
+		return fmt.Errorf("parse templates: %w", err)
+	}
+	server := &http.Server{Addr: addr, Handler: web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.Dir(staticDirectory))), ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout, ReadTimeout: cfg.HTTP.ReadTimeout, WriteTimeout: cfg.HTTP.WriteTimeout, IdleTimeout: cfg.HTTP.IdleTimeout, MaxHeaderBytes: 64 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	shutdownErr := make(chan error, 1)
@@ -100,4 +100,24 @@ func serve() error {
 		return <-shutdownErr
 	}
 	return err
+}
+
+func assetDirectories(dataDirectories []string) (string, string, error) {
+	var templates, static string
+	for _, directory := range dataDirectories {
+		info, err := os.Stat(directory)
+		if err != nil || !info.IsDir() {
+			return "", "", fmt.Errorf("asset directory %q is unavailable", directory)
+		}
+		switch filepath.Base(directory) {
+		case "templates":
+			templates = directory
+		case "static":
+			static = directory
+		}
+	}
+	if templates == "" || static == "" {
+		return "", "", fmt.Errorf("configuration data_dirs must include templates and static directories")
+	}
+	return templates, static, nil
 }

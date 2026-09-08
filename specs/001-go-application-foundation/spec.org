@@ -411,6 +411,22 @@ data_dirs:
 - Tooling decision history :: The former package-managed Stylelint proposal is withdrawn by the operator's instructions to remove Node-based tooling on 8 September 2026. The subsequent instruction selects the SDLC-recommended oxlint, tidy-html5 and Biome according to the source types owned by the project. The operator explicitly approved that web-tool selection before requesting this three-spec refresh. The operator subsequently accepted this minor refresh against the prior passing audits; the unsuccessful fresh audit attempt remains recorded separately.
 - Ignore rules :: Ignore binary output, local plaintext secrets, caches, and entire project-local agent runtime directories. Keep module checksums tracked.
 
+* Hands-off mode decision log
+
+** 2026-09-08T04:07:40Z :hands-off:review:
+
+*** Delivery admission and audit reset
+
+- Authority :: Taḋg directed delivery of W001, W002 and W003 in hands-off mode and explicitly instructed: "RESET your audit count".
+- Decision :: Preserve the earlier implementation-gate records, including the round-five failure, as revision-specific history. Start this delivery invocation's local implementation audit cycle at round 1 of at most 5.
+- Basis :: Each work item is ACTIVE with an operator-approved current definition gate PASS. W001 is delivered first because W002 and W003 name it as a dependency; W002 then supplies W003's counting dependency.
+- Boundary :: The reset authorizes a new local remediation cycle. It does not erase findings, waive RED/GREEN evidence, replace a retained external auditor, or imply validation or closure.
+
+*** Delivery choices
+
+- Decision :: Follow the approved Go application architecture, Exodan runtime contract, and native-tooling boundary. The application consumes supplied paths and listener address; Exodan retains URL/domain validation, deployment, routing, TLS and host ownership.
+- Decision :: No product or architecture question is outstanding within W001. The delivery remains limited to its signed-off foundation scope.
+
 * Delivery Handoff
 :PROPERTIES:
 :CUSTOM_ID: delivery-handoff

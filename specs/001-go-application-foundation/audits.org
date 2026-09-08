@@ -149,6 +149,12 @@
 
 - Execution :: Not started; this batch defines specifications only.
 
+** Operator-directed audit-cycle reset, 8 September 2026
+
+- Authority :: Taḋg explicitly directed: "RESET your audit count" while authorizing hands-off delivery of W001, W002 and W003.
+- Disposition :: Preserve all earlier implementation verdicts as historical evidence. The new delivery invocation begins local implementation review at round 1, with at most five local rounds before an external implementation audit is invoked.
+- Boundary :: This resets the local-round counter for this authorized delivery invocation only. It does not convert a prior failure into PASS, waive RED/GREEN evidence, validation, or external review, or replace an external context without the applicable audit workflow.
+
 ** Retained independent implementation audit, runner incident
 :PROPERTIES:
 :CONTEXT: not issued

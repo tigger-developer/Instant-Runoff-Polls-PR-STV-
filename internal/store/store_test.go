@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,5 +42,68 @@ func TestOpenInitializesAndReopensPersistentDatabase(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(directory, "stv-poll.sqlite")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOpenRejectsUnsupportedSchemaAndRollsBackFailedMigration(t *testing.T) {
+	ctx := context.Background()
+	directory := t.TempDir()
+	first, err := OpenWithMigrations(ctx, directory, []Migration{{Version: 1, Statements: []string{"CREATE TABLE retained (id INTEGER PRIMARY KEY)"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.DB.ExecContext(ctx, "INSERT INTO retained(id) VALUES (1)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	failed := []Migration{
+		{Version: 1, Statements: []string{"CREATE TABLE retained (id INTEGER PRIMARY KEY)"}},
+		{Version: 2, Statements: []string{"CREATE TABLE transient_table (id INTEGER PRIMARY KEY)", "THIS IS NOT SQL"}},
+	}
+	if _, err := OpenWithMigrations(ctx, directory, failed); err == nil {
+		t.Fatal("failed migration unexpectedly succeeded")
+	}
+	reopened, err := OpenWithMigrations(ctx, directory, []Migration{{Version: 1, Statements: []string{"CREATE TABLE retained (id INTEGER PRIMARY KEY)"}}})
+	if err != nil {
+		t.Fatalf("reopen after failed migration: %v", err)
+	}
+	defer reopened.Close()
+	var count int
+	if err := reopened.DB.QueryRowContext(ctx, "SELECT count(*) FROM retained").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("retained rows = %d", count)
+	}
+	var table string
+	err = reopened.DB.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transient_table'").Scan(&table)
+	if err != sql.ErrNoRows {
+		t.Fatalf("failed migration left transient table: %q, %v", table, err)
+	}
+
+	if _, err := reopened.DB.ExecContext(ctx, "UPDATE schema_version SET version = 99"); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenWithMigrations(ctx, directory, []Migration{{Version: 1}}); err == nil {
+		t.Fatal("newer schema unexpectedly opened")
+	}
+}
+
+func TestOpenRejectsMissingStateDirectory(t *testing.T) {
+	if _, err := Open(context.Background(), filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing state directory unexpectedly opened")
+	}
+}
+
+func TestOpenRejectsUnorderedMigrations(t *testing.T) {
+	migrations := []Migration{{Version: 2}, {Version: 1}}
+	if _, err := OpenWithMigrations(context.Background(), t.TempDir(), migrations); err == nil {
+		t.Fatal("unordered migrations unexpectedly opened")
 	}
 }

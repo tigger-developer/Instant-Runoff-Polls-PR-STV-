@@ -3,9 +3,11 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"gopkg.in/yaml.v3"
+	"io"
 	"os"
 	"time"
 )
@@ -77,8 +79,8 @@ func Load(defaultsPath, configPath, secretsPath string) (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("read configuration layer %q: %w", layer.path, err)
 		}
-		var values map[string]any
-		if err := yaml.Unmarshal(data, &values); err != nil {
+		values, err := parseLayer(data)
+		if err != nil {
 			return Config{}, fmt.Errorf("parse configuration layer %q: %w", layer.path, err)
 		}
 		if values == nil {
@@ -91,6 +93,9 @@ func Load(defaultsPath, configPath, secretsPath string) (Config, error) {
 			merged = map[string]any{}
 		}
 		merge(merged, values)
+	}
+	if err := validateKnownTypes(merged); err != nil {
+		return Config{}, err
 	}
 	data, err := yaml.Marshal(merged)
 	if err != nil {
@@ -110,6 +115,57 @@ func Load(defaultsPath, configPath, secretsPath string) (Config, error) {
 		return Config{}, errors.New("configuration http duration fields must be positive")
 	}
 	return cfg, nil
+}
+
+func validateKnownTypes(values map[string]any) error {
+	baseURL, ok := values["base_url"]
+	if !ok || baseURL == nil {
+		return errors.New("configuration field base_url is required")
+	}
+	if _, ok := baseURL.(string); !ok {
+		return errors.New("configuration field base_url must be a string")
+	}
+	dataDirs, ok := values["data_dirs"]
+	if !ok || dataDirs == nil {
+		return errors.New("configuration field data_dirs is required")
+	}
+	if _, ok := dataDirs.([]any); !ok {
+		return errors.New("configuration field data_dirs must be a sequence")
+	}
+	httpValues, ok := values["http"]
+	if !ok || httpValues == nil {
+		return errors.New("configuration field http is required")
+	}
+	httpMap, ok := httpValues.(map[string]any)
+	if !ok {
+		return errors.New("configuration field http must be a mapping")
+	}
+	for _, key := range []string{"read_header_timeout", "read_timeout", "write_timeout", "idle_timeout", "shutdown_timeout"} {
+		value, ok := httpMap[key]
+		if !ok || value == nil {
+			return fmt.Errorf("configuration field http.%s is required", key)
+		}
+		if _, ok := value.(string); !ok {
+			return fmt.Errorf("configuration field http.%s must be a duration string", key)
+		}
+	}
+	return nil
+}
+
+func parseLayer(data []byte) (map[string]any, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	var values map[string]any
+	if err := decoder.Decode(&values); err != nil {
+		return nil, err
+	}
+	var additional any
+	if err := decoder.Decode(&additional); err != io.EOF {
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("multiple documents are not supported")
+	}
+	return values, nil
 }
 
 func merge(dst, src map[string]any) {

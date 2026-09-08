@@ -56,6 +56,14 @@ func (s *Store) migrate(ctx context.Context, appliedMigrations []Migration) erro
 	if len(appliedMigrations) == 0 {
 		return fmt.Errorf("no migrations configured")
 	}
+	for index, migration := range appliedMigrations {
+		if migration.Version <= 0 {
+			return fmt.Errorf("migration version %d must be positive", migration.Version)
+		}
+		if index > 0 && migration.Version <= appliedMigrations[index-1].Version {
+			return fmt.Errorf("migrations must be ordered by increasing version")
+		}
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin migration: %w", err)
