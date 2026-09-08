@@ -69,6 +69,35 @@ type DeliveryAttempt struct {
 	Attempts       int
 }
 
+type CloseOption struct {
+	ID    string
+	Label string
+}
+
+type CloseParticipant struct {
+	ID string
+}
+
+type CloseBallot struct {
+	ParticipantID string
+	Preferences   []string
+	Version       int
+	AcceptedAt    int64
+}
+
+type CloseWork struct {
+	PollID       string
+	OwnerID      string
+	Question     string
+	Deadline     int64
+	Places       int
+	State        string
+	Version      int
+	Options      []CloseOption
+	Participants []CloseParticipant
+	Ballots      []CloseBallot
+}
+
 func (s *Store) ReplaceElectorate(ctx context.Context, ownerID, pollID string, expectedVersion int, participants []ElectorateParticipant) error {
 	if s == nil || s.DB == nil || ownerID == "" || pollID == "" || expectedVersion < 1 {
 		return ErrConflict
@@ -414,6 +443,84 @@ func (s *Store) FailWork(ctx context.Context, workID, claimToken string, now tim
 		return ErrConflict
 	}
 	return nil
+}
+
+func (s *Store) LoadCloseWork(ctx context.Context, workID, claimToken string, now time.Time) (CloseWork, error) {
+	var work CloseWork
+	err := s.DB.QueryRowContext(ctx, `SELECT poll.id,poll.owner_id,poll.question,poll.deadline,poll.places,poll.state,poll.version FROM work_items AS work JOIN polls AS poll ON poll.id=work.poll_id WHERE work.id=? AND work.kind='close' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&work.PollID, &work.OwnerID, &work.Question, &work.Deadline, &work.Places, &work.State, &work.Version)
+	if err != nil {
+		return CloseWork{}, ErrConflict
+	}
+	optionRows, err := s.DB.QueryContext(ctx, "SELECT id,label FROM options WHERE poll_id=? ORDER BY display_order", work.PollID)
+	if err != nil {
+		return CloseWork{}, fmt.Errorf("read close options: %w", err)
+	}
+	for optionRows.Next() {
+		var option CloseOption
+		if err := optionRows.Scan(&option.ID, &option.Label); err != nil {
+			_ = optionRows.Close()
+			return CloseWork{}, fmt.Errorf("scan close option: %w", err)
+		}
+		work.Options = append(work.Options, option)
+	}
+	if err := optionRows.Close(); err != nil {
+		return CloseWork{}, fmt.Errorf("close option rows: %w", err)
+	}
+	participantRows, err := s.DB.QueryContext(ctx, "SELECT id FROM participants WHERE poll_id=? ORDER BY id", work.PollID)
+	if err != nil {
+		return CloseWork{}, fmt.Errorf("read close participants: %w", err)
+	}
+	for participantRows.Next() {
+		var participant CloseParticipant
+		if err := participantRows.Scan(&participant.ID); err != nil {
+			_ = participantRows.Close()
+			return CloseWork{}, fmt.Errorf("scan close participant: %w", err)
+		}
+		work.Participants = append(work.Participants, participant)
+	}
+	if err := participantRows.Close(); err != nil {
+		return CloseWork{}, fmt.Errorf("close participant rows: %w", err)
+	}
+	ballotRows, err := s.DB.QueryContext(ctx, "SELECT participant_id,preferences_json,version,accepted_at FROM ballots WHERE poll_id=? ORDER BY participant_id", work.PollID)
+	if err != nil {
+		return CloseWork{}, fmt.Errorf("read close ballots: %w", err)
+	}
+	for ballotRows.Next() {
+		var ballot CloseBallot
+		var preferences []byte
+		if err := ballotRows.Scan(&ballot.ParticipantID, &preferences, &ballot.Version, &ballot.AcceptedAt); err != nil || json.Unmarshal(preferences, &ballot.Preferences) != nil {
+			_ = ballotRows.Close()
+			return CloseWork{}, ErrConflict
+		}
+		work.Ballots = append(work.Ballots, ballot)
+	}
+	if err := ballotRows.Close(); err != nil {
+		return CloseWork{}, fmt.Errorf("close ballot rows: %w", err)
+	}
+	return work, nil
+}
+
+func (s *Store) ClosePollNoVotes(ctx context.Context, ownerID, pollID string, expectedVersion int, now time.Time) (bool, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin zero-turnout close: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var state string
+	var version, ballots int
+	if err := tx.QueryRowContext(ctx, "SELECT state,version,(SELECT count(*) FROM ballots WHERE poll_id=polls.id) FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&state, &version, &ballots); err != nil || version != expectedVersion || ballots != 0 || state != "open" && state != "paused" {
+		return false, ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled' WHERE message_kind='invitation' AND status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='delivery')", pollID); err != nil {
+		return false, fmt.Errorf("cancel invitations: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',counting_status='no_votes',closed_at=?,version=version+1 WHERE id=? AND version=?", now.Unix(), pollID, expectedVersion); err != nil {
+		return false, fmt.Errorf("close zero-turnout poll: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit zero-turnout close: %w", err)
+	}
+	return true, nil
 }
 
 func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken string, now time.Time) (DeliveryAttempt, error) {
