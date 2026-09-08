@@ -14,6 +14,7 @@ type Address struct {
 }
 
 type Participant struct {
+	ID        string
 	Addresses []Address
 }
 
