@@ -16,7 +16,27 @@ type Migration struct {
 	Statements []string
 }
 
-var migrations = []Migration{{Version: 1}}
+var migrations = []Migration{
+	{Version: 1},
+	{Version: 2, Statements: []string{
+		`CREATE TABLE moderators (id TEXT PRIMARY KEY, normalized_email TEXT NOT NULL UNIQUE)`,
+		`CREATE TABLE polls (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL REFERENCES moderators(id), question TEXT NOT NULL, deadline INTEGER NOT NULL, display_offset TEXT NOT NULL DEFAULT '', places INTEGER NOT NULL CHECK (places > 0), announce INTEGER NOT NULL DEFAULT 0 CHECK (announce IN (0,1)), state TEXT NOT NULL CHECK (state IN ('draft','open','paused','closed')), counting_status TEXT NOT NULL DEFAULT 'pending' CHECK (counting_status IN ('pending','awaiting_decision','succeeded','failed','no_votes')), version INTEGER NOT NULL CHECK (version > 0), created_at INTEGER NOT NULL DEFAULT 0, closed_at INTEGER)`,
+		`CREATE TABLE options (poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE, id TEXT NOT NULL, label TEXT NOT NULL, display_order INTEGER NOT NULL, PRIMARY KEY (poll_id,id), UNIQUE (poll_id,display_order))`,
+		`CREATE TABLE participants (id TEXT PRIMARY KEY, poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE, display_name TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE contacts (id TEXT PRIMARY KEY, poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE, participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE, delivery_email TEXT NOT NULL, normalized_email TEXT NOT NULL, UNIQUE (poll_id,normalized_email))`,
+		`CREATE TABLE grants (id TEXT PRIMARY KEY, purpose TEXT NOT NULL, principal_id TEXT NOT NULL, poll_id TEXT REFERENCES polls(id) ON DELETE CASCADE, contact_id TEXT REFERENCES contacts(id) ON DELETE CASCADE, key_id TEXT NOT NULL, token_hash BLOB NOT NULL UNIQUE, claims_json BLOB NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, consumed_at INTEGER, revoked_at INTEGER)`,
+		`CREATE TABLE sessions (token_hash BLOB PRIMARY KEY, purpose TEXT NOT NULL, principal_id TEXT NOT NULL, poll_id TEXT REFERENCES polls(id) ON DELETE CASCADE, csrf_hash BLOB NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)`,
+		`CREATE TABLE ballots (poll_id TEXT NOT NULL REFERENCES polls(id) ON DELETE CASCADE, participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE, version INTEGER NOT NULL, preferences_json BLOB NOT NULL, accepted_at INTEGER NOT NULL, PRIMARY KEY (poll_id,participant_id))`,
+		`CREATE TABLE count_snapshots (id TEXT PRIMARY KEY, poll_id TEXT NOT NULL UNIQUE REFERENCES polls(id) ON DELETE CASCADE, schema_version INTEGER NOT NULL, rule TEXT NOT NULL, input_fingerprint TEXT NOT NULL, input_json BLOB NOT NULL, created_at INTEGER NOT NULL)`,
+		`CREATE TABLE count_decisions (snapshot_id TEXT NOT NULL REFERENCES count_snapshots(id) ON DELETE CASCADE, sequence INTEGER NOT NULL, request_fingerprint TEXT NOT NULL, decision_json BLOB NOT NULL, PRIMARY KEY (snapshot_id,sequence))`,
+		`CREATE TABLE count_results (snapshot_id TEXT PRIMARY KEY REFERENCES count_snapshots(id) ON DELETE CASCADE, result_json BLOB NOT NULL, committed_at INTEGER NOT NULL)`,
+		`CREATE TABLE work_items (id TEXT PRIMARY KEY, poll_id TEXT REFERENCES polls(id) ON DELETE CASCADE, kind TEXT NOT NULL, logical_key TEXT NOT NULL UNIQUE, due_at INTEGER NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, claim_token TEXT, claim_expires_at INTEGER, failure_class TEXT)`,
+		`CREATE TABLE deliveries (id TEXT PRIMARY KEY, work_id TEXT NOT NULL UNIQUE REFERENCES work_items(id) ON DELETE CASCADE, grant_id TEXT REFERENCES grants(id), contact_id TEXT REFERENCES contacts(id), recipient_email TEXT NOT NULL, message_kind TEXT NOT NULL, status TEXT NOT NULL, next_due INTEGER NOT NULL, smtp_outcome TEXT)`,
+		`CREATE TABLE link_requests (request_hash BLOB NOT NULL, purpose TEXT NOT NULL, poll_id TEXT, submitted_at INTEGER NOT NULL)`,
+		`CREATE INDEX link_requests_submitted_at ON link_requests(submitted_at)`,
+		`CREATE INDEX work_items_due ON work_items(status,due_at,id)`,
+	}},
+}
 
 type Store struct{ DB *sql.DB }
 

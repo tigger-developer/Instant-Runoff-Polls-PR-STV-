@@ -107,3 +107,26 @@ func TestOpenRejectsUnorderedMigrations(t *testing.T) {
 		t.Fatal("unordered migrations unexpectedly opened")
 	}
 }
+
+func TestOpenCreatesInvitedPollWorkflowSchema(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	for _, table := range []string{"moderators", "polls", "options", "participants", "contacts", "grants", "sessions", "ballots", "count_snapshots", "count_decisions", "count_results", "work_items", "deliveries", "link_requests"} {
+		var found string
+		if err := st.DB.QueryRowContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&found); err != nil {
+			t.Fatalf("table %s: %v", table, err)
+		}
+	}
+
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO moderators(id, normalized_email) VALUES ('m1', 'same@example.test'), ('m2', 'same@example.test')"); err == nil {
+		t.Fatal("duplicate moderator email unexpectedly succeeded")
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO polls(id, owner_id, question, deadline, places, state, version) VALUES ('p1', 'missing', 'Question', 1, 1, 'draft', 1)"); err == nil {
+		t.Fatal("poll with missing owner unexpectedly succeeded")
+	}
+}
