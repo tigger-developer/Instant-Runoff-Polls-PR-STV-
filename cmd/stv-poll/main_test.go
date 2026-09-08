@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"html/template"
 	"net"
 	"net/http"
@@ -175,6 +176,58 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 	asset.Body.Close()
 	if asset.StatusCode != http.StatusOK || !strings.HasPrefix(asset.Header.Get("Content-Type"), "text/css") {
 		t.Fatalf("asset response = %d %q", asset.StatusCode, asset.Header.Get("Content-Type"))
+	}
+}
+
+func TestHTTPServerRejectsOversizedHeaders(t *testing.T) {
+	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second})
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() { _ = server.Serve(listener) }()
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	request := "GET / HTTP/1.1\r\nHost: poll.example\r\nX-Long: " + strings.Repeat("x", 70*1024) + "\r\n\r\n"
+	if _, err := connection.Write([]byte(request)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 256)
+	count, err := connection.Read(buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(buffer[:count]), "431") && !strings.Contains(string(buffer[:count]), "400") {
+		t.Fatalf("oversized header response = %q", buffer[:count])
+	}
+}
+
+func TestHTTPServerClosesIncompleteHeadersAtDeadline(t *testing.T) {
+	server := newHTTPServer("127.0.0.1:0", http.NotFoundHandler(), config.HTTP{ReadHeaderTimeout: 30 * time.Millisecond, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second})
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() { _ = server.Serve(listener) }()
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if err := connection.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 1)
+	count, err := connection.Read(buffer)
+	if count != 0 || err == nil {
+		t.Fatalf("incomplete header read = %d, %v", count, err)
 	}
 }
 

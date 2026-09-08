@@ -85,7 +85,7 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("parse templates: %w", err)
 	}
-	server := &http.Server{Addr: addr, Handler: web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.Dir(staticDirectory))), ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout, ReadTimeout: cfg.HTTP.ReadTimeout, WriteTimeout: cfg.HTTP.WriteTimeout, IdleTimeout: cfg.HTTP.IdleTimeout, MaxHeaderBytes: 64 * 1024}
+	server := newHTTPServer(addr, web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.Dir(staticDirectory))), cfg.HTTP)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	shutdownErr := make(chan error, 1)
@@ -100,6 +100,18 @@ func serve() error {
 		return <-shutdownErr
 	}
 	return err
+}
+
+func newHTTPServer(addr string, handler http.Handler, settings config.HTTP) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: settings.ReadHeaderTimeout,
+		ReadTimeout:       settings.ReadTimeout,
+		WriteTimeout:      settings.WriteTimeout,
+		IdleTimeout:       settings.IdleTimeout,
+		MaxHeaderBytes:    64 * 1024,
+	}
 }
 
 func assetDirectories(dataDirectories []string) (string, string, error) {
