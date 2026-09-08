@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"html/template"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -261,6 +263,74 @@ func TestHTTPServerClosesIncompleteHeadersAtDeadline(t *testing.T) {
 	count, err := connection.Read(buffer)
 	if count != 0 || err == nil {
 		t.Fatalf("incomplete header read = %d, %v", count, err)
+	}
+}
+
+func TestHTTPServerBoundsIncompleteRequestBodies(t *testing.T) {
+	bodyRead := make(chan error, 1)
+	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := io.ReadAll(r.Body)
+		bodyRead <- err
+	}), config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: 30 * time.Millisecond, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second})
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() { _ = server.Serve(listener) }()
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err := connection.Write([]byte("POST / HTTP/1.1\r\nHost: poll.example\r\nContent-Length: 10\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-bodyRead:
+		if err == nil {
+			t.Fatal("incomplete body unexpectedly read successfully")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("request body was not bounded by ReadTimeout")
+	}
+}
+
+func TestHTTPServerClosesIdleKeepAliveConnections(t *testing.T) {
+	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: 30 * time.Millisecond, ShutdownTimeout: time.Second})
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() { _ = server.Serve(listener) }()
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if _, err := connection.Write([]byte("GET / HTTP/1.1\r\nHost: poll.example\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReader(connection)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		if line == "\r\n" {
+			break
+		}
+	}
+	if err := connection.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 1)
+	count, err := reader.Read(buffer)
+	if count != 0 || err == nil {
+		t.Fatalf("idle keep-alive read = %d, %v", count, err)
 	}
 }
 
