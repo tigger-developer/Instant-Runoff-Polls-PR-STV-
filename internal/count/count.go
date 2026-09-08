@@ -68,7 +68,7 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 				}
 			}
 		}
-		if len(continuing) == input.Places-len(winners) {
+		if continuingCount(continuing) == input.Places-len(winners) {
 			for _, option := range input.Options {
 				if continuing[option] {
 					winners = append(winners, option)
@@ -117,6 +117,16 @@ func tally(options []string, allocations []allocation) map[string]int {
 		}
 	}
 	return totals
+}
+
+func continuingCount(continuing map[string]bool) int {
+	count := 0
+	for _, active := range continuing {
+		if active {
+			count++
+		}
+	}
+	return count
 }
 func nextPreference(ballot Ballot, continuing map[string]bool) string {
 	for _, p := range ballot.Preferences {
