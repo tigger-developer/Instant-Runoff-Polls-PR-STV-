@@ -101,7 +101,7 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/002-irish-pr-stv-counting/spec.org][W002 - Implement reproducible Irish PR-STV counting]].
 - Scope :: Counting engine, quota, transfers, exclusions, recorded decisions, replay, and independent count fixtures.
-- Definition :: Draft written; definition gate and operator sign-off are pending. The exact statutory rule mapping and source edition remain explicitly unresolved in the draft.
+- Definition :: Draft written; definition gate and operator sign-off are pending. The exact application counting rules and worked cases remain to be finalized. The operator withdrew legislative conformity and source-edition verification as requirements on 8 September 2026; legislation is guidance.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]].
 
 ** TODO W003 - Deliver the invited poll workflow :feature:

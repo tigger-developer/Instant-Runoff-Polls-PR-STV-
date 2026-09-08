@@ -12,14 +12,14 @@
 
 * One-off tests
 
-** OT002.1 - Rule-to-fixture conformance
+** OT002.1 - Application rule and fixture review
 :PROPERTIES:
 :CUSTOM_ID: ot-002-1-result
 :END:
 
 - Category :: Bounded one-off verification.
-- Criterion :: [[file:spec.org::#ac-002-3][AC002.3 - Selected national counting rules]].
-- Definition :: [[file:spec.org::#ot-002-1][OT002.1 - Rule-to-fixture conformance]].
+- Criterion :: [[file:spec.org::#ac-002-3][AC002.3 - Specified application counting rules]].
+- Definition :: [[file:spec.org::#ot-002-1][OT002.1 - Application rule and fixture review]].
 - Result :: PENDING.
-- Procedure and expected result :: Review the adopted source edition and every applicable counting-rule branch against independent fixture expectations. One conformance review and at most one remediation review; no live polls or external service calls.
+- Procedure and expected result :: Review the approved application counting rules against independent fixture expectations, including arithmetic, conservation, termination, and replay. One review and at most one remediation review; no live polls or external service calls. Legislative conformity and amendment/source-edition verification are not required.
 - Execution evidence :: No execution or human result has been recorded.

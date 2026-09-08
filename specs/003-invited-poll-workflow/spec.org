@@ -14,7 +14,7 @@
 - Before :: Product rules and architecture are captured; W001 supplies the foundation and W002 the counting engine.
 - After :: The full server-rendered workflow supports *grouped email addresses, list reuse, pause/close, and optional announcement*.
 - Changes :: Add moderator/participant access, poll and electorate storage, forms, ballots, durable counting/delivery, result views, and approved help copy.
-- Unchanged :: *One participant has one effective vote per poll*. Exodan owns deployment/scheduling; Irish PR-STV is unchanged; no JavaScript is required.
+- Unchanged :: *One participant has one effective vote per poll*. Exodan owns deployment/scheduling; Irish PR-STV guides the application's counting rules; no JavaScript is required. Legislative conformity is not required.
 - Edge cases :: Invalid lists/rankings, expired links, cross-poll access, concurrent aliases, deadline races, paused deadlines, zero turnout, mail failure, and interrupted counts.
 - Decisions :: The policy proposals below explicitly resolve VISION's open questions for *operator review*: owner-only moderation, private individual ballots, frozen opened polls, resumable pauses, fixed deadline semantics, email announcements defaulting off, and defined access/retention rules.
 - Next step :: Definition gate and operator sign-off, including those *proposed policies*. Implementation follows W001 and W002; no production deployment is part of this ticket.
@@ -52,7 +52,7 @@ A moderator can conduct the documented poll from preparation to outcome, and a p
 ** Constraints and dependencies
 
 - [[file:../001-go-application-foundation/spec.org][W001 - Go application foundation]] must supply the runtime, storage, and verification entry points.
-- [[file:../002-irish-pr-stv-counting/spec.org][W002 - Reproducible Irish PR-STV counting]] must supply the audited counting interface and adopted rule packet before this workflow's counting integration can be delivered.
+- [[file:../002-irish-pr-stv-counting/spec.org][W002 - Reproducible Irish PR-STV counting]] must supply the audited counting interface and explicit application counting rules before this workflow's counting integration can be delivered. Legislation is guidance, not a compliance prerequisite.
 - Use *ordinary HTML forms and Go-rendered pages*. Count work and SMTP run outside web/database write transactions.
 - Definition work stays on *master*, following the operator's instruction; create a coding branch only at delivery.
 
@@ -82,7 +82,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 ** Unresolved blockers
 
 - The product policies above await *operator disposition at definition sign-off*; they are not hidden assumptions for implementation.
-- W002's adopted counting-rule packet remains a prerequisite. Do not bypass its gate or substitute a generic STV implementation.
+- W002's approved application counting rules remain a prerequisite. Do not bypass its definition gate or substitute a generic STV implementation; no legislative-conformity gate applies.
 
 * Acceptance Criteria
 :PROPERTIES:

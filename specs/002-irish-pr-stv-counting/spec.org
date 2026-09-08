@@ -10,13 +10,13 @@
 :CUSTOM_ID: summary
 :END:
 
-- Outcome :: A *Go counting engine* selects winning options and records an explainable, reproducible Irish PR-STV count.
-- Before :: The system and counting authority are documented; *no engine exists*.
+- Outcome :: A *Go counting engine* selects winning options and records an explainable, reproducible PR-STV count guided by the Irish system.
+- Before :: The system and reference material are documented; *no engine exists*.
 - After :: A validated frozen ballot input and recorded decisions produce winners and the full count record.
 - Changes :: Add the counting model, validation, quota, transfers, exclusions, last-vacancy handling, explicit decision requests, and independent fixtures.
-- Unchanged :: The engine has *no HTTP, database, email, participant identity, or scheduling ownership*. Irish PR-STV remains the selected system.
+- Unchanged :: The engine has *no HTTP, database, email, participant identity, or scheduling ownership*. Irish PR-STV remains the guide; *legislative conformity is not required*.
 - Edge cases :: Single winner, surplus rounding, last parcels, exhausted preferences, historical and unresolved ties, last vacancies, malformed decisions, replay, cancellation, and input bounds.
-- Decisions :: External selections are *explicit inputs*, never hidden randomness. The source edition and detailed statutory rule mapping require a conformance record.
+- Decisions :: External selections are *explicit inputs*, never hidden randomness. This specification defines the application's counting rules and worked cases; legislation and Wikipedia provide guidance.
 - Next step :: Definition gate and operator sign-off. Delivery depends on W001's Go module and verification entry points.
 
 -----
@@ -36,16 +36,17 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 ** Scope
 
-- In scope :: The internal Go counting API, versioned input/output model, rule mapping, validation, decision requests, and count fixtures.
-- Out of scope :: Poll acceptance, ballot revisions, participant contact data, authentication, announcements, scheduled execution, and statutory administration of an actual election.
-- Unchanged :: Automation replaces manual execution; *the selected counting rules remain authoritative*.
+- In scope :: The internal Go counting API, versioned input/output model, application counting rules, validation, decision requests, and count fixtures.
+- Out of scope :: Poll acceptance, ballot revisions, participant contact data, authentication, announcements, scheduled execution, legislative conformity, legislative amendment tracking, and statutory administration of an actual election.
+- Unchanged :: Automation replaces manual execution; *the approved application counting rules govern the engine*.
 
 ** Authority and starting point
 
 - Project :: [[file:../../.sdlc/project.yaml][Project profile]].
 - Product :: [[file:../../docs/VISION.md][VISION: Why Irish PR-STV]] and [[file:../../README.md][README: Pause, close, and count]].
 - Architecture :: [[file:../../docs/ARCHITECTURE.md][ARCHITECTURE: Counting, work processing, and announcement]].
-- Normative source :: Part XIX of the [[https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html][Electoral Act 1992]], with the applicable amendments required by VISION. The public overview remains [[https://www.electoralcommission.ie/irelands-voting-system/][the Electoral Commission's explanation]].
+- Working references :: Wikipedia's [[https://en.wikipedia.org/wiki/Single_transferable_vote][Single transferable vote]] and [[https://en.wikipedia.org/wiki/Counting_single_transferable_votes][Counting single transferable votes]] articles guide the online-poll algorithm. They describe variants; the selected application rules must be explicit here.
+- Background guidance :: Part XIX of the [[https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html][Electoral Act 1992]] and [[https://www.electoralcommission.ie/irelands-voting-system/][the Electoral Commission's explanation]]. These are reference material, not mandatory compliance authorities.
 - Baseline :: Documentation commit =be75045= (accepted application architecture); the sibling reuse plan supplies application foundations, *not an established counting engine*.
 
 ** Constraints and dependencies
@@ -59,12 +60,13 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 - Established :: Moderator-defined place count; Irish PR-STV; automatic counting; reproducibility through recorded selection inputs.
 - Design proposal :: Use a deterministic engine that returns an *explicit decision request* when the rule needs an external selection. The workflow obtains and durably records that selection before resuming.
-- Rule authority :: References below are normative. No amendment or discretionary interpretation is silently inferred from a generic STV library.
+- Rule authority :: This specification, once approved, defines the required application behaviour. Reference material does not independently impose requirements, and changes to the chosen algorithm must be explicit.
+- Operator clarification, 8 September 2026 :: This is an online poll. The earlier requirement for legislative conformity, applicable-amendment verification, and a statutory source edition is *withdrawn*. Legislation remains guidance, and election-administration or financial-threshold requirements do not apply.
 
 ** Unresolved blockers
 
-- The architecture explicitly deferred the *detailed statutory rule mapping and applicable amendments*. This draft captures its required coverage and concrete core fixtures; the conformance packet must identify the exact adopted source edition and resolve every applicable arithmetic/selection branch before this ticket receives definition PASS.
-- This is a *counting-definition dependency*, not permission for the delivery agent to select an alternative counting system. W001's foundation definition does not depend on resolving it.
+- The remaining definition work is to make the *application's arithmetic, selection, and termination rules and worked cases explicit*. No legislative compliance review, amendment research, or source-edition determination is required for definition PASS.
+- The delivery agent must implement the approved application rules rather than silently selecting another variant. W001's foundation definition does not depend on this counting detail.
 
 * Acceptance Criteria
 :PROPERTIES:
@@ -87,13 +89,13 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 - Criterion :: For a non-empty valid input with N ballots and S winning places, the engine uses *floor(N/(S+1)) + 1* as the quota throughout the count.
 - Proven by :: [[#rt-002-2][RT002.2 - Quota and single-winner termination]].
 
-** AC002.3 - Selected national counting rules
+** AC002.3 - Specified application counting rules
 :PROPERTIES:
 :CUSTOM_ID: ac-002-3
 :END:
 
-- Criterion :: The engine applies *the Irish PR-STV counting rules identified in VISION*, preserving their transfer, exclusion, tie, and last-vacancy rules. It does not substitute fractional-transfer STV or a generic instant-runoff algorithm.
-- Proven by :: [[#rt-002-3][RT002.3 - Original-vote surplus]]; [[#rt-002-4][RT002.4 - Last-parcel surplus]]; [[#rt-002-5][RT002.5 - Exclusions and exhaustion]]; [[#rt-002-6][RT002.6 - Last vacancies and multiple exclusions]]; [[#rt-002-7][RT002.7 - Ties and decision replay]]; [[#ot-002-1][OT002.1 - Rule-to-fixture conformance]].
+- Criterion :: The engine applies *the application's specified PR-STV rules*, guided by the Irish whole-vote system, including transfers, exclusions, ties, and last vacancies. It does not substitute fractional-transfer STV or a generic instant-runoff algorithm. Acceptance is against these application rules and worked cases, not legislation.
+- Proven by :: [[#rt-002-3][RT002.3 - Original-vote surplus]]; [[#rt-002-4][RT002.4 - Last-parcel surplus]]; [[#rt-002-5][RT002.5 - Exclusions and exhaustion]]; [[#rt-002-6][RT002.6 - Last vacancies and multiple exclusions]]; [[#rt-002-7][RT002.7 - Ties and decision replay]]; [[#ot-002-1][OT002.1 - Application rule and fixture review]].
 
 ** AC002.4 - Original-vote surplus
 :PROPERTIES:
@@ -201,7 +203,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 :CUSTOM_ID: rt-002-3
 :END:
 
-- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-4][AC002.4 - Original-vote surplus]]; [[#ac-002-10][AC002.10 - Count record explains the arithmetic]].
+- Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-4][AC002.4 - Original-vote surplus]]; [[#ac-002-10][AC002.10 - Count record explains the arithmetic]].
 - Boundary :: Run and its structured count record.
 - Setup :: Two places; ballots 4 x A>B, 2 x A>C, 2 x B, 1 x C, 1 x D>B; input order is explicit.
 - Action :: Count without any tie decision unless the selected rules actually require one.
@@ -213,7 +215,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 :CUSTOM_ID: rt-002-4
 :END:
 
-- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-5][AC002.5 - Transferred-vote surplus]].
+- Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-5][AC002.5 - Transferred-vote surplus]].
 - Boundary :: Run and decision requests.
 - Setup :: Two places; 4 x A>B, 3 x B, 3 x C, 1 x D>A>B, 1 x D>A>C. For an unresolved B/C remainder lot, provide B as the recorded eligible selection.
 - Action :: Count and replay with the same decision record.
@@ -225,7 +227,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 :CUSTOM_ID: rt-002-5
 :END:
 
-- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-6][AC002.6 - Exclusion transfers preserve preferences]].
+- Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-6][AC002.6 - Exclusion transfers preserve preferences]].
 - Boundary :: Run.
 - Setup :: One place; 4 x A, 3 x B, 1 x C. Separately use a ballot whose next listed option has already been elected or excluded.
 - Action :: Count the first fixture and a fixed hand-tabulated skip fixture.
@@ -237,11 +239,11 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 :CUSTOM_ID: rt-002-6
 :END:
 
-- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
+- Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
 - Boundary :: Run.
 - Setup :: A last-vacancy fixture from RT002.5; an exactly-as-many-options-as-places input; and two places with 20 x A, 20 x B, 18 x C, 1 x D>A, 1 x E>B.
-- Action :: Apply the selected national rules, including all conditions on multiple exclusion.
-- Expected :: Last-vacancy termination fills the permitted places without demanding quota. For the 60-ballot fixture quota is 21; the eligible D/E exclusion transfers one ballot each to A and B, which win. Record whether the national rule treats the exclusion as one operation and check that no candidate outside the permitted exclusion set is removed.
+- Action :: Apply the specified application rules, including the explicit conditions on multiple exclusion.
+- Expected :: Last-vacancy termination fills the permitted places without demanding quota. For the 60-ballot fixture quota is 21; the eligible D/E exclusion transfers one ballot each to A and B, which win. The application rule must specify the operation order and permitted exclusion set before implementation; no statutory financial threshold is an acceptance condition.
 - Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
 
 ** RT002.7 - Ties and decision replay
@@ -249,7 +251,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 :CUSTOM_ID: rt-002-7
 :END:
 
-- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]]; [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]]; [[#ac-002-9][AC002.9 - Replay preserves the full result]]; [[#ac-002-11][AC002.11 - Invalid decision records fail closed]].
+- Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]]; [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]]; [[#ac-002-9][AC002.9 - Replay preserves the full result]]; [[#ac-002-11][AC002.11 - Invalid decision records fail closed]].
 - Boundary :: Run(input, decisions).
 - Setup :: One place with 2 x A>B and 2 x B>A; no prior count separates A and B. Add fixtures where historical totals do resolve a tie, and malformed decision records.
 - Action :: Run with no decision, then with the eligible exclusion choice B, replay that choice, and try an ineligible C, a mismatched request fingerprint, and unused trailing decisions.
@@ -280,16 +282,16 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 - Expected :: Supported input completes or returns a legitimate decision request; oversized input and cancellation return explicit errors. No final result is returned on cancellation or failed conservation. The implementation cannot loop without count progress.
 - Retention :: Persistent Go tests through =make test=, written before the corresponding counting logic. Expected results are independently specified, not captured from the implementation.
 
-** OT002.1 - Rule-to-fixture conformance
+** OT002.1 - Application rule and fixture review
 :PROPERTIES:
 :CUSTOM_ID: ot-002-1
 :END:
 
-- Covers :: [[#ac-002-3][AC002.3 - Selected national counting rules]].
-- Boundary :: The implementation's rule mapping and human-calculated fixture expectations against the counting authority already named in VISION.
-- Procedure :: Review the mapping of sections 118 through 124, including surplus eligibility/order, parcel selection, remainder ties, exclusion ties, multiple exclusions, non-transferability, and last vacancies. Check each mapped branch has fixed input, expected intermediate totals/selection, and a source reference before accepting its implementation evidence.
-- Expected :: Every applicable rule has a mapped implementation responsibility and independent fixture; administrative provisions are identified separately without silently dropping arithmetic conditions. The mapping records the source edition and applicable amendments used for this release.
-- Bounds :: One local conformance review of this ticket's rule packet and fixtures, with one remediation review if required; no deployed poll, real ballots, external email, or metered service.
+- Covers :: [[#ac-002-3][AC002.3 - Specified application counting rules]].
+- Boundary :: The implementation and independently calculated fixture expectations against this application's approved counting specification.
+- Procedure :: Review quota, surplus eligibility/order, parcel selection, remainder ties, exclusion ties, multiple exclusions, non-transferability, and last vacancies. Check each specified branch has fixed input and expected intermediate totals/selection before accepting its implementation evidence.
+- Expected :: Each application rule has an implementation responsibility and independent fixture. Arithmetic, conservation, termination, and replay match the approved specification. No statutory compliance or amendment review is required.
+- Bounds :: One local review of this ticket's counting rules and fixtures, with one remediation review if required; no deployed poll, real ballots, external email, or metered service.
 - Record :: PENDING in =validation.org=. This one-off review does not replace retained behavioural tests or the definition audit.
 
 * Edge Cases
@@ -299,7 +301,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 - A winner may have a surplus in a one-place poll, but *no transfer is needed after that place is filled*. Covered by [[#ac-002-7][AC002.7 - Last vacancies terminate the count]].
 - A ballot exhausting its preferences *remains accounted for* and does not lower the fixed quota. Covered by [[#ac-002-2][AC002.2 - Quota derives from ballots and places]] and [[#ac-002-6][AC002.6 - Exclusion transfers preserve preferences]].
-- Equal totals do not automatically mean lots: *apply the source's historical comparisons first*. Covered by [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]].
+- Equal totals do not automatically mean lots: *apply the application's specified historical comparisons first*. Covered by [[#ac-002-8][AC002.8 - Unresolved lots require explicit decisions]].
 - A persisted decision may be syntactically valid but belong to another stage. The engine *rejects a mismatched request identity*. Covered by [[#ac-002-11][AC002.11 - Invalid decision records fail closed]].
 - Empty input *returns an input error*, not invented winners. The poll-level zero-turnout outcome is specified in W003.
 
@@ -320,7 +322,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 
 1. Validate the rule version, options, place count, ballot IDs, and ranked preferences.
 2. Create original parcels from the *explicit input ballot order* and calculate the fixed quota.
-3. Apply the source-defined count transitions. Preserve parcel provenance and intermediate totals.
+3. Apply the specified application count transitions. Preserve parcel provenance and intermediate totals.
 4. On a required external selection, *return a decision request* rather than a final result.
 5. Replay from the same input with the extended decision record; return the final count only when all required decisions have been validated and termination is established.
 
@@ -335,9 +337,9 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 - Count record :: Totals, election/exclusion events, parcel transfers, non-transferable changes, and selection provenance. Do not serialize email addresses, participant IDs, or browser-facing text.
 - Compatibility :: Version persisted structures explicitly. Unsupported versions fail; do not reinterpret an earlier count using a changed algorithm.
 
-*** Normative rule mapping
+*** Counting reference guide
 
-| Source | Required responsibility |
+| Background source | Topic informing application rules |
 |--------+-------------------------|
 | Section 118 | Definitions of continuing candidates, original/transferred votes, surplus, next available preference, and transferable papers. |
 | Sections 119 and 120 | First allocation, election at quota, and the fixed quota. |
@@ -346,11 +348,16 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 | Section 123 | Transfer ordering, parcel/subparcel preservation, and non-transferable handling. |
 | Section 124 | Filling the last vacancies and terminating without unnecessary transfers. |
 
-This table specifies *coverage, not a claim that the detailed mapping is verified*.
-The release's rule packet must enumerate the exact relevant branches and their
-fixture references. Conditions expressed through electoral financial thresholds
-must be assessed explicitly for their effect on the arithmetic; their absence
-from this product's UI does not authorize deleting them from the count.
+This table preserves the previously identified legislative references as
+*background guidance only*. It is not a mandatory section-by-section mapping or
+compliance checklist. The earlier requirement to assess electoral financial
+thresholds is withdrawn; those election-administration rules are outside this
+online poll's scope.
+
+The application counting definition must enumerate its selected branches and
+worked cases, using the Wikipedia articles and Irish system as guides. Tests
+verify the approved application behaviour, including exact arithmetic and
+reproducible selections, without requiring legislative equivalence.
 
 *** Data and state
 
@@ -383,17 +390,17 @@ from this product's UI does not authorize deleting them from the count.
 - Operability :: Structured records permit diagnosis without rerunning against live mutable ballots.
 - Accessibility :: No direct UI; W003 renders results and plain-language help.
 - Portability :: Standard Go computation without native libraries or external commands.
-- Maintainability :: Keep rule stages explicit and trace each unusual branch to its normative source and fixture. Use no external counting dependency without a separately reviewed equivalence justification.
+- Maintainability :: Keep rule stages explicit and trace each unusual branch to its application rule and fixture. Any external counting dependency must implement those specified rules; legislative equivalence is not required.
 
 * Delivery Handoff
 :PROPERTIES:
 :CUSTOM_ID: delivery-handoff
 :END:
 
-- Required reading :: This specification, project profile, VISION's named counting authority, ARCHITECTURE's counting boundary, and W001's module/test contract.
-- Before definition PASS :: Resolve the source-edition and rule-mapping blocker above. Do not hand that unresolved choice to an implementation agent.
+- Required reading :: This specification, project profile, VISION's counting direction, ARCHITECTURE's counting boundary, and W001's module/test contract. Wikipedia and legislation are guidance, not independent compliance gates.
+- Before definition PASS :: Finalize the exact application counting rules and worked cases above. Do not hand unresolved algorithm choices to an implementation agent. A statutory source edition or legislative conformity record is not required.
 - First implementation step :: After sign-off, write [[#rt-002-2][RT002.2 - Quota and single-winner termination]] and observe RED.
 - Definition evidence :: [[file:audits.org][W002 - Counting definition audit]].
-- Validation evidence :: [[file:validation.org][W002 - Rule conformance validation]].
-- Documentation impact :: Record the adopted rule version and mapping in the count package documentation, linking back to VISION's authority. Preserve voter-facing help and keep national/legal references out of it.
+- Validation evidence :: [[file:validation.org][W002 - Application counting validation]].
+- Documentation impact :: Record the application rule version and fixture mapping in the count package documentation, linking back to this specification. Preserve voter-facing help and keep national/legal references out of it.
 - Integration :: W003 consumes this API and persists snapshots, decision requests/answers, and final results. The engine does not send announcements.

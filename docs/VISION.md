@@ -6,7 +6,7 @@
 
 The polling application is intended to help an invited group select winning
 options using proportional representation by the Single Transferable Vote
-(PR-STV), following Ireland's national voting system. A moderator defines the
+(PR-STV), guided by Ireland's national voting system. A moderator defines the
 poll, specifies the number of winning options, invites its voters, and sets a
 closing deadline. Voters rank their preferences, revise them as often as needed
 before that deadline, and participate without managing another password.
@@ -50,9 +50,10 @@ accounts, administrative interfaces, or deployment components.
 
 The product has the following foundation:
 
-- **Irish PR-STV counting.** Counts follow the rules of Ireland's national
-  voting system. The application performs the count automatically; automation
-  changes how the count is carried out, while preserving those counting rules.
+- **Irish PR-STV as the guide.** The application counts automatically using
+  explicitly specified PR-STV rules guided by the Irish system. This online poll
+  has no requirement to conform to election legislation. Its counting
+  specification defines the precise behaviour and expected results.
 - **Moderator-defined number of winners.** When creating a poll, the moderator
   specifies how many options can win, equivalent to the number of seats being
   filled in a constituency.
@@ -111,17 +112,23 @@ provides the public overview of preference voting, quotas, and transfers. The
 application uses the moderator's chosen number of winning options in the role
 played by seats in a constituency.
 
-The detailed national counting reference is Part XIX, Rules for the Counting of
-the Votes, of the [Electoral Act 1992](https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html).
-That link is the enacted text. The counting specification must establish the
-applicable rules and amendments, including quotas, surplus transfers,
-exclusions, ballots with no remaining usable preference, ties, and other edge
-cases. The system is selected; the detailed translation into software remains
-specification work. Automation changes the execution of the count, while
-retaining those rules.
+Wikipedia's [Single transferable vote](https://en.wikipedia.org/wiki/Single_transferable_vote)
+and [Counting single transferable votes](https://en.wikipedia.org/wiki/Counting_single_transferable_votes)
+articles provide the working reference for the online poll. They describe
+several variants, so the counting specification must state the application's
+chosen quota, surplus and exclusion procedures, rounding, tie-breaking,
+exhaustion, and termination rules, supported by worked test cases.
 
-These references establish the counting authority for development. The
-voter-facing help below keeps its explanation focused on the poll.
+Part XIX of the [Electoral Act 1992](https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html)
+remains background guidance. It is not a compliance standard for this application.
+There is no requirement to establish a legally current edition, track amendments,
+or reproduce election-administration procedures or financial thresholds.
+
+The operator clarified this on 8 September 2026, withdrawing the earlier
+legislative-conformity requirement. Irish PR-STV remains the guide. The approved
+application specification, rather than external legislation, determines the
+software's required behaviour. The voter-facing help below remains focused on
+the poll.
 
 ## Desired experience
 

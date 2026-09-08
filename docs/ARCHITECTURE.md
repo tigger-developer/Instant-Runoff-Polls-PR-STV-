@@ -23,7 +23,7 @@ rules, and acceptance criteria will follow in specification sheets.
 | Application | One Go module and binary, with explicit internal package boundaries. The initial service does not need independently deployed components. |
 | Web interface | Standard-library `net/http`, `http.ServeMux`, and `html/template`. Ordinary HTML forms let Go own validation, state, navigation, and rendering. |
 | Persistence | SQLite through `database/sql` and `modernc.org/sqlite`, following writeback's existing foundation. Transactions cover ballots, poll closure, and durable work without another server. |
-| Counting | A separate Go package implementing the selected Irish PR-STV rules. It receives a frozen input and produces a result and count record without HTTP, SQL, or email dependencies. |
+| Counting | A separate Go package implementing the application's specified PR-STV rules, guided by the Irish system. It receives a frozen input and produces a result and count record without HTTP, SQL, or email dependencies. |
 | Background work | Durable work records in SQLite, processed by a bounded command in the same binary. Exodan owns periodic invocation. |
 | Email | An application-owned mail interface with an SMTP adapter, adapted from the sibling projects. Invitations and authentication use this boundary. |
 | Deployment | Exodan owns build/deployment orchestration and host services. The application consumes its runtime configuration, storage, and scheduling contract. |
@@ -218,13 +218,17 @@ inputs required by the chosen rules. Its outputs are the winning options and a
 structured record of the count, including quotas, transfers, exclusions, and
 termination.
 
-The [counting authority](VISION.md#why-irish-pr-stv) is Irish PR-STV. A generic STV
-library is not interchangeable merely because it accepts ranked ballots. Surplus
-selection, ties, transfer order, and termination must follow the selected rules.
-Where the rules require drawing lots or selecting ballots, the software must
-capture the decision inputs and outcomes needed to reproduce the count. The
-algorithm must not silently substitute another STV variant to make automation
-easier.
+The [counting direction](VISION.md#why-irish-pr-stv) is PR-STV guided by the Irish
+system. The approved application specification governs surplus selection, ties,
+transfer order, and termination. Wikipedia and legislation are reference
+material; statutory conformity, legislative amendment tracking, and
+election-administration procedures are outside the application contract.
+
+A generic STV library is not interchangeable merely because it accepts ranked
+ballots: it must implement the application's specified rules. Where those rules
+require drawing lots or selecting ballots, the software captures the decision
+inputs and outcomes needed to reproduce the count. Changes to the selected
+algorithm must be explicit and reviewed.
 
 The runtime flow is:
 

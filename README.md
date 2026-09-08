@@ -2,7 +2,9 @@
 
 STV Poll will help an invited group choose one or more winning options by ranking
 preferences. Each participant has a **Single Transferable Vote (STV)**. The
-application will count votes automatically using Ireland's national PR-STV rules.
+application will count votes automatically using PR-STV guided by the Irish
+counting system. This is an online poll; conformity to election legislation is
+not a product requirement.
 
 **Project stage:** specification drafting. The product vision, application
 architecture, and three build specifications are recorded. The Go application
@@ -111,11 +113,13 @@ the automatic count without waiting for the deadline. Closing at the deadline
 and closing manually both establish the final eligible ballots. Authentication
 does not extend the voting period.
 
-The count follows **Ireland's national PR-STV rules**, using the poll's options
-as candidates and the configured number of winners as seats. The application
-performs the count automatically; this replaces counting by hand while retaining
-the same rules. The rationale and counting authorities are captured in the
-[vision](docs/VISION.md#why-irish-pr-stv).
+The count uses **PR-STV guided by the Irish counting system**, with the poll's
+options as candidates and the configured number of winners as seats. The
+application performs the count automatically. Its counting specification defines
+the exact rules and worked test cases, including transfers, rounding, ties, and
+termination. Legislation provides guidance; statutory compliance and tracking
+legislative amendments are not acceptance requirements. The rationale and
+reference material are captured in the [vision](docs/VISION.md#why-irish-pr-stv).
 
 ### Results and announcement
 
@@ -182,3 +186,7 @@ journey, voting guidance, and unresolved product questions have been consolidate
 into this README and the vision. The architecture now defines the application
 structure. These are relocations and clarifications of captured intent; the
 earlier wording remains in Git history.
+
+On 8 September 2026, the operator clarified that this is an online poll. The
+earlier requirement for legislative conformity is withdrawn. Irish PR-STV remains
+the guide; the application's approved counting specification governs its behaviour.
