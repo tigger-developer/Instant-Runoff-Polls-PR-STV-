@@ -19,8 +19,8 @@ are recorded in the [Go foundation specification](../specs/001-go-application-fo
 [approved counting specification](../specs/002-irish-pr-stv-counting/spec.org), and
 [approved poll-workflow specification](../specs/003-invited-poll-workflow/spec.org).
 The [work ledger](work.org) and linked evidence record current delivery status.
-The foundation's later tooling amendment awaits re-audit; the counting and
-workflow approvals of 8 September 2026 remain recorded.
+The work ledger also records the native web-tooling approval and the resulting
+specification refresh; the original approvals of 8 September 2026 remain recorded.
 
 ## Architectural decisions
 

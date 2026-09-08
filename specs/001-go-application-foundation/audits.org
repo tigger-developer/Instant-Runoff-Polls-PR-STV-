@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Architecture refresh locally reviewed; independent refreshed-definition review pending. Prior definition verdicts and operator approvals remain revision-specific history below.
+- Execution :: Architecture refresh locally reviewed; the independent batch review returned a runner incident and no accepted verdict. Prior definition results and operator approvals remain revision-specific history below.
 - Artefact :: [[file:spec.org][W001 - Go application foundation specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -118,6 +118,17 @@
 - Evidence :: Fourteen documentation files sanitize and parse through Pandoc; 214 local links/anchors resolve with unique heading identifiers. The counting procedure/fixtures/fingerprints and VISION copy are unchanged. Initial CLI/store tests and Makefile were read as implementation evidence, not executed or treated as authority. Concurrent implementation edits are preserved.
 - Approval :: Existing product/interface approvals are retained. The operator explicitly approved the web-tool selection before this refresh; that approval does not substitute for the refreshed audit. Any new material decision raised by review requires operator authority.
 - External continuation :: One retained external context will review this three-spec refresh, applying each combined gate separately and returning a verdict for each exact specification revision. No prior implementation audit is resumed or replaced by this definition review.
+
+** Architecture refresh, independent runner incident, 8 September 2026
+
+- Gate :: definition; refreshed batch of three existing specifications.
+- Context :: One configured external audit invocation through =sdlc-harness start --phase audit=, using installed SDLC v3.1.11 and its configured audit harness/model/timeout. The preceding local-review hash identifies this specification's submitted revision.
+- Result :: RUNNER INCIDENT; neither PASS nor FAIL. No fresh independent specification, design or test-definition verdict was accepted.
+- Evidence :: The runner exited 1 with =sdlc-harness: audit harness response-malformed: composite verdict requires exactly one non-empty GATE field=.
+- Cause of request mismatch :: The submitted instruction requested a separate GATE/verdict block for each of the three specifications. The runner requires one composite GATE field. This formatting request was incorrect; the rejection is not evidence of a specification defect.
+- SESSION_ID :: Not returned. The command output supplied no resumable identity. The task's OS temporary directory contains only the submitted refresh diff; no project-local harness context was found through the inspected runtime paths. No replacement reviewer was started.
+- Continuation :: Operator direction is required to authorize a replacement review context because the required retained context cannot be addressed. A retry must request exactly one composite verdict and identify per-spec findings within it, or use separately authorized per-spec gates. No prior implementation-audit incident is changed by this definition record.
+- Approval boundary :: The approved product and architecture decisions remain recorded. This incident does not grant a current independent gate to materially changed tooling/test definitions; it does not invalidate the unchanged counting rules or their original review evidence.
 
 * Implementation gate
 

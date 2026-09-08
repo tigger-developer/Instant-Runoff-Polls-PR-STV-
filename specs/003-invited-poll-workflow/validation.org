@@ -43,5 +43,5 @@
 - Criterion :: [[file:spec.org::#ac-003-22][AC003.22 - Deployment remains Exodan-owned]]; [[file:spec.org::#ac-003-23][AC003.23 - Local end-to-end poll is usable]].
 - Definition :: [[file:spec.org::#ot-003-1][OT003.1 - Local full-poll and packaging review]].
 - Result :: PENDING.
-- Procedure and expected result :: One local integration session with at most two polls and 20 synthetic addresses, local SMTP capture, packaged runtime paths, and one stopped-service backup/restore. No real email, deployment, production data, or metered API.
+- Procedure and expected result :: One local integration session with at most two polls and 20 synthetic addresses, local SMTP capture, packaged runtime paths, and one stopped-service backup/restore with serve and every worker quiescent. Validate workflow CSS and emitted HTML with W001's native web checks, including forms, error/conflict responses, poll/result states and help. No real email, deployment, production data, or metered API.
 - Execution evidence :: No execution or human result has been recorded.

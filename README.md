@@ -8,11 +8,12 @@ not a product requirement.
 
 **Project stage:** initial implementation underway. The product vision,
 application architecture, and three build specifications are recorded. All three
-passed the definition gate and were approved on 8 September 2026. A subsequent
-operator-directed amendment removes Node-based tooling and selects standalone Biome for
-CSS checks; the foundation specification's amended tooling contract awaits
-re-audit. Counting and poll-workflow approvals remain recorded. Implementation
-and validation status are tracked in the work ledger and audit records.
+passed the definition gate and were approved on 8 September 2026. The operator
+subsequently approved the refreshed architecture and native web tooling: Biome
+for CSS, tidy-html5 for rendered HTML, and oxlint only for later-approved
+JavaScript/TypeScript. Go linting remains separate. The work ledger and audit
+records hold the current specification-review, implementation and validation
+status.
 
 ## Documentation
 

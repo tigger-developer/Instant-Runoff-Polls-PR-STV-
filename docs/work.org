@@ -96,7 +96,7 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/001-go-application-foundation/spec.org][W001 - Establish the Go application foundation]].
 - Scope :: Go executable, Exodan configuration, SQLite initialization, server-rendered landing page, health, and build/verification commands.
-- Definition :: The original specification and subsequent native web-linter change are approved by Taḋg on 2026-09-08. The architecture refresh and web-tool verification detail are undergoing definition re-audit; existing approval history is retained. See the specification's linked audit history.
+- Definition :: The original specification and subsequent native web-linter change are approved by Taḋg on 2026-09-08. Local refresh review passed; the independent audit returned a formatting incident without a resumable context ID. The refreshed gate remains pending; see the linked audit history for the required operator direction.
 - Dependencies :: None within this build batch.
 
 ** ACTIVE W002 - Implement reproducible Irish PR-STV counting :feature:
@@ -110,9 +110,10 @@ classification; it is provenance, not current state.
 - Specification :: [[file:../specs/002-irish-pr-stv-counting/spec.org][W002 - Implement reproducible Irish PR-STV counting]].
 - Scope :: Counting engine, quota, transfers, exclusions, recorded decisions, replay, and independent count fixtures.
 - Definition :: Definition gate PASS after explicit application rules, worked cases and retained independent audit; approved by Taḋg on 2026-09-08. Implementation is reserved for another session. The operator withdrew legislative conformity and source-edition verification on 8 September 2026; legislation remains guidance.
+- Architecture refresh :: Editorial approval/authority updates only; counting rules, fixtures and fingerprints are unchanged. Local review passed. The attempted independent batch review produced no accepted verdict; the original unchanged-rule approval and evidence remain applicable.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]].
 
-** ACTIVE W003 - Deliver the invited poll workflow :feature:
+** REVIEW W003 - Deliver the invited poll workflow :feature:
 :PROPERTIES:
 :CUSTOM_ID: w-003
 :PRIORITY: P1
@@ -123,6 +124,7 @@ classification; it is provenance, not current state.
 - Specification :: [[file:../specs/003-invited-poll-workflow/spec.org][W003 - Deliver the invited poll workflow]].
 - Scope :: Moderator and participant access, grouped email addresses, list reuse, invitations, ballot revisions, pause/close, counting, results, announcements, and help.
 - Definition :: Definition gate PASS after local review and retained independent audit; approved by Taḋg on 2026-09-08. Implementation is reserved for another session. Approval includes the labelled policy proposals; the original proposal history is retained in the specification.
+- Architecture refresh :: Approved policies are retained. Native web-validation coverage and backup verification are reconciled with the architecture. Local review passed; the refreshed definition gate is pending after the independent runner incident described in the linked audit record.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]] and [[#w-002][W002 - Implement reproducible Irish PR-STV counting]].
 
 * Migration record
