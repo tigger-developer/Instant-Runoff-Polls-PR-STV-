@@ -9,6 +9,10 @@ http:
   shutdown_timeout: 10s
 moderators: []
 
+service:
+  capabilities:
+    local_mail: true
+
 # timers:
 #   - name: process-due-work
 #     interval: 1min
