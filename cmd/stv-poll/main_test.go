@@ -335,6 +335,47 @@ func TestHTTPServerClosesIdleKeepAliveConnections(t *testing.T) {
 	}
 }
 
+func TestHTTPServerBoundsBlockedResponseWrites(t *testing.T) {
+	writeResult := make(chan error, 1)
+	payload := bytes.Repeat([]byte("x"), 64*1024)
+	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for range 128 {
+			if _, err := w.Write(payload); err != nil {
+				writeResult <- err
+				return
+			}
+		}
+		writeResult <- nil
+	}), config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: 30 * time.Millisecond, IdleTimeout: time.Second, ShutdownTimeout: time.Second})
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() { _ = server.Serve(listener) }()
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	if tcp, ok := connection.(*net.TCPConn); ok {
+		if err := tcp.SetReadBuffer(1024); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := connection.Write([]byte("GET / HTTP/1.1\r\nHost: poll.example\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-writeResult:
+		if err == nil {
+			t.Fatal("blocked response writes unexpectedly succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("response write was not bounded by WriteTimeout")
+	}
+}
+
 func TestRunServerReportsShutdownDeadline(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
