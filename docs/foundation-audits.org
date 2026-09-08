@@ -5,7 +5,7 @@
 * Foundation gate
 
 - Scope :: Paired review of [[file:VISION.md][Product vision]] and [[file:ARCHITECTURE.md][Application architecture]] under the operator-invoked audit-project-foundation skill on 8 September 2026.
-- Current verdict :: FAIL after local review; no external context started because local checks have not passed.
+- Current verdict :: Local round 3 PASS; independent foundation review pending. Earlier FAIL verdicts remain revision-specific history.
 - Timing :: Retrospective review of this greenfield project's foundation. Feature specifications and initial implementation already exist; this record does not claim that the new foundation gate ran before them.
 - Authority :: Project profile; README; work ledger and recorded specification approvals; SDLC MAIN, AUDITS, CODING, DOCUMENTATION, SECURITY, ORGMODE and GIT; selected API, GO, JAVASCRIPT, SHELL, WEB and NODE standards; Exodan Project Integration Contract version 1.8 read in full.
 - Standards baseline :: Installed SDLC release v3.1.10. WEB SHA-256 =c474f4646fae1e318c78c18b68cfe75d7100b2b7dd85d8ad264326fa375bc000=; NODE SHA-256 =e3d431358ba23fde0c798ba519d76455c75517de8ee12ec991bcda7f2b441d30=; Exodan contract SHA-256 =1c9b02d1924b9e81d05b14645e17c06e104f56acccec4309d6c3f12f807604c5=.
@@ -40,3 +40,15 @@
 - Required authoring correction :: Preserve the old open-question history, identify it as superseded, link the approved policy and counting decisions, and distinguish intended architecture from implementation status. No new privacy, voting or infrastructure decision is needed for that reconciliation.
 - External review :: Not started; SESSION_ID not issued. The skill permits an external foundation reviewer only after all local checks pass.
 - Boundary :: The audit skill states: "Do not edit the audited documents as an auditor; remediation belongs to the authoring workflow between rounds." The operator explicitly authorized the Node/npm removal; other foundation edits were not inferred from the audit invocation.
+
+** Authoring remediation and local review, round 3
+
+- Authority :: "OK first of all update the stale docs" and "use the standard sdlc recommended linters (oxlint , tidy-html5, biome)".
+- GATE :: foundation.
+- REVISION :: VISION SHA-256 =96a69f6a624a7ef719281d09a99285cfbe16a0fea8f9ceb211ba89ff2af7e783=; ARCHITECTURE SHA-256 =7ca949b85eb3ce43562e64324e8e13e971e4ba1280977dde76b708b78108bf93=.
+- VERDICT :: PASS (local only).
+- Criteria :: Vision, architecture, alignment, risk and handoff reviewed together.
+- Remediation receipt :: FOUNDATION-002 - Stale current authority is addressed by direct links to approved specifications, explicit dispositions beside preserved historical questions, current privacy/ownership/deadline/announcement boundaries, and a distinction between target architecture and initial implementation. FOUNDATION-003 - First-release scope and roadmap is addressed by the existing usable-poll scope and an explicit statement that no later feature roadmap is committed.
+- Tooling :: Biome applies to CSS, tidy-html5 to rendered HTML, and oxlint only to a later approved JavaScript/TypeScript source dependency. Go checks remain required; Node/npm remain excluded. Native tool versions and integrity are provisioned reproducibly outside checks. This establishes direction, not installed-tool evidence.
+- Verification :: Fourteen documentation files parse with Pandoc and sanitize identically; 208 local links and their anchors are valid. The invitation/help section is byte-for-byte unchanged from the preceding commit. No application code or concurrent build edits changed during this remediation.
+- Limitation :: No external foundation verdict or new operator foundation sign-off is implied. The separate Go-foundation feature specification still requires its tooling-amendment re-audit.

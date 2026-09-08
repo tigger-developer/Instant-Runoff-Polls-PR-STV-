@@ -1,6 +1,7 @@
 # Vision
 
-**Status:** Draft product direction.
+**Status:** Product direction reconciled with the specifications approved on
+8 September 2026. This describes intended behaviour, not delivered capability.
 
 **Last updated:** 8 September 2026.
 
@@ -14,9 +15,12 @@ before that deadline, and participate without managing another password.
 This vision develops the intent in the [product brief](../README.md).
 It describes the desired experience and product boundaries. The
 [architecture](ARCHITECTURE.md) defines the Go application's structure, technical
-components, and infrastructure integration. Both documents are drafts; detailed
-specifications and implementation follow. Irish PR-STV is the selected counting
-system.
+components, and infrastructure integration. The approved
+[counting specification](../specs/002-irish-pr-stv-counting/spec.org) and
+[poll-workflow specification](../specs/003-invited-poll-workflow/spec.org) define
+the detailed rules and resolve the original product questions. The
+[work ledger](work.org) records delivery status; initial implementation is
+underway. Irish PR-STV remains the counting guide.
 
 ## Purpose
 
@@ -43,8 +47,24 @@ the process understandable to voters and manageable for moderators.
   surrounding environment, including the Exodan configuration arrangement
   referenced in the original brief.
 
-These are responsibilities. They do not establish a requirement for separate
-accounts, administrative interfaces, or deployment components.
+These are responsibilities within one polling service. The approved workflow
+provides moderator administration and participant voting through passwordless
+access; it does not introduce password accounts or separate deployed services.
+
+## First release and roadmap
+
+The minimum usable release is an invited poll from preparation through results:
+configured moderators, grouped email addresses, list reuse, ranked and revisable
+ballots, a deadline, pause/manual close, automatic counting, optional email
+announcements, and plain-English help. These capabilities belong to the first
+release together; the application shell or counting engine alone is not a usable
+polling service.
+
+The existing delivery sequence is the Go foundation, counting engine, then poll
+workflow. There is no committed feature roadmap beyond that release. Public
+enrolment, public results, social features and a general survey builder remain
+outside its scope. Possible shared-code extraction is an architectural option,
+not a prerequisite or promised product feature.
 
 ## Established product intent
 
@@ -115,7 +135,7 @@ played by seats in a constituency.
 Wikipedia's [Single transferable vote](https://en.wikipedia.org/wiki/Single_transferable_vote)
 and [Counting single transferable votes](https://en.wikipedia.org/wiki/Counting_single_transferable_votes)
 articles provide the working reference for the online poll. They describe
-several variants, so the counting specification must state the application's
+several variants. The approved counting specification states the application's
 chosen quota, surplus and exclusion procedures, rounding, tie-breaking,
 exhaustion, and termination rules, supported by worked test cases.
 
@@ -149,9 +169,10 @@ to one participant.
 
 The moderator should be able to see what voters will be deciding, which options
 are available, how many can win, who is invited, and when polling ends. Voters
-should encounter the same question and options throughout the poll. Whether any
-of these details can change after invitations have been sent remains a product
-decision.
+encounter the same question and options throughout the poll. Opening freezes
+the question, options, winner count, participants, deadline and announcement
+setting. Corrections use a new draft; an existing vote is never silently
+reassigned.
 
 ### Prepare the next poll from an existing list
 
@@ -170,8 +191,9 @@ forward.
 The voting experience should explain what the numbers mean and make it clear
 that further preferences are optional. Ranking should be understandable and
 accessible, with clear feedback about the ballot being submitted. The intended
-experience should accommodate keyboard use and assistive technology; a specific
-interface or accessibility standard has not yet been selected.
+experience accommodates keyboard use and assistive technology. The selected Web
+standard requires WCAG 2.1 AA; native forms, clear labels, visible focus and
+readable layouts support that goal.
 
 Help should be easy to find on the voting page. A separate **How will votes be
 counted?** link should expand an explanation or open a help page. Both explanations
@@ -189,16 +211,19 @@ revision should leave them confident about which ballot will count.
 
 ### Make the outcome understandable
 
-The proposed direction is to explain the outcome in terms of Irish PR-STV
-counting rules and expressed preferences. Any presentation of results should
-make clear what was counted and how the outcome was reached.
+Results explain the count and expressed preferences in plain English. The
+moderator can inspect the aggregate count breakdown; voter-facing explanations
+stay focused on the poll and do not introduce national-election terminology.
 
 The moderator can log in after the deadline to inspect the results and winning
 options. The **announce the winner immediately** checkbox determines whether the
 system announces the outcome as soon as it is counted. If the box was not
 checked, announcing the outcome is the moderator's responsibility outside the
 system. The setting controls announcement; counting and moderator access to
-results still take place.
+results still take place. The checkbox defaults off. When checked, the system
+emails the short outcome to every invited address after the result is recorded.
+No public result page is introduced. A poll with no submitted votes reports
+that outcome and has no winners.
 
 ### Handle a problem during polling
 
@@ -206,7 +231,9 @@ The moderator can pause polling to stop further votes and revisions while a
 problem is considered. Pausing does not itself count the votes or announce an
 outcome. The moderator can then choose **Close poll and count results**, ending
 polling and triggering the application's count without waiting for the scheduled
-deadline. The same announcement preference applies to that result.
+deadline. A paused poll may resume before its original deadline. That deadline
+closes both open and paused polls; a closed poll never reopens. The same
+announcement preference applies to a manually counted result.
 
 ## Voter-facing copy
 
@@ -282,14 +309,23 @@ The current brief centres on polls with an electorate supplied by a moderator.
 It does not establish public self-enrolment, social features, campaigning tools,
 or a general survey builder as product goals.
 
-Email-based access does not settle ballot secrecy or the visibility of individual
-votes. The project needs an explicit privacy policy for voters, moderators, and
-operators before it can make promises about anonymity or confidentiality.
+The approved privacy policy gives each voter access to their own current ballot.
+Moderators see their own polls, aggregate turnout, count results and contact/mail
+administration, with no interface exposing individual ballots or another
+person's voting status. Polls, contacts, final ballots, count records and mail
+outcomes are retained for review and list reuse; expired technical access records
+are cleaned up under the workflow specification.
+
+This is not a promise of anonymous voting. Operators controlling storage can
+access the underlying associations, and results in a small poll may permit
+inference about a person's vote or participation. That limitation is disclosed
+before voting. No minimum group size is imposed to hide results.
 
 ## Signs of success
 
-The following are proposed outcomes for later evaluation, rather than measured
-results or signed-off acceptance criteria:
+The following describe the desired outcomes. The linked specifications hold
+their acceptance criteria and validation evidence; these are not claims of
+measured results:
 
 - Voters can rank as many options as they wish without uncertainty about what
   their preferences mean.
@@ -322,8 +358,9 @@ projects to reach an initial working application quickly. The
 [reuse plan](ARCHITECTURE.md#reuse-from-upload-and-writeback) identifies concrete
 starting points in their application wiring, configuration, magic links,
 templates, email, and automation. Reuse should support the polling experience and
-its agreed rules. The architecture records the necessary adaptations; code has
-not yet been incorporated.
+its agreed rules. The architecture records the adaptation candidates and their
+constraints; the delivery records establish what has actually been incorporated
+and verified.
 
 Exodan owns deployment and host operation. The Go application owns poll
 behaviour, data, authentication, and counting. This division follows Exodan's
@@ -331,28 +368,50 @@ project integration contract, as recorded in the architecture.
 
 ## Decisions needed to develop the vision
 
+**Decision history:** these were the original open questions. They were resolved
+by approval of the [poll-workflow specification](../specs/003-invited-poll-workflow/spec.org)
+on 8 September 2026. The questions are retained below with their dispositions;
+they must not be treated as unresolved choices for the implementation agent.
+
 - **Announcement delivery:** the delivery channel and content for automatic
-  announcements, and the default state of the announcement checkbox.
+  announcements, and the default state of the announcement checkbox. **Resolved:**
+  short individual emails using the specified outcome copy; checkbox defaults off.
 - **Visibility:** access to turnout information, individual ballots, and detailed
-  counting information, including what is visible before closing.
+  counting information, including what is visible before closing. **Resolved:**
+  owner-only aggregate turnout/results and contact administration; voters see
+  their own ballots. Individual voting status has no moderator interface.
 - **Administration:** whether moderators can change options, invitations, or
   deadlines after a poll has begun; how a paused poll is resumed; and what happens
-  if the scheduled deadline arrives while polling is paused.
+  if the scheduled deadline arrives while polling is paused. **Resolved:** opening
+  freezes poll settings and participants; resume is allowed before the original
+  deadline; that deadline closes open and paused polls.
 - **Participant administration:** handling an address entered against more than
   one participant, and correcting a participant's addresses after invitations or
-  voting have begun.
+  voting have begun. **Resolved:** normalize addresses case-insensitively,
+  de-duplicate within a participant and reject duplicates across participants;
+  corrections after opening use a new draft.
 - **Privacy:** what information is retained and who is permitted to inspect
-  participant addresses and ballots.
+  participant addresses and ballots. **Resolved:** retain poll records for review
+  and reuse, restrict application views as above, and disclose storage access
+  and small-poll inference. No anonymity promise is made.
 - **Moderator authority:** whether moderators may administer only their own
-  polls, and whether an invited moderator may also vote.
+  polls, and whether an invited moderator may also vote. **Resolved:** each
+  moderator manages their own polls and lists; an invited moderator may vote
+  through a separate participant identity.
 - **Ballot validation:** how invalid, repeated, or incomplete rankings are
   handled and explained, while preserving optional further preferences.
+  **Resolved:** require at least one preference and consecutive unique ranks;
+  reject invalid submissions without replacing the last valid ballot.
 - **Timing:** the precise acceptance boundary for submissions at the deadline
-  and how deadlines are presented across timezones.
+  and how deadlines are presented across timezones. **Resolved:** accept only
+  while open and strictly before the deadline, using server time after obtaining
+  the write transaction. Enter an explicit UTC offset and display it with UTC.
 - **Returning access:** magic-link lifetime and reuse, session lifetime, and
-  how a voter returns after a link or session expires.
+  how a voter returns after a link or session expires. **Resolved:** participant
+  links are reusable for 24 hours, moderator links are one-use for 15 minutes,
+  and sessions last 12 hours. Eligible users may request replacement links.
 
-These questions refine the product contract. The Irish PR-STV counting system,
-moderator-defined number of winners, and Go-driven interactions are established
-directions. Detailed product rules will be developed in specification sheets;
-the application structure is defined in the architecture.
+No product decision in this historical list remains open. The specifications
+govern the exact rules; future amendments require an explicit decision. The
+foundation tooling amendment and its review status are recorded separately in
+the work ledger and do not reopen these approved product policies.

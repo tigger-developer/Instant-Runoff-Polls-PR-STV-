@@ -31,5 +31,5 @@
 - Criterion :: [[file:spec.org::#ac-001-10][AC001.10 - Portable build and verification]].
 - Definition :: [[file:spec.org::#ot-001-1][OT001.1 - Build and tooling contract]].
 - Result :: PENDING.
-- Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including both scanners' failure propagation and non-mutating locks. Install twice to a temporary PREFIX: managed binary/assets remain identical, an unrelated sentinel survives, secrets/host configuration are excluded, and installed help/version/serve operate with the documented runtime inputs. No deployment, mail, or metered API.
+- Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including govulncheck failure propagation and non-mutating locks. Check standalone Biome for CSS and tidy-html5 for rendered HTML; missing applicable tools fail visibly. Oxlint applies only if approved JavaScript/TypeScript source exists. Install twice to a temporary PREFIX: managed binary/assets remain identical, an unrelated sentinel survives, secrets/host configuration are excluded, and installed help/version/serve operate with the documented runtime inputs. No deployment, mail, or metered API.
 - Execution evidence :: No execution or human result has been recorded.

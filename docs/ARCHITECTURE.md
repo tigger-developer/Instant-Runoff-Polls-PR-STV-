@@ -1,7 +1,8 @@
 # Application architecture
 
-**Status:** Draft architecture for the first implementation. The components and
-paths below are proposed; this repository does not yet contain application code.
+**Status:** Target architecture for the initial release. An initial Go foundation
+is under development; the component and path descriptions below define the
+intended design, not a claim that every component has been delivered or verified.
 
 **Last updated:** 8 September 2026.
 
@@ -11,10 +12,15 @@ web server and a command for processing due work. Exodan will deploy and operate
 it under its project integration contract.
 
 The [README](../README.md#captured-requirements) holds the captured requirements.
-The [vision](VISION.md) holds product intent, voter-facing copy, and open product
-questions. This document defines application structure, technical boundaries,
-data ownership, and runtime behaviour. Detailed interfaces, schemas, counting
-rules, and acceptance criteria will follow in specification sheets.
+The [vision](VISION.md) holds product intent, voter-facing copy, and the history
+of resolved product questions. This document defines application structure,
+technical boundaries, data ownership, and runtime behaviour. Detailed contracts
+are recorded in the [Go foundation specification](../specs/001-go-application-foundation/spec.org),
+[approved counting specification](../specs/002-irish-pr-stv-counting/spec.org), and
+[approved poll-workflow specification](../specs/003-invited-poll-workflow/spec.org).
+The [work ledger](work.org) and linked evidence record current delivery status.
+The foundation's later tooling amendment awaits re-audit; the counting and
+workflow approvals of 8 September 2026 remain recorded.
 
 ## Architectural decisions
 
@@ -116,9 +122,10 @@ workflow without adding a frontend build system. Mutable data never lives beside
 those assets.
 
 Page handlers distinguish open, paused, closed, count-pending, and result-ready
-conditions using application state. Those presentation conditions do not settle
-open product questions such as whether a paused poll may resume or how its
-deadline is handled.
+conditions using application state. The poll service enforces the approved
+transitions: a paused poll can resume before its original deadline, and that
+deadline closes either an open or paused poll. Presentation does not own those
+rules or extend the voting period.
 
 ## Identity and authorization
 
@@ -147,16 +154,16 @@ point. STV Poll must add explicit grant purpose and poll scope. Session and
 magic-link credentials remain distinguishable. Grant hashes and lifecycle state
 belong in storage; raw tokens are excluded from logs and URL referrers.
 
-Link lifetime, reuse, expiry recovery, and session lifetime remain product and
-security specification decisions. If links are consumed once, validation and
-consumption must be atomic. The architecture supports those policies without
-assuming that possession of an email address grants authority over every poll.
+Grant/session lifetimes, reuse and expiry recovery are defined in the approved
+workflow specification. Moderator grants are consumed atomically with session
+creation; participant grants may be reused within their lifetime. Every use
+remains purpose- and poll-scoped. Email possession never grants authority over
+all polls.
 
 Moderator eligibility is loaded from configuration, separately from participant
-eligibility in the database. Whether moderators administer only their own polls,
-and whether an invited moderator may vote, remains explicit product policy.
-The authorization boundary must support those decisions without treating all
-signed-in users as interchangeable.
+eligibility in the database. Moderator operations are restricted to owned polls
+and lists. An invited moderator votes through a separate participant identity.
+The authorization boundary checks the requested object and role on each action.
 
 ## Persistence and consistency
 
@@ -182,17 +189,17 @@ The logical relationships are:
 
 Reusing a participant list copies the grouped contact information into new
 poll-participant records. It does not reuse ballot keys or mutate the earlier
-poll. No global person registry is required for this model. Duplicate addresses
-across separately entered participants still require the product policy recorded
-in the vision.
+poll. No global person registry is required for this model. The approved
+workflow rejects a normalized email address assigned to different participants
+within one poll, while collapsing repeated addresses within a single group.
 
 ### Ballot submission and closing
 
 Ballot replacement runs in a transaction that checks participant authority,
 validates rankings, and checks the poll's state and deadline before committing
 the effective ballot. A version check prevents a stale browser form from silently
-overwriting a newer accepted ballot; how that conflict is presented belongs in
-the detailed interaction specification.
+overwriting a newer accepted ballot. The workflow specification defines the
+conflict response and reload path.
 
 Closing uses the same persistence boundary: it stops further acceptance, freezes
 the eligible ballot input, and records pending count work atomically. A concurrent
@@ -200,15 +207,20 @@ submission and close therefore have one database-defined order. A submission
 cannot pass an earlier HTTP-only eligibility check and later alter a frozen
 count.
 
-The acceptance-time rule will be defined in the specification and implemented
-once in the application service. It applies even when a scheduled sweep is late.
-An Exodan timer wakes the processor; it does not determine whether a ballot was
-on time.
+The application service samples server time after obtaining the write
+transaction and accepts only while open and strictly before the deadline. This
+single acceptance rule applies even when a scheduled sweep is late. An Exodan
+timer wakes the processor; it does not determine whether a ballot was on time.
 
 Count inputs contain option identifiers and ranked preferences, without email
 addresses. This limits the data the counting component needs. It does not promise
 anonymous ballots: the database still contains the participant-to-ballot
-association. Retention and access to that association remain product decisions.
+association. The approved workflow retains poll records for review and list
+reuse, with no automatic deletion of those records. Moderator views expose
+aggregate turnout/results and contact administration, excluding individual
+ballots and person-level voting status. Voters see their own current ballot.
+Storage access and possible inference from small-poll results are disclosed;
+the system does not promise anonymity.
 
 ## Counting, work processing, and announcement
 
@@ -219,7 +231,7 @@ structured record of the count, including quotas, transfers, exclusions, and
 termination.
 
 The [counting direction](VISION.md#why-irish-pr-stv) is PR-STV guided by the Irish
-system. The approved application specification governs surplus selection, ties,
+system. The approved counting specification governs surplus selection, ties,
 transfer order, and termination. Wikipedia and legislation are reference
 material; statutory conformity, legislative amendment tracking, and
 election-administration procedures are outside the application contract.
@@ -251,10 +263,12 @@ processes closing, counting, and delivery in dependency order so newly produced
 work can progress during the same invocation, within its execution bounds.
 
 The **announce the winner immediately** preference means announcement becomes
-eligible as soon as the result is committed. The channel and message remain open
-product decisions. The architecture separates that intent from invitations and
-SMTP, so it does not accidentally choose email or public result visibility as
-announcement policy. With the checkbox clear, no system announcement is created.
+eligible as soon as the result is committed. The approved workflow selects short
+email announcements to the invited addresses, with the checkbox defaulting off
+and no public results endpoint. Announcement intent remains separate from
+invitation intent and transport. With the checkbox clear, no system announcement
+is created. Zero turnout produces a no-votes outcome without invoking the count
+engine or inventing a winner.
 
 ### Recovery and delivery
 
@@ -268,8 +282,9 @@ Invitations are recorded for every recipient address before delivery is
 attempted. A durable delivery queue, adapted from writeback's automation pattern,
 keeps email failures separate from poll and ballot transactions. SMTP runs
 outside write transactions with bounded transport time and a configured secure
-transport policy. Retry timing and terminal-failure presentation are specification
-work. SMTP acceptance does not prove inbox delivery, and a crash after acceptance
+transport policy. The workflow specification defines bounded retries and
+owner-visible terminal failure. SMTP acceptance does not prove inbox delivery,
+and a crash after acceptance
 can cause a retry to send a duplicate message; no exactly-once delivery guarantee
 is implied.
 
@@ -277,7 +292,7 @@ is implied.
 
 The consumed authority is Exodan's
 [Project Integration Contract](https://github.com/tigger-developer/exodan/blob/master/deploy/docs/PROJECT-INTEGRATION.md),
-version 1.8, updated 25 August 2026, read for this draft. The application follows
+version 1.8, updated 25 August 2026, read for this architecture. The application follows
 its active NixOS contract. Exodan remains the authority if its contract changes.
 
 | Owner | Responsibilities |
@@ -318,16 +333,16 @@ contract.
 
 The contract uses `config/defaults.yaml`, `config/<host>.yaml`, and encrypted
 `secrets/<host>.yaml.age`. Local development may use ignored
-`secrets/localhost.yaml`. These paths are part of the proposed application
-layout, not files already present in this repository.
+`secrets/localhost.yaml`. These are runtime and repository conventions; each
+deployment supplies its own host configuration and encrypted secrets.
 
 ### Scheduled work and operations
 
 The application declares routine intent for `process-due-work`; Exodan creates
-and runs the host timer. Its interval grammar has a minimum of one minute. The
-selected interval and acceptable close-to-result latency must be reconciled in
-the detailed specification and deployment configuration. Voting deadlines remain
-enforced by the application independently of that interval.
+and runs the host timer. The workflow selects a one-minute sweep interval, with
+one bounded pass per invocation. Count and announcement work may progress in
+the same pass; SMTP availability and pending work can delay the outcome. Voting
+deadlines remain enforced independently of that interval.
 
 The command uses the same runtime contract as `serve`, processes a bounded batch,
 and reports failure through its exit status and structured logs. The application
@@ -339,11 +354,12 @@ schema; dependency failure must not return a misleading healthy response. Logs
 record operation outcomes and identifiers without magic-link tokens, raw session
 credentials, or ballot contents. Exodan owns collection and host monitoring.
 
-The storage design must provide a consistent SQLite backup boundary for Exodan's
-backup workflow. Backup integration must account for any journal files and
-concurrent writes; copying a live main database file alone is not an assumed
-recovery mechanism. Application migration compatibility and infrastructure
-rollback/restore must be assessed together before deployment.
+The initial consistency boundary is a stopped-service SQLite backup and restore,
+coordinated through Exodan with all application writers quiescent. Copying a live
+main database file alone is not a recovery mechanism. The workflow specification
+defines a local restore check; infrastructure scheduling and backup execution
+remain Exodan-owned. Migration compatibility and rollback/restore still require
+deployment verification.
 
 ## Proposed repository layout
 
@@ -369,9 +385,9 @@ secrets/
   localhost.yaml          # ignored, local development only
 ```
 
-This is the intended component layout. The first build will introduce the Go
-module, assets, configuration, and application entry point under the subsequent
-specifications.
+This is the intended component layout, not an inventory of the work in progress.
+The foundation specification defines packaging and runtime asset paths; the
+delivery records establish which parts are implemented and verified.
 
 ## Reuse from upload and writeback
 
@@ -410,8 +426,10 @@ emerges; extracting one is not a prerequisite for the first application.
 
 ## Verification boundaries and further design
 
-Development tooling uses the Go checks and standalone Biome for CSS linting and
-formatting. Node.js and npm are excluded, including from development tooling,
+Development tooling uses the Go checks, standalone Biome for CSS linting and
+formatting, and tidy-html5 for rendered HTML validation without rewriting it.
+Oxlint applies if project-owned JavaScript or TypeScript is introduced; none is
+required by this architecture. Node.js and npm are excluded from development tooling,
 by the operator's direction on 8 September 2026. The former npm-managed
 Stylelint choice in the foundation specification is withdrawn. Native tool
 versions and integrity checks belong to the reproducible development setup;
@@ -421,12 +439,15 @@ The architecture provides separate verification points: pure counting fixtures,
 SQLite transaction and recovery checks, HTTP form/authentication checks, and a
 local mail substitute. Deadline races, simultaneous use of two email addresses,
 and retry after interrupted counting cross the boundaries and need integration
-coverage. The fixtures and acceptance criteria will be defined in the next
-specification stage; no implementation checks have run for this draft.
+coverage. The linked specifications define these fixtures and acceptance
+criteria. Their audit and validation records distinguish design review from
+executed tests; this architecture makes no implementation-verification claim.
 
-The remaining technical detail includes exact route and service interfaces,
-schema and migrations, grant/session policy, count-rule mapping and reproducible
-selection, work-claim recovery, transport configuration, and the backup boundary.
+The specifications define routes and service interfaces, storage relationships,
+grant/session policy, count-rule mapping and reproducible selection, work-claim
+recovery, transport configuration, and the backup boundary. Implementation
+supplies the concrete schema migrations and code within those contracts.
 The [product decision list](VISION.md#decisions-needed-to-develop-the-vision)
-separately preserves unresolved behaviour. Those decisions refine this application
-architecture without postponing the choice of its components or ownership.
+preserves the original questions alongside their approved resolutions. They
+must not be reopened as unspecified behaviour. New architectural decisions or
+changes to approved contracts require explicit review.

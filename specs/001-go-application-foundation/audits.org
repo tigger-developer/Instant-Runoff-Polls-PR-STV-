@@ -98,6 +98,12 @@
 - Gate impact :: This material specification amendment resets DEFINITION_GATE and OPERATOR_SIGNOFF to PENDING and moves the foundation work item to REVIEW. Earlier approvals remain historical; counting and workflow definitions are unchanged.
 - Scope :: No application implementation changes. The concurrent build session's other edits are preserved. Biome installation and execution have not been claimed.
 
+** Operator clarification of native linters, 8 September 2026
+
+- Authority :: "use the standard sdlc recommended linters (oxlint , tidy-html5, biome)".
+- Definition :: Biome checks CSS; tidy-html5 checks rendered HTML without rewriting it; oxlint applies if JavaScript/TypeScript source is later approved. Go checks remain required. Tool provisioning is native and reproducible, with Node/npm excluded.
+- Evidence :: Specification and one-off validation wording reconciled. This is a documentation amendment, not evidence that the linters have run; the amended definition gate remains pending.
+
 * Implementation gate
 
 - Execution :: Not started; this batch defines specifications only.

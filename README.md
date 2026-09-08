@@ -20,7 +20,7 @@ and validation status are tracked in the work ledger and audit records.
   foundation, Irish PR-STV counting, and the invited poll workflow, with links to
   their definitions and dependencies.
 - [Vision](docs/VISION.md): purpose, desired experience, voter-facing copy,
-  product boundaries, and unresolved product decisions.
+  product boundaries, and the history of approved product decisions.
 - [Architecture](docs/ARCHITECTURE.md): the Go application's components,
   dependencies, runtime flows, persistence, reuse plan, and Exodan integration.
 - This README: the product brief and requirements captured so far. These are
@@ -74,9 +74,10 @@ addresses reaches the **same participant record and current ballot**. Voting
 through one address and returning through another cannot create a second vote.
 
 The moderator explicitly groups the addresses. The application does not infer
-that separately entered participants are the same person. Handling an address
-assigned to two participant entries, and correcting groupings after voting has
-begun, still need product decisions.
+that separately entered participants are the same person. The approved workflow
+rejects the same normalized address across two participants in one poll, and
+de-duplicates repeated addresses within a group. Opening freezes the grouping;
+later corrections use a new draft.
 
 ### Reuse a participant list
 
@@ -136,8 +137,9 @@ The moderator has an **announce the winner immediately** checkbox:
 
 The moderator can log in after the deadline to inspect the results and winning
 options. Results are also available after a manual close and count. Counting and
-moderator access do not depend on the announcement setting. The announcement
-channel, message, and default checkbox state remain open decisions.
+moderator access do not depend on the announcement setting. The approved
+workflow defaults the checkbox off and uses a short individual email to each
+invited address when checked. It creates no public result page.
 
 ### Plain English guidance
 
@@ -174,12 +176,13 @@ Exodan. The exact runtime boundary is documented in the
 ## Remaining product decisions
 
 The [vision's decision list](docs/VISION.md#decisions-needed-to-develop-the-vision)
-preserves the outstanding questions about privacy, result visibility,
+preserves the original questions and their resolutions for privacy, result visibility,
 announcements, moderator authority, participant corrections, ballot validation,
 and poll timing. The [poll workflow specification](specs/003-invited-poll-workflow/spec.org)
 records the explicit policies approved with all three specifications on
 8 September 2026. The earlier open-question and proposal wording is preserved
-as definition history. The [counting specification](specs/002-irish-pr-stv-counting/spec.org)
+as definition history, not as unresolved product choices. The
+[counting specification](specs/002-irish-pr-stv-counting/spec.org)
 defines the detailed counting procedure and worked cases.
 
 ## Documentation history
