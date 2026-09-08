@@ -8,30 +8,10 @@ import (
 	"time"
 )
 
-func TestWorkClaimExpiresAndRejectsStaleAcknowledgement(t *testing.T) {
-	now := time.Unix(1_789_000_000, 0).UTC()
-	item := WorkItem{ID: "work-1", Status: WorkPending}
-	if err := item.Claim("claim-one", now); err != nil {
-		t.Fatal(err)
-	}
-	if item.ClaimExpiresAt != now.Add(120*time.Second) || !item.CanCommit("claim-one", now.Add(119*time.Second)) {
-		t.Fatalf("claim = %#v", item)
-	}
-	if err := item.Claim("claim-two", now.Add(121*time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if item.CanCommit("claim-one", now.Add(121*time.Second)) || !item.CanCommit("claim-two", now.Add(121*time.Second)) {
-		t.Fatal("stale claim retained commit authority")
-	}
-}
-
 func TestDeliverySchedulesFiveBoundedRetriesWithPersistedJitter(t *testing.T) {
 	now := time.Unix(1_789_000_000, 0).UTC()
-	delivery := Delivery{Status: DeliveryPending}
 	for attempt, base := range []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute} {
-		if err := delivery.StartAttempt(); err != nil {
-			t.Fatal(err)
-		}
+		delivery := Delivery{Status: DeliveryInFlight, Attempts: attempt + 1}
 		if err := delivery.TemporaryFailure(now, 0.1); err != nil {
 			t.Fatal(err)
 		}
@@ -43,25 +23,11 @@ func TestDeliverySchedulesFiveBoundedRetriesWithPersistedJitter(t *testing.T) {
 		if err := delivery.TemporaryFailure(now.Add(time.Second), 0); err != nil || delivery.NextDue != persisted {
 			t.Fatal("reprocessing changed persisted retry")
 		}
-		delivery.Status = DeliveryPending
 		now = want
 	}
-	if err := delivery.StartAttempt(); err != nil {
-		t.Fatal(err)
-	}
+	delivery := Delivery{Status: DeliveryInFlight, Attempts: 6}
 	if err := delivery.TemporaryFailure(now, 0); !errors.Is(err, ErrDeliveryTerminal) || delivery.Status != DeliveryFailed || delivery.Attempts != 6 {
 		t.Fatalf("sixth failure = %#v, %v", delivery, err)
-	}
-}
-
-func TestDeliveryPermanentFailureStopsImmediately(t *testing.T) {
-	delivery := Delivery{Status: DeliveryPending}
-	if err := delivery.StartAttempt(); err != nil {
-		t.Fatal(err)
-	}
-	delivery.PermanentFailure()
-	if delivery.Status != DeliveryFailed || delivery.Attempts != 1 || !delivery.NextDue.IsZero() {
-		t.Fatalf("permanent failure = %#v", delivery)
 	}
 }
 

@@ -239,7 +239,10 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
+	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}, {ID: "other", NormalizedEmail: "other@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO polls(id,owner_id,question,deadline,places,state,version) VALUES ('other-poll','other','Private',500,1,'draft',1)"); err != nil {
 		t.Fatal(err)
 	}
 	sessionToken, csrfToken := "session-token", "csrf-token"
@@ -253,6 +256,18 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 		randomMaterial = append(randomMaterial, bytes.Repeat([]byte{value}, 16)...)
 	}
 	handler := WorkflowHandler(cfg, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(randomMaterial), func() time.Time { return time.Unix(100, 0) })
+	wrongCSRF := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls", url.Values{"csrf": {"wrong"}, "question": {"No"}}, sessionToken, csrfToken)
+	if wrongCSRF.Code != http.StatusForbidden {
+		t.Fatalf("wrong CSRF response=%d", wrongCSRF.Code)
+	}
+	crossOwner := httptest.NewRequest(http.MethodGet, "/moderator/polls/other-poll", nil)
+	crossOwner.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	crossOwner.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	crossOwnerResponse := httptest.NewRecorder()
+	handler.ServeHTTP(crossOwnerResponse, crossOwner)
+	if crossOwnerResponse.Code != http.StatusNotFound {
+		t.Fatalf("cross-owner response=%d body=%s", crossOwnerResponse.Code, crossOwnerResponse.Body.String())
+	}
 	form := url.Values{"csrf": {csrfToken}, "question": {"Choose"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
 	request := httptest.NewRequest(http.MethodPost, "/moderator/polls", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")

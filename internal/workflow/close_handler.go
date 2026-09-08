@@ -29,7 +29,10 @@ func NewCloseHandler(repository *store.Store, randomness io.Reader, now func() t
 			return BuildCloseSnapshot(current, randomness)
 		}, "count:"+work.PollID, at)
 		if err != nil {
-			return Summary{}, fmt.Errorf("commit poll close: %w", err)
+			if retryErr := repository.RetryWork(ctx, item.ID, item.ClaimToken, at, at.Add(time.Minute), "close failed"); retryErr != nil {
+				return Summary{}, fmt.Errorf("commit poll close: %v; schedule retry: %w", err, retryErr)
+			}
+			return Summary{Retrying: 1}, fmt.Errorf("%w: close failed", ErrWorkRescheduled)
 		}
 		if changed {
 			summary := Summary{Closed: 1}
@@ -57,7 +60,7 @@ func BuildCloseSnapshot(work store.CloseWork, randomness io.Reader) (store.Count
 }
 
 func closeWorkflowPoll(work store.CloseWork) Poll {
-	poll := Poll{ID: work.PollID, OwnerID: work.OwnerID, Question: work.Question, Places: work.Places, Deadline: time.Unix(work.Deadline, 0).UTC(), State: Closed, Version: work.Version, Ballots: make(map[string]Ballot, len(work.Ballots))}
+	poll := Poll{Places: work.Places, State: Closed, Ballots: make(map[string]Ballot, len(work.Ballots))}
 	for _, option := range work.Options {
 		poll.Options = append(poll.Options, Option{ID: option.ID, Label: option.Label})
 	}

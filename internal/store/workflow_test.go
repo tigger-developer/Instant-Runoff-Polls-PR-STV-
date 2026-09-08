@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -198,6 +199,86 @@ func TestConsumeModeratorGrantIsAtomicAndOneUse(t *testing.T) {
 	}
 	if consumed != 1 || sessions != 1 {
 		t.Fatalf("consumed=%d sessions=%d", consumed, sessions)
+	}
+}
+
+func TestConsumeModeratorGrantAllowsExactlyOneConcurrentExchange(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	now := time.Unix(100, 0)
+	grantHash := bytes.Repeat([]byte{1}, 32)
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO grants(id,purpose,principal_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES ('grant','moderator','moderator-1','key-1',?,'{}',0,200)", grantHash); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var wait sync.WaitGroup
+	for index := byte(2); index < 4; index++ {
+		wait.Add(1)
+		go func(value byte) {
+			defer wait.Done()
+			<-start
+			results <- st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{value}, 32), bytes.Repeat([]byte{value + 10}, 32), nil, nil, now.Add(time.Hour), now)
+		}(index)
+	}
+	close(start)
+	wait.Wait()
+	close(results)
+	succeeded, conflicted := 0, 0
+	for err := range results {
+		if err == nil {
+			succeeded++
+		} else if errors.Is(err, ErrConflict) {
+			conflicted++
+		} else {
+			t.Fatalf("exchange error=%v", err)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("succeeded=%d conflicted=%d", succeeded, conflicted)
+	}
+}
+
+func TestBallotAndCloseRaceSerializesIntoSnapshot(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	for _, statement := range []string{
+		"UPDATE polls SET state='open',deadline=200,version=1 WHERE id='poll-1'",
+		"INSERT INTO options(poll_id,id,label,display_order) VALUES ('poll-1','a','A',1),('poll-1','b','B',2)",
+		"INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')",
+	} {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := make(chan struct{})
+	ballotResult := make(chan error, 1)
+	closeResult := make(chan error, 1)
+	seenBallots := 0
+	go func() {
+		<-start
+		ballotResult <- st.ReplaceBallot(ctx, "poll-1", "person", 0, []byte(`["a"]`), time.Unix(99, 0))
+	}()
+	go func() {
+		<-start
+		_, _, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 1, func(work CloseWork) (CountSnapshot, error) {
+			seenBallots = len(work.Ballots)
+			return CountSnapshot{ID: "snapshot", SchemaVersion: 1, Rule: "irish-guided-stv-v1", InputFingerprint: "fingerprint", InputJSON: []byte(`{"ballots":[]}`)}, nil
+		}, "count-work", time.Unix(100, 0))
+		closeResult <- err
+	}()
+	close(start)
+	ballotErr, closeErr := <-ballotResult, <-closeResult
+	if closeErr != nil {
+		t.Fatalf("close error=%v", closeErr)
+	}
+	if ballotErr == nil && seenBallots != 1 {
+		t.Fatalf("accepted ballot omitted from snapshot: seen=%d", seenBallots)
+	}
+	if ballotErr != nil && !errors.Is(ballotErr, ErrConflict) {
+		t.Fatalf("ballot error=%v", ballotErr)
 	}
 }
 

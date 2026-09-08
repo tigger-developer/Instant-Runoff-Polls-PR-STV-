@@ -495,6 +495,21 @@ func (s *Store) FailWork(ctx context.Context, workID, claimToken string, now tim
 	return nil
 }
 
+func (s *Store) RetryWork(ctx context.Context, workID, claimToken string, now, nextDue time.Time, failureClass string) error {
+	if failureClass == "" || !nextDue.After(now) {
+		return ErrConflict
+	}
+	result, err := s.DB.ExecContext(ctx, `UPDATE work_items SET status='pending',due_at=?,failure_class=?,claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?`, nextDue.Unix(), failureClass, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("retry work: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	return nil
+}
+
 func (s *Store) LoadCloseWork(ctx context.Context, workID, claimToken string, now time.Time) (CloseWork, error) {
 	var work CloseWork
 	err := s.DB.QueryRowContext(ctx, `SELECT poll.id,poll.owner_id,poll.question,poll.deadline,poll.places,poll.state,poll.version FROM work_items AS work JOIN polls AS poll ON poll.id=work.poll_id WHERE work.id=? AND work.kind='close' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&work.PollID, &work.OwnerID, &work.Question, &work.Deadline, &work.Places, &work.State, &work.Version)

@@ -68,3 +68,8 @@ func TestChooseCountDecisionRecordsExactRequestForReplay(t *testing.T) {
 		t.Fatal("unsupported decision cardinality succeeded")
 	}
 }
+
+func validOpenPoll(deadline time.Time) Poll {
+	_ = deadline
+	return Poll{State: Open, Options: []Option{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}, Places: 1, Participants: []Participant{{ID: "p1", Addresses: []Address{{Delivery: "p@example.test", Normalized: "p@example.test"}}}}, Ballots: map[string]Ballot{}}
+}

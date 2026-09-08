@@ -57,6 +57,41 @@ func TestCloseHandlerCommitsZeroTurnoutWithoutCountWork(t *testing.T) {
 	}
 }
 
+func TestCloseHandlerRandomnessFailureRollsBackAndReclaimsNextSweep(t *testing.T) {
+	st := closeHandlerStore(t, true)
+	defer st.Close()
+	if _, err := st.DB.Exec("INSERT INTO participants(id,poll_id) VALUES ('person-2','poll')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.Exec(`INSERT INTO ballots(poll_id,participant_id,version,preferences_json,accepted_at) VALUES ('poll','person-2',1,'["b","a"]',91)`); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewCloseHandler(st, bytes.NewReader(nil), func() time.Time { return time.Unix(100, 0) })
+	_, err := handler(context.Background(), &store.ClaimedWork{ID: "close-work", PollID: "poll", Kind: "close", ClaimToken: "token"})
+	if !errors.Is(err, ErrWorkRescheduled) {
+		t.Fatalf("error=%v", err)
+	}
+	var state, workStatus string
+	var snapshots int
+	var due int64
+	if err := st.DB.QueryRow("SELECT state FROM polls WHERE id='poll'").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRow("SELECT status,due_at FROM work_items WHERE id='close-work'").Scan(&workStatus, &due); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRow("SELECT count(*) FROM count_snapshots WHERE poll_id='poll'").Scan(&snapshots); err != nil {
+		t.Fatal(err)
+	}
+	if state != "open" || workStatus != "pending" || due != 160 || snapshots != 0 {
+		t.Fatalf("state=%s work=%s due=%d snapshots=%d", state, workStatus, due, snapshots)
+	}
+	claimed, err := st.ClaimDueWork(context.Background(), "close", "replacement", time.Unix(160, 0))
+	if err != nil || claimed == nil || claimed.ClaimToken != "replacement" {
+		t.Fatalf("reclaimed=%#v error=%v", claimed, err)
+	}
+}
+
 func closeHandlerStore(t *testing.T, withBallot bool) *store.Store {
 	t.Helper()
 	ctx := context.Background()

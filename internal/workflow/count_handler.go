@@ -27,8 +27,10 @@ func NewCountHandler(repository *store.Store, randomness io.Reader, now func() t
 			return Summary{}, nil
 		}
 		defer func() {
-			if returnErr != nil {
-				_ = repository.MarkCountFailed(ctx, item.ID, item.ClaimToken, now())
+			if returnErr != nil && !errors.Is(returnErr, ErrWorkHandled) {
+				if persistErr := repository.MarkCountFailed(ctx, item.ID, item.ClaimToken, now()); persistErr != nil {
+					returnErr = fmt.Errorf("%v; persist count failure: %w", returnErr, persistErr)
+				}
 			}
 		}()
 		var input count.Input
