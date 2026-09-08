@@ -43,7 +43,7 @@ func TestModeratorLoginGrantAndParticipantSessionBoundaries(t *testing.T) {
 	}
 	sessionHash := bytes.Repeat([]byte{3}, 32)
 	csrfHash := bytes.Repeat([]byte{4}, 32)
-	if err := st.CreateParticipantSession(ctx, participantHash, sessionHash, csrfHash, now.Add(time.Hour), now); err != nil {
+	if err := st.CreateParticipantSession(ctx, participantHash, sessionHash, csrfHash, nil, nil, now.Add(time.Hour), now); err != nil {
 		t.Fatal(err)
 	}
 	session, err := st.SessionByHash(ctx, sessionHash, now)
@@ -55,6 +55,45 @@ func TestModeratorLoginGrantAndParticipantSessionBoundaries(t *testing.T) {
 	}
 	if _, err := st.SessionByHash(ctx, sessionHash, now); err == nil {
 		t.Fatal("revoked session remained active")
+	}
+}
+
+func TestParticipantSessionCreationRevokesPresentedSession(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Unix(100, 0)
+	grantHash := bytes.Repeat([]byte{1}, 32)
+	oldHash := bytes.Repeat([]byte{2}, 32)
+	newHash := bytes.Repeat([]byte{3}, 32)
+	csrfHash := bytes.Repeat([]byte{4}, 32)
+	for _, statement := range []string{
+		"INSERT INTO moderators(id,normalized_email) VALUES ('owner','owner@example.test')",
+		"INSERT INTO polls(id,owner_id,question,deadline,places,state,version) VALUES ('poll','owner','Question',500,1,'open',1)",
+		"INSERT INTO participants(id,poll_id) VALUES ('person','poll')",
+		"INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll','person','reader@example.test','reader@example.test')",
+	} {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO grants(id,purpose,principal_id,poll_id,contact_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES ('grant','participant','person','poll','contact','key',?,'{}',100,500)", grantHash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,poll_id,csrf_hash,expires_at) VALUES (?,'participant','person','poll',?,500)", oldHash, csrfHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateParticipantSession(ctx, grantHash, newHash, csrfHash, nil, oldHash, now.Add(time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.SessionByHash(ctx, oldHash, now); err == nil {
+		t.Fatal("presented session remained active")
+	}
+	if _, err := st.SessionByHash(ctx, newHash, now); err != nil {
+		t.Fatalf("replacement session error=%v", err)
 	}
 }
 

@@ -103,11 +103,21 @@ func TestProcessDueWorkContinuesAfterDurablyHandledItem(t *testing.T) {
 	}
 }
 
+func TestProcessDueWorkReportsMissingHandlerPersistenceFailure(t *testing.T) {
+	persistErr := errors.New("database unavailable")
+	repository := &fakeWorkRepository{items: map[string][]*store.ClaimedWork{"close": {{ID: "close", Kind: "close"}}}, failErr: persistErr}
+	summary, err := ProcessDueWork(context.Background(), repository, map[string]WorkHandler{}, func() string { return "token" }, time.Now)
+	if !errors.Is(err, persistErr) || summary.Failed != 1 {
+		t.Fatalf("summary=%#v error=%v", summary, err)
+	}
+}
+
 type fakeWorkRepository struct {
 	items      map[string][]*store.ClaimedWork
 	claimOrder []string
 	completed  []string
 	failed     []string
+	failErr    error
 }
 
 func (repo *fakeWorkRepository) ClaimDueWork(_ context.Context, kind, token string, _ time.Time) (*store.ClaimedWork, error) {
@@ -127,5 +137,5 @@ func (repo *fakeWorkRepository) CompleteWork(_ context.Context, id, _ string, _ 
 }
 func (repo *fakeWorkRepository) FailWork(_ context.Context, id, _ string, _ time.Time, _ string) error {
 	repo.failed = append(repo.failed, id)
-	return nil
+	return repo.failErr
 }

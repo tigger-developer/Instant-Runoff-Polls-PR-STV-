@@ -6,3 +6,7 @@ smtp:
   port: 1025
   from: polls@example.test
   tls_mode: development_plain
+timers:
+  - name: process-due-work
+    interval: 1min
+    args: [process-due-work]

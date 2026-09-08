@@ -10,6 +10,11 @@ import (
 	"fmt"
 )
 
+type closeWorkQuery interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 type OwnedResult struct {
 	Poll       PollRecord
 	Turnout    int
@@ -18,12 +23,16 @@ type OwnedResult struct {
 }
 
 func (s *Store) PollForClose(ctx context.Context, ownerID, pollID string) (CloseWork, error) {
+	return loadCloseWork(ctx, s.DB, ownerID, pollID)
+}
+
+func loadCloseWork(ctx context.Context, query closeWorkQuery, ownerID, pollID string) (CloseWork, error) {
 	var work CloseWork
-	err := s.DB.QueryRowContext(ctx, "SELECT id,owner_id,question,deadline,places,state,version FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&work.PollID, &work.OwnerID, &work.Question, &work.Deadline, &work.Places, &work.State, &work.Version)
+	err := query.QueryRowContext(ctx, "SELECT id,owner_id,question,deadline,places,state,version FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&work.PollID, &work.OwnerID, &work.Question, &work.Deadline, &work.Places, &work.State, &work.Version)
 	if err != nil {
 		return CloseWork{}, ErrConflict
 	}
-	optionRows, err := s.DB.QueryContext(ctx, "SELECT id,label FROM options WHERE poll_id=? ORDER BY display_order", pollID)
+	optionRows, err := query.QueryContext(ctx, "SELECT id,label FROM options WHERE poll_id=? ORDER BY display_order", pollID)
 	if err != nil {
 		return CloseWork{}, fmt.Errorf("read close options: %w", err)
 	}
@@ -38,7 +47,7 @@ func (s *Store) PollForClose(ctx context.Context, ownerID, pollID string) (Close
 	if err := optionRows.Close(); err != nil {
 		return CloseWork{}, fmt.Errorf("close option rows: %w", err)
 	}
-	participantRows, err := s.DB.QueryContext(ctx, "SELECT id FROM participants WHERE poll_id=? ORDER BY id", pollID)
+	participantRows, err := query.QueryContext(ctx, "SELECT id FROM participants WHERE poll_id=? ORDER BY id", pollID)
 	if err != nil {
 		return CloseWork{}, fmt.Errorf("read close participants: %w", err)
 	}
@@ -53,7 +62,7 @@ func (s *Store) PollForClose(ctx context.Context, ownerID, pollID string) (Close
 	if err := participantRows.Close(); err != nil {
 		return CloseWork{}, fmt.Errorf("close participant rows: %w", err)
 	}
-	ballotRows, err := s.DB.QueryContext(ctx, "SELECT participant_id,preferences_json,version,accepted_at FROM ballots WHERE poll_id=? ORDER BY participant_id", pollID)
+	ballotRows, err := query.QueryContext(ctx, "SELECT participant_id,preferences_json,version,accepted_at FROM ballots WHERE poll_id=? ORDER BY participant_id", pollID)
 	if err != nil {
 		return CloseWork{}, fmt.Errorf("read close ballots: %w", err)
 	}

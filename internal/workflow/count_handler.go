@@ -58,9 +58,9 @@ func NewCountHandler(repository *store.Store, randomness io.Reader, now func() t
 					return Summary{}, fmt.Errorf("commit count result: %w", err)
 				}
 				if created {
-					return Summary{Counted: 1}, nil
+					return Summary{Counted: 1}, ErrWorkHandled
 				}
-				return Summary{}, nil
+				return Summary{}, ErrWorkHandled
 			}
 			if outcome.DecisionRequest == nil {
 				return Summary{}, errors.New("count returned no result or decision request")

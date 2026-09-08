@@ -46,3 +46,14 @@ func TestResultMessagesUseApprovedOutcomes(t *testing.T) {
 		t.Fatalf("zero turnout body = %q", none.Body)
 	}
 }
+
+func TestAccessMessagesUseScopedSubjectsAndLinks(t *testing.T) {
+	moderator, err := ModeratorLoginMessage("owner@example.test", "https://poll.example/auth/verify?grant=one")
+	if err != nil || moderator.Subject != "Sign in to STV Poll" || !strings.Contains(moderator.Body, "grant=one") {
+		t.Fatalf("moderator message=%#v error=%v", moderator, err)
+	}
+	participant, err := ParticipantReturnMessage("reader@example.test", "Favourite book", "https://poll.example/auth/verify?grant=two")
+	if err != nil || participant.Subject != "Return to Favourite book" || !strings.Contains(participant.Body, "grant=two") {
+		t.Fatalf("participant message=%#v error=%v", participant, err)
+	}
+}

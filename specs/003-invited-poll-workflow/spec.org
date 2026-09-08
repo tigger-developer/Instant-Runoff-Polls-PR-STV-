@@ -2,18 +2,7 @@
 #+SUBTITLE: Unified change specification
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
-#+DEFINITION_GATE: PASS
-#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; minor refresh accepted against prior passing audits
-
-#+begin_comment
-Current gate disposition, 8 September 2026: the operator accepts this minor
-architecture/native-web-tooling refresh against the prior passing audits.
-DEFINITION_GATE retains PASS on that explicit operator basis. The attempted
-fresh independent review produced no accepted verdict; its runner incident is
-preserved in audits.org and is not represented as an independent PASS.
-No further definition audit is required for this accepted refresh. This does
-not waive implementation tests, implementation review or operator closure.
-#+end_comment
+#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08
 
 #+begin_comment
 Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".
@@ -800,7 +789,7 @@ establish the bounded local integration/packaging evidence.
 *** Dependency branch baseline
 
 - Authority :: Taḋg directed =JFDI= after authorizing replacement of the unavailable W002 implementation auditor.
-- Decision :: Create =w003-invited-poll-workflow= from the synchronized, implementation-gate-passing W002 branch rather than from =master=, because W003 directly consumes W002's unmerged counting interface. Publish the new branch before implementation.
+- Decision :: Create =w003-invited-poll-workflow= from the synchronized W002 branch rather than from =master=, because W003 directly consumes W002's unmerged counting interface. Publish the new branch before implementation.
 - Boundary :: This preserves the configured feature-branch strategy and prerequisite history without merging, rewriting or closing W001 or W002. It introduces no product or infrastructure decision.
 
 *** Initial implementation seam
@@ -811,9 +800,9 @@ establish the bounded local integration/packaging evidence.
 
 *** Restart branch and delivery order
 
-- Authority :: Taḋg invoked =deliver-change= for W001, W002 and W003, directed a restart, and explicitly stated that the new session resets audit counts.
+- Authority :: Taḋg invoked =deliver-change= for W001, W002 and W003 and directed a restart.
 - Branch :: Continue on the operator-selected =w002-irish-pr-stv-counting= branch under the configured =feature= strategy. The synchronized branch was already up to date with its upstream before new edits.
-- Decision :: Preserve earlier audit evidence as revision-specific history and begin this invocation's local and retained-external implementation audit counts at zero. Finish the W001 and W002 prerequisite gates before implementing this workflow.
+- Decision :: Finish the W001 and W002 prerequisites before implementing this workflow.
 - Boundary :: The restart does not amend any approved workflow policy or authorize deployment, live email, production data, or infrastructure mutation.
 
 * Delivery Handoff
@@ -823,7 +812,7 @@ establish the bounded local integration/packaging evidence.
 
 - Required reading :: This specification, the profile, README, VISION copy, ARCHITECTURE, and the signed-off W001/W002 interfaces. No unrecorded conversation is required.
 - First implementation step :: After prerequisite delivery and sign-off, write [[#rt-003-3][RT003.3 - Address grouping and entitlement]] and observe RED.
-- Definition evidence :: [[file:audits.org][W003 - Poll workflow definition audit]].
+- Audit evidence :: [[file:audits.yaml][W003 - Poll workflow audit record]].
 - Validation evidence :: [[file:validation.org][W003 - Workflow user and one-off validation]].
 - Documentation impact :: Update README's working instructions and links; retain VISION's resolved decision history while linking to the policies explicitly approved in this specification. Package the voter-facing help from its existing authority.
 - Completion boundary :: All traced tests and required user/one-off evidence must be current; operator closure remains separate. No live deployment, actual invitation sending, or infrastructure mutation is authorized by specification drafting.

@@ -154,6 +154,84 @@ func TestPublicAccessRequestsRejectMissingPreAuthCSRF(t *testing.T) {
 	}
 }
 
+func TestParticipantAccessRequestQueuesOneScopedReturnGrant(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for _, statement := range []string{
+		"INSERT INTO moderators(id,normalized_email) VALUES ('owner','owner@example.test')",
+		"INSERT INTO polls(id,owner_id,question,deadline,places,state,version) VALUES ('poll','owner','Question',500,1,'open',1)",
+		"INSERT INTO participants(id,poll_id) VALUES ('person','poll')",
+		"INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll','person','reader@example.test','reader@example.test')",
+	} {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Config{BaseURL: "https://poll.example", Auth: config.Auth{KeyID: "key", SigningKey: bytes.Repeat([]byte{7}, 32)}}
+	handler := WorkflowHandler(cfg, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(bytes.Repeat([]byte{8}, 128)), func() time.Time { return time.Unix(100, 0) })
+	page := httptest.NewRecorder()
+	handler.ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/polls/poll", nil))
+	request := httptest.NewRequest(http.MethodPost, "/polls/poll/access", strings.NewReader(url.Values{"email": {"reader@example.test"}, "csrf": {hiddenValue(t, page.Body.String(), "csrf")}}.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range page.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("access response=%d body=%s", response.Code, response.Body.String())
+	}
+	claimed, err := st.ClaimDueWork(ctx, "delivery", "claim", time.Unix(100, 0))
+	if err != nil || claimed == nil {
+		t.Fatalf("claimed=%#v error=%v", claimed, err)
+	}
+	attempt, err := st.BeginDeliveryAttempt(ctx, claimed.ID, claimed.ClaimToken, time.Unix(100, 0))
+	if err != nil || attempt.MessageKind != "participant_return" || attempt.ParticipantID != "person" {
+		t.Fatalf("attempt=%#v error=%v", attempt, err)
+	}
+}
+
+func TestLogoutRequiresSessionCSRFAndRevokesTheSession(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	sessionToken, csrfToken := "session-token", "csrf-token"
+	sessionHash, csrfHash := sha256.Sum256([]byte(sessionToken)), sha256.Sum256([]byte(csrfToken))
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,csrf_hash,expires_at) VALUES (?,'moderator','owner',?,500)", sessionHash[:], csrfHash[:]); err != nil {
+		t.Fatal(err)
+	}
+	handler := WorkflowHandler(config.Config{}, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(make([]byte, 64)), func() time.Time { return time.Unix(100, 0) })
+	missing := httptest.NewRequest(http.MethodPost, "/logout", strings.NewReader("csrf=wrong"))
+	missing.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	missing.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	missingResponse := httptest.NewRecorder()
+	handler.ServeHTTP(missingResponse, missing)
+	if missingResponse.Code != http.StatusForbidden {
+		t.Fatalf("missing CSRF response=%d", missingResponse.Code)
+	}
+	if _, err := st.SessionByHash(ctx, sessionHash[:], time.Unix(100, 0)); err != nil {
+		t.Fatalf("session revoked by invalid logout: %v", err)
+	}
+	valid := httptest.NewRequest(http.MethodPost, "/logout", strings.NewReader(url.Values{"csrf": {csrfToken}}.Encode()))
+	valid.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	valid.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	validResponse := httptest.NewRecorder()
+	handler.ServeHTTP(validResponse, valid)
+	if validResponse.Code != http.StatusSeeOther {
+		t.Fatalf("valid logout response=%d body=%s", validResponse.Code, validResponse.Body.String())
+	}
+	if _, err := st.SessionByHash(ctx, sessionHash[:], time.Unix(100, 0)); err == nil {
+		t.Fatal("logged-out session remained active")
+	}
+}
+
 func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(ctx, t.TempDir())
@@ -197,7 +275,11 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if viewResponse.Code != http.StatusOK || !strings.Contains(viewResponse.Body.String(), "Choose") {
 		t.Fatalf("view response=%d body=%s", viewResponse.Code, viewResponse.Body.String())
 	}
-	participantsForm := url.Values{"csrf": {csrfToken}, "version": {"1"}, "participants": {"one@example.test, alt@example.test"}, "copy_poll_id": {""}}
+	editForm := url.Values{"csrf": {csrfToken}, "version": {"1"}, "question": {"Choose one"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
+	if response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls/"+pollID, editForm, sessionToken, csrfToken); response.Code != http.StatusSeeOther {
+		t.Fatalf("edit response=%d body=%s", response.Code, response.Body.String())
+	}
+	participantsForm := url.Values{"csrf": {csrfToken}, "version": {"2"}, "participants": {"one@example.test, alt@example.test"}, "copy_poll_id": {""}}
 	participantsRequest := httptest.NewRequest(http.MethodPost, "/moderator/polls/"+pollID+"/participants", strings.NewReader(participantsForm.Encode()))
 	participantsRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	participantsRequest.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
@@ -207,7 +289,15 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if participantsResponse.Code != http.StatusSeeOther {
 		t.Fatalf("participants response=%d body=%s", participantsResponse.Code, participantsResponse.Body.String())
 	}
-	openForm := url.Values{"csrf": {csrfToken}, "version": {"2"}}
+	participantsPage := httptest.NewRequest(http.MethodGet, "/moderator/polls/"+pollID+"/participants", nil)
+	participantsPage.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	participantsPage.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	participantsPageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(participantsPageResponse, participantsPage)
+	if participantsPageResponse.Code != http.StatusOK || !strings.Contains(participantsPageResponse.Body.String(), "one@example.test") {
+		t.Fatalf("participants page=%d body=%s", participantsPageResponse.Code, participantsPageResponse.Body.String())
+	}
+	openForm := url.Values{"csrf": {csrfToken}, "version": {"3"}}
 	openRequest := httptest.NewRequest(http.MethodPost, "/moderator/polls/"+pollID+"/open", strings.NewReader(openForm.Encode()))
 	openRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	openRequest.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
@@ -227,6 +317,97 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	}
 	if openResponse.Code != http.StatusSeeOther || state != "open" || deliveries != 2 || closeWork != 1 {
 		t.Fatalf("open response=%d state=%s deliveries=%d close=%d body=%s", openResponse.Code, state, deliveries, closeWork, openResponse.Body.String())
+	}
+
+	var participantID string
+	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM participants WHERE poll_id=?", pollID).Scan(&participantID); err != nil {
+		t.Fatal(err)
+	}
+	participantToken, participantCSRF := "participant-token", "participant-csrf"
+	participantHash, participantCSRFHash := sha256.Sum256([]byte(participantToken)), sha256.Sum256([]byte(participantCSRF))
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,poll_id,csrf_hash,expires_at) VALUES (?,'participant',?,?,?,500)", participantHash[:], participantID, pollID, participantCSRFHash[:]); err != nil {
+		t.Fatal(err)
+	}
+	ballotPage := httptest.NewRequest(http.MethodGet, "/polls/"+pollID, nil)
+	ballotPage.AddCookie(&http.Cookie{Name: "stv_participant", Value: participantToken})
+	ballotPage.AddCookie(&http.Cookie{Name: "stv_participant_csrf", Value: participantCSRF})
+	ballotPageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(ballotPageResponse, ballotPage)
+	if ballotPageResponse.Code != http.StatusOK || !strings.Contains(ballotPageResponse.Body.String(), "Alice") {
+		t.Fatalf("ballot page=%d body=%s", ballotPageResponse.Code, ballotPageResponse.Body.String())
+	}
+	var firstOption string
+	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM options WHERE poll_id=? ORDER BY display_order LIMIT 1", pollID).Scan(&firstOption); err != nil {
+		t.Fatal(err)
+	}
+	ballotForm := url.Values{"csrf": {participantCSRF}, "version": {"0"}, "rank": {"1", ""}}
+	ballotRequest := httptest.NewRequest(http.MethodPost, "/polls/"+pollID+"/ballot", strings.NewReader(ballotForm.Encode()))
+	ballotRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ballotRequest.AddCookie(&http.Cookie{Name: "stv_participant", Value: participantToken})
+	ballotRequest.AddCookie(&http.Cookie{Name: "stv_participant_csrf", Value: participantCSRF})
+	ballotResponse := httptest.NewRecorder()
+	handler.ServeHTTP(ballotResponse, ballotRequest)
+	if ballotResponse.Code != http.StatusSeeOther {
+		t.Fatalf("ballot response=%d body=%s", ballotResponse.Code, ballotResponse.Body.String())
+	}
+	for _, transition := range []struct {
+		path    string
+		version string
+		state   string
+	}{
+		{path: "pause", version: "4", state: "paused"},
+		{path: "resume", version: "5", state: "open"},
+		{path: "pause", version: "6", state: "paused"},
+	} {
+		response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls/"+pollID+"/"+transition.path, url.Values{"csrf": {csrfToken}, "version": {transition.version}}, sessionToken, csrfToken)
+		if response.Code != http.StatusSeeOther {
+			t.Fatalf("%s response=%d body=%s", transition.path, response.Code, response.Body.String())
+		}
+		if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id=?", pollID).Scan(&state); err != nil || state != transition.state {
+			t.Fatalf("%s state=%s error=%v", transition.path, state, err)
+		}
+	}
+	closeResponse := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls/"+pollID+"/close", url.Values{"csrf": {csrfToken}, "version": {"7"}}, sessionToken, csrfToken)
+	if closeResponse.Code != http.StatusSeeOther {
+		t.Fatalf("close response=%d body=%s", closeResponse.Code, closeResponse.Body.String())
+	}
+	results := httptest.NewRequest(http.MethodGet, "/moderator/polls/"+pollID+"/results", nil)
+	results.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	results.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	resultsResponse := httptest.NewRecorder()
+	handler.ServeHTTP(resultsResponse, results)
+	if resultsResponse.Code != http.StatusOK || !strings.Contains(resultsResponse.Body.String(), "pending") {
+		t.Fatalf("results response=%d body=%s", resultsResponse.Code, resultsResponse.Body.String())
+	}
+	pollsPage := httptest.NewRequest(http.MethodGet, "/moderator/polls", nil)
+	pollsPage.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	pollsPage.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	pollsPageResponse := httptest.NewRecorder()
+	handler.ServeHTTP(pollsPageResponse, pollsPage)
+	if pollsPageResponse.Code != http.StatusOK || !strings.Contains(pollsPageResponse.Body.String(), "Choose one") {
+		t.Fatalf("poll list response=%d body=%s", pollsPageResponse.Code, pollsPageResponse.Body.String())
+	}
+	copyDraft := url.Values{"csrf": {csrfToken}, "question": {"Copied electorate"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
+	if response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls", copyDraft, sessionToken, csrfToken); response.Code != http.StatusSeeOther {
+		t.Fatalf("copy draft response=%d body=%s", response.Code, response.Body.String())
+	}
+	var copiedPollID string
+	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM polls WHERE question='Copied electorate'").Scan(&copiedPollID); err != nil {
+		t.Fatal(err)
+	}
+	copyForm := url.Values{"csrf": {csrfToken}, "version": {"1"}, "participants": {""}, "copy_poll_id": {pollID}}
+	if response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls/"+copiedPollID+"/participants", copyForm, sessionToken, csrfToken); response.Code != http.StatusSeeOther {
+		t.Fatalf("copy electorate response=%d body=%s", response.Code, response.Body.String())
+	}
+	var copiedParticipants, copiedContacts int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM participants WHERE poll_id=?", copiedPollID).Scan(&copiedParticipants); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id=?", copiedPollID).Scan(&copiedContacts); err != nil {
+		t.Fatal(err)
+	}
+	if copiedParticipants != 1 || copiedContacts != 2 {
+		t.Fatalf("copied participants=%d contacts=%d", copiedParticipants, copiedContacts)
 	}
 }
 
@@ -253,4 +434,14 @@ func hiddenValue(t *testing.T, body, name string) string {
 		t.Fatalf("missing %s in %s", name, body)
 	}
 	return match[1]
+}
+
+func moderatorFormRequest(handler http.Handler, method, path string, form url.Values, sessionToken, csrfToken string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, path, strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	request.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	return response
 }

@@ -65,7 +65,9 @@ func ProcessDueWork(ctx context.Context, repository WorkRepository, handlers map
 			handler := handlers[kind]
 			if handler == nil {
 				summary.Failed++
-				_ = repository.FailWork(ctx, item.ID, token, now(), "handler unavailable")
+				if err := repository.FailWork(ctx, item.ID, token, now(), "handler unavailable"); err != nil {
+					return summary, fmt.Errorf("record missing %s handler failure: %w", kind, err)
+				}
 				return summary, fmt.Errorf("%s handler is unavailable", kind)
 			}
 			delta, handleErr := handler(ctx, item)

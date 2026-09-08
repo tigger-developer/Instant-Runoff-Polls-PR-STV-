@@ -35,6 +35,21 @@ func TestPollRejectsInvalidOpeningWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestDraftDefinitionUpdatesAtCurrentVersion(t *testing.T) {
+	deadline := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	poll := Poll{State: Draft, Version: 1}
+	options := []Option{{ID: "a", Label: "Alice"}, {ID: "b", Label: "Bob"}}
+	if err := poll.UpdateDefinition("Choose", options, 1, deadline, 1); err != nil {
+		t.Fatal(err)
+	}
+	if poll.Question != "Choose" || poll.Version != 2 || !poll.Deadline.Equal(deadline) || len(poll.Options) != 2 {
+		t.Fatalf("poll=%#v", poll)
+	}
+	if err := poll.UpdateDefinition("Stale", options, 1, deadline, 1); !errors.Is(err, ErrVersionConflict) {
+		t.Fatalf("stale update error=%v", err)
+	}
+}
+
 func TestPollReplacesBallotOnlyBeforeDeadlineAtCurrentVersion(t *testing.T) {
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
 	poll := validOpenPoll(now.Add(time.Hour))

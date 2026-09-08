@@ -46,6 +46,8 @@ type CountSnapshot struct {
 	InputJSON        []byte
 }
 
+type SnapshotBuilder func(CloseWork) (CountSnapshot, error)
+
 type ClaimedWork struct {
 	ID             string
 	PollID         string
@@ -266,46 +268,74 @@ func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVe
 	return true, nil
 }
 
-func (s *Store) ClosePoll(ctx context.Context, ownerID, pollID string, expectedVersion int, snapshot CountSnapshot, workID string, now time.Time) (bool, error) {
-	if snapshot.ID == "" || snapshot.SchemaVersion < 1 || snapshot.Rule == "" || snapshot.InputFingerprint == "" || !json.Valid(snapshot.InputJSON) || workID == "" {
-		return false, ErrConflict
+func (s *Store) ClosePoll(ctx context.Context, ownerID, pollID string, expectedVersion int, build SnapshotBuilder, workID string, now time.Time) (bool, bool, error) {
+	if ownerID == "" || pollID == "" || expectedVersion < 1 || build == nil || workID == "" {
+		return false, false, ErrConflict
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("begin poll close: %w", err)
+		return false, false, fmt.Errorf("begin poll close: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	var state string
-	var version int
-	if err := tx.QueryRowContext(ctx, "SELECT state,version FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&state, &version); err != nil {
-		return false, ErrConflict
+	locked, err := tx.ExecContext(ctx, "UPDATE polls SET version=version WHERE id=? AND owner_id=?", pollID, ownerID)
+	if err != nil {
+		return false, false, fmt.Errorf("lock poll close: %w", err)
 	}
-	if state == "closed" && version == expectedVersion {
-		return false, nil
+	changed, err := locked.RowsAffected()
+	if err != nil || changed != 1 {
+		return false, false, ErrConflict
 	}
-	if (state != "open" && state != "paused") || version != expectedVersion {
-		return false, ErrConflict
+	current, err := loadCloseWork(ctx, tx, ownerID, pollID)
+	if err != nil {
+		return false, false, err
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO count_snapshots(id,poll_id,schema_version,rule,input_fingerprint,input_json,created_at) VALUES (?,?,?,?,?,?,?)", snapshot.ID, pollID, snapshot.SchemaVersion, snapshot.Rule, snapshot.InputFingerprint, snapshot.InputJSON, now.Unix()); err != nil {
-		return false, fmt.Errorf("insert count snapshot: %w", err)
+	if current.State == "closed" && current.Version == expectedVersion {
+		return false, false, tx.Commit()
 	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?, 'count', ?,?,'pending')", workID, pollID, "count:"+pollID, now.Unix()); err != nil {
-		return false, fmt.Errorf("insert count work: %w", err)
+	if (current.State != "open" && current.State != "paused") || current.Version != expectedVersion {
+		return false, false, ErrConflict
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled' WHERE message_kind='invitation' AND status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='delivery')", pollID); err != nil {
-		return false, err
+	noVotes := len(current.Ballots) == 0
+	if noVotes {
+		if err := insertAnnouncementWork(ctx, tx, pollID, "no-votes", now); err != nil {
+			return false, false, err
+		}
+	} else {
+		snapshot, err := build(current)
+		if err != nil {
+			return false, false, err
+		}
+		if snapshot.ID == "" || snapshot.SchemaVersion < 1 || snapshot.Rule == "" || snapshot.InputFingerprint == "" || !json.Valid(snapshot.InputJSON) {
+			return false, false, ErrConflict
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO count_snapshots(id,poll_id,schema_version,rule,input_fingerprint,input_json,created_at) VALUES (?,?,?,?,?,?,?)", snapshot.ID, pollID, snapshot.SchemaVersion, snapshot.Rule, snapshot.InputFingerprint, snapshot.InputJSON, now.Unix()); err != nil {
+			return false, false, fmt.Errorf("insert count snapshot: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?, 'count', ?,?,'pending')", workID, pollID, "count:"+pollID, now.Unix()); err != nil {
+			return false, false, fmt.Errorf("insert count work: %w", err)
+		}
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',closed_at=?,version=version+1 WHERE id=? AND version=?", now.Unix(), pollID, expectedVersion); err != nil {
-		return false, err
+	if err := cancelOpenInvitations(ctx, tx, pollID); err != nil {
+		return false, false, err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE work_items SET status='succeeded',claim_token=NULL,claim_expires_at=NULL WHERE poll_id=? AND kind='close' AND status IN ('pending','claimed')", pollID); err != nil {
+		return false, false, fmt.Errorf("finalize close work: %w", err)
+	}
+	countingStatus := "pending"
+	if noVotes {
+		countingStatus = "no_votes"
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',counting_status=?,closed_at=?,version=version+1 WHERE id=? AND version=?", countingStatus, now.Unix(), pollID, expectedVersion); err != nil {
+		return false, false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit poll close: %w", err)
+		return false, false, fmt.Errorf("commit poll close: %w", err)
 	}
-	return true, nil
+	return true, noVotes, nil
 }
 
-func (s *Store) ConsumeModeratorGrant(ctx context.Context, grantHash []byte, moderatorID string, sessionHash, csrfHash []byte, sessionExpiresAt, now time.Time) error {
-	if len(grantHash) != 32 || len(sessionHash) != 32 || len(csrfHash) != 32 || moderatorID == "" || !sessionExpiresAt.After(now) {
+func (s *Store) ConsumeModeratorGrant(ctx context.Context, grantHash []byte, moderatorID string, sessionHash, csrfHash, preAuthHash, replaceHash []byte, sessionExpiresAt, now time.Time) error {
+	if len(grantHash) != 32 || len(sessionHash) != 32 || len(csrfHash) != 32 || len(preAuthHash) != 0 && len(preAuthHash) != 32 || len(replaceHash) != 0 && len(replaceHash) != 32 || moderatorID == "" || !sessionExpiresAt.After(now) {
 		return ErrConflict
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -324,6 +354,9 @@ func (s *Store) ConsumeModeratorGrant(ctx context.Context, grantHash []byte, mod
 	changed, err := result.RowsAffected()
 	if err != nil || changed != 1 {
 		return ErrConflict
+	}
+	if err := rotateAuthenticationSessions(ctx, tx, preAuthHash, replaceHash, "moderator", now); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,csrf_hash,expires_at) VALUES (?,'moderator',?,?,?)", sessionHash, moderatorID, csrfHash, sessionExpiresAt.Unix()); err != nil {
 		return fmt.Errorf("create moderator session: %w", err)
@@ -517,30 +550,14 @@ func (s *Store) LoadCloseWork(ctx context.Context, workID, claimToken string, no
 	return work, nil
 }
 
-func (s *Store) ClosePollNoVotes(ctx context.Context, ownerID, pollID string, expectedVersion int, now time.Time) (bool, error) {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return false, fmt.Errorf("begin zero-turnout close: %w", err)
+func cancelOpenInvitations(ctx context.Context, tx *sql.Tx, pollID string) error {
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled',smtp_outcome='poll closed' WHERE message_kind IN ('invitation','participant_return') AND status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='delivery')", pollID); err != nil {
+		return fmt.Errorf("cancel invitations: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
-	var state string
-	var version, ballots int
-	if err := tx.QueryRowContext(ctx, "SELECT state,version,(SELECT count(*) FROM ballots WHERE poll_id=polls.id) FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&state, &version, &ballots); err != nil || version != expectedVersion || ballots != 0 || state != "open" && state != "paused" {
-		return false, ErrConflict
+	if _, err := tx.ExecContext(ctx, "UPDATE work_items SET status='succeeded',claim_token=NULL,claim_expires_at=NULL WHERE poll_id=? AND kind='delivery' AND status IN ('pending','claimed') AND id IN (SELECT work_id FROM deliveries WHERE message_kind IN ('invitation','participant_return') AND status='cancelled')", pollID); err != nil {
+		return fmt.Errorf("finalize cancelled invitation work: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled' WHERE message_kind='invitation' AND status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='delivery')", pollID); err != nil {
-		return false, fmt.Errorf("cancel invitations: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',counting_status='no_votes',closed_at=?,version=version+1 WHERE id=? AND version=?", now.Unix(), pollID, expectedVersion); err != nil {
-		return false, fmt.Errorf("close zero-turnout poll: %w", err)
-	}
-	if err := insertAnnouncementWork(ctx, tx, pollID, "no-votes", now); err != nil {
-		return false, err
-	}
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit zero-turnout close: %w", err)
-	}
-	return true, nil
+	return nil
 }
 
 func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken string, now time.Time) (DeliveryAttempt, error) {
@@ -870,6 +887,9 @@ func (s *Store) CommitCountResult(ctx context.Context, workID, claimToken string
 		if !bytes.Equal(existing, resultJSON) {
 			return false, ErrConflict
 		}
+		if err := completeClaimedCountWork(ctx, tx, workID, claimToken, now); err != nil {
+			return false, err
+		}
 		return false, tx.Commit()
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -888,10 +908,25 @@ func (s *Store) CommitCountResult(ctx context.Context, workID, claimToken string
 	if err := insertAnnouncementWork(ctx, tx, pollID, snapshotID, now); err != nil {
 		return false, err
 	}
+	if err := completeClaimedCountWork(ctx, tx, workID, claimToken, now); err != nil {
+		return false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit count result: %w", err)
 	}
 	return true, nil
+}
+
+func completeClaimedCountWork(ctx context.Context, tx *sql.Tx, workID, claimToken string, now time.Time) error {
+	result, err := tx.ExecContext(ctx, "UPDATE work_items SET status='succeeded',claim_token=NULL,claim_expires_at=NULL WHERE id=? AND kind='count' AND status='claimed' AND claim_token=? AND claim_expires_at>?", workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("complete count work: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	return nil
 }
 
 func (s *Store) MarkCountFailed(ctx context.Context, workID, claimToken string, now time.Time) error {

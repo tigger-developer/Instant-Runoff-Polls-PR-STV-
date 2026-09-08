@@ -441,7 +441,7 @@ func (app *authApplication) getParticipantPoll(response http.ResponseWriter, req
 	for _, option := range view.Poll.Options {
 		options = append(options, ballotOption{ID: option.ID, Label: option.Label, Rank: ranks[option.ID]})
 	}
-	app.render(response, "ballot.html", map[string]any{"Poll": view.Poll, "Options": options, "Version": view.BallotVersion, "CSRF": csrf})
+	app.render(response, "ballot.html", map[string]any{"Poll": view.Poll, "Options": options, "Version": view.BallotVersion, "CSRF": csrf, "Saved": request.URL.Query().Get("saved") == "1"})
 }
 
 func (app *authApplication) postBallot(response http.ResponseWriter, request *http.Request) {
@@ -476,7 +476,7 @@ func (app *authApplication) postBallot(response http.ResponseWriter, request *ht
 		http.Error(response, "Conflict", http.StatusConflict)
 		return
 	}
-	http.Redirect(response, request, "/polls/"+session.PollID, http.StatusSeeOther)
+	http.Redirect(response, request, "/polls/"+session.PollID+"?saved=1", http.StatusSeeOther)
 }
 
 func rankedPreferences(options []store.PollOption, ranks []string) ([]string, error) {
@@ -539,15 +539,9 @@ func (app *authApplication) postClosePoll(response http.ResponseWriter, request 
 		http.Error(response, "Conflict", http.StatusConflict)
 		return
 	}
-	if len(work.Ballots) == 0 {
-		_, err = app.store.ClosePollNoVotes(request.Context(), access.ID, work.PollID, version, app.now())
-	} else {
-		var snapshot store.CountSnapshot
-		snapshot, err = workflow.BuildCloseSnapshot(work, app.randomness)
-		if err == nil {
-			_, err = app.store.ClosePoll(request.Context(), access.ID, work.PollID, version, snapshot, "count:"+work.PollID, app.now())
-		}
-	}
+	_, _, err = app.store.ClosePoll(request.Context(), access.ID, work.PollID, version, func(current store.CloseWork) (store.CountSnapshot, error) {
+		return workflow.BuildCloseSnapshot(current, app.randomness)
+	}, "count:"+work.PollID, app.now())
 	if err != nil {
 		http.Error(response, "Unable to close poll", http.StatusServiceUnavailable)
 		return
@@ -577,5 +571,9 @@ func (app *authApplication) getResults(response http.ResponseWriter, request *ht
 		}
 		result = workflow.ProjectResult(stored.Turnout, counted)
 	}
-	app.render(response, "results.html", map[string]any{"Poll": stored.Poll, "Result": result, "Deliveries": stored.Deliveries})
+	labels := make(map[string]string, len(stored.Poll.Options))
+	for _, option := range stored.Poll.Options {
+		labels[option.ID] = option.Label
+	}
+	app.render(response, "results.html", map[string]any{"Poll": stored.Poll, "Result": result, "Deliveries": stored.Deliveries, "Labels": labels})
 }

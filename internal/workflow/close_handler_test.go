@@ -5,6 +5,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ func TestCloseHandlerCommitsSnapshotFromEffectiveBallots(t *testing.T) {
 	defer st.Close()
 	handler := NewCloseHandler(st, bytes.NewReader(bytes.Repeat([]byte{0}, 32)), func() time.Time { return time.Unix(100, 0) })
 	summary, err := handler(context.Background(), &store.ClaimedWork{ID: "close-work", PollID: "poll", Kind: "close", ClaimToken: "token"})
-	if err != nil || summary.Closed != 1 || summary.NoVotes != 0 {
+	if !errors.Is(err, ErrWorkHandled) || summary.Closed != 1 || summary.NoVotes != 0 {
 		t.Fatalf("summary=%#v error=%v", summary, err)
 	}
 	var state, countingStatus string
@@ -40,7 +41,7 @@ func TestCloseHandlerCommitsZeroTurnoutWithoutCountWork(t *testing.T) {
 	defer st.Close()
 	handler := NewCloseHandler(st, bytes.NewReader(make([]byte, 32)), func() time.Time { return time.Unix(100, 0) })
 	summary, err := handler(context.Background(), &store.ClaimedWork{ID: "close-work", PollID: "poll", Kind: "close", ClaimToken: "token"})
-	if err != nil || summary != (Summary{Closed: 1, NoVotes: 1}) {
+	if !errors.Is(err, ErrWorkHandled) || summary != (Summary{Closed: 1, NoVotes: 1}) {
 		t.Fatalf("summary=%#v error=%v", summary, err)
 	}
 	var status string

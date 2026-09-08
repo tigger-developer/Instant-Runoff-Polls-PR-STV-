@@ -1,0 +1,183 @@
+version: 1
+audits:
+    - work_item: 003-invited-poll-workflow
+      gate: implementation
+      session_id: 01a080db-7b67-78f0-8c1b-8ad95858b5a4
+      external_round: 1
+      status: active
+      updated: "2026-09-08T11:57:27Z"
+      revision: cc2d73d
+      verdict: FAIL
+      response: |-
+        GATE: implementation
+        REVISION: cc2d73d
+        VERDICT: FAIL
+
+        FINDINGS:
+        - `001-spec.org:5-14, 802-816` and `004-README.md:9-16` duplicate audit status, incidents, and session/state history. Remove audit-derived material; retain audit records only in `audits.yaml`.
+        - Close snapshots are built before the closing transaction (`013-polls.go:533-549`, `009-workflow.go:269-299`), allowing committed ballots to be omitted. Build and freeze the snapshot inside the same write boundary; add a race test.
+        - Result commit does not complete count work atomically (`009-workflow.go:854-894`). Include claim-bound work completion in that transaction and test crash/replay behaviour.
+        - Manual close leaves the scheduled close item pending, and close cancellation leaves invitation work claimable (`009-workflow.go:257-258, 289-296`, `520-542`). Atomically finalize/cancel related work items and test no stale claims.
+        - Logout has no CSRF check, authentication does not revoke an existing same-purpose session, and revocation errors are discarded (`011-auth.go:172-228, 279-288`). Enforce CSRF, session replacement, and fail-closed revocation with regression tests.
+        - Missing-handler failure persistence is ignored (`015-processor.go:65-69`). Handle and report `FailWork` errors so claimed work cannot remain silently stuck.
+        - Implemented tests do not cover the signed HTTP, authorization, grouping, copy, deadline-race, pause/close, replay, result-projection, SMTP-security, or rendered-content scenarios in RT003.1–RT003.17. Add behavioural boundary tests with traceability; current store/web/workflow coverage is below the 80% floor (62.0%, 47.4%, 75.7%).
+        - No focused RED/GREEN evidence or `make vulncheck` evidence was supplied. Record intended RED and subsequent GREEN results, run the vulnerability gate, and pin or reproducibly provision `govulncheck` instead of accepting an arbitrary PATH executable.
+      history:
+        - round: 1
+          revision: cc2d73d
+          verdict: FAIL
+          response: |-
+            GATE: implementation
+            REVISION: cc2d73d
+            VERDICT: FAIL
+
+            FINDINGS:
+            - `001-spec.org:5-14, 802-816` and `004-README.md:9-16` duplicate audit status, incidents, and session/state history. Remove audit-derived material; retain audit records only in `audits.yaml`.
+            - Close snapshots are built before the closing transaction (`013-polls.go:533-549`, `009-workflow.go:269-299`), allowing committed ballots to be omitted. Build and freeze the snapshot inside the same write boundary; add a race test.
+            - Result commit does not complete count work atomically (`009-workflow.go:854-894`). Include claim-bound work completion in that transaction and test crash/replay behaviour.
+            - Manual close leaves the scheduled close item pending, and close cancellation leaves invitation work claimable (`009-workflow.go:257-258, 289-296`, `520-542`). Atomically finalize/cancel related work items and test no stale claims.
+            - Logout has no CSRF check, authentication does not revoke an existing same-purpose session, and revocation errors are discarded (`011-auth.go:172-228, 279-288`). Enforce CSRF, session replacement, and fail-closed revocation with regression tests.
+            - Missing-handler failure persistence is ignored (`015-processor.go:65-69`). Handle and report `FailWork` errors so claimed work cannot remain silently stuck.
+            - Implemented tests do not cover the signed HTTP, authorization, grouping, copy, deadline-race, pause/close, replay, result-projection, SMTP-security, or rendered-content scenarios in RT003.1–RT003.17. Add behavioural boundary tests with traceability; current store/web/workflow coverage is below the 80% floor (62.0%, 47.4%, 75.7%).
+            - No focused RED/GREEN evidence or `make vulncheck` evidence was supplied. Record intended RED and subsequent GREEN results, run the vulnerability gate, and pin or reproducibly provision `govulncheck` instead of accepting an arbitrary PATH executable.
+          updated: "2026-09-08T11:57:27Z"
+legacy:
+    - path: audits.org
+      content: |
+        #+TITLE: W003 - Invited poll workflow audit evidence
+        #+STARTUP: content
+        #+OPTIONS: toc:2 num:nil
+
+        * Definition gate
+
+        - Execution :: Approved minor refresh; the prior effective definition PASS is retained by explicit operator acceptance on 2026-09-08. The unsuccessful fresh audit attempt remains history, not a new independent verdict.
+        - Artefact :: [[file:spec.org][W003 - Invited poll workflow specification]].
+        - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
+        - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
+
+        ** Local review, round 1
+        :PROPERTIES:
+        :ROUND: 1
+        :END:
+
+        - Gate :: definition.
+        - Revision :: SHA-256 =a34eceeb3feebf53e2743df5f3d0fdf46c87a73d69995589c59788bce57d5ab5= at =cee50e3= (legislation-as-guidance documentation checkpoint).
+        - Context :: Authoring context.
+        - Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+        - Verdict :: FAIL.
+        - [audit-design] [BLOCKING] Application configuration :: Moderator/SMTP/key types, defaults, local overrides and key-change behaviour are missing.
+        - [audit-design] [BLOCKING] Recovery and privacy :: Worker retry/lease outcomes, old invitation handling, snapshot ordering and aggregate-only result projection need explicit semantics.
+        - [audit-spec] [BLOCKING] HTTP boundary :: Conflicting unauthenticated/unknown responses, draft concurrency and request field handling are underspecified.
+        - [audit-test-definitions] [BLOCKING] Security oracles :: Rate limiting, signing-key replacement, TLS failure and paused/deadline mail cases need observable expected outcomes.
+        - Remediation :: Supply complete application configuration examples, scoped access/transport/recovery rules, and extend the corresponding traced test definitions. Exodan retains infrastructure ownership.
+
+        ** Local review, round 2
+        :PROPERTIES:
+        :ROUND: 2
+        :END:
+
+        - Gate :: definition.
+        - Revision :: SHA-256 =939eee54af983519f9acbe66d479e564d7871393aa0fe355dae3781fad35a34d=.
+        - Context :: Authoring context.
+        - Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+        - Verdict :: PASS.
+        - Findings :: No remaining local blocking or conditional finding. The configuration schema/examples, credential/CSRF boundaries, transaction versions, snapshot/lot persistence, aggregate result projection, delivery eligibility, bounded attempts/claims and expiry semantics are explicit and traced to existing RTs.
+        - Remediation receipt :: Reconciled private moderator/SMTP configuration with Exodan ownership; specified key rotation and technical-session bounds; corrected object-response ambiguity; added restart/TLS/header/rate/expiry and mail-crash oracles. Privacy, retention, timing and announcement choices remain conspicuous proposals for operator sign-off, not inferred approvals.
+        - Limitation :: Independent audit and operator sign-off remain pending. No application code, actual email, deployment or implementation test evidence is claimed.
+
+        ** Retained independent review, round 1
+        :PROPERTIES:
+        :ROUND: 1
+        :END:
+
+        - Gate :: definition.
+        - Revision :: SHA-256 =939eee54af983519f9acbe66d479e564d7871393aa0fe355dae3781fad35a34d=.
+        - Context :: Retained external =/root/workflow_definition_audit=, configured =gpt-5.6-luna=.
+        - Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+        - Verdict :: FAIL.
+        - [audit-design] [BLOCKING] Small-poll inference :: Aggregate results and turnout can reveal an individual's preferences or participation; make the privacy proposal and disclosure explicit.
+        - [audit-test-definitions] [BLOCKING] CSRF oracle :: Specify the accepted Origin/Referer policy and observable outcomes.
+        - [audit-design] [BLOCKING] Randomness failures :: Distinguish close-time shuffle rollback from a failed count after later lot-selection failure.
+        - [audit-test-definitions] [BLOCKING] Worker summary :: Define and test JSON fields, counter meanings, output streams and failure semantics.
+        - [audit-spec] [CONDITION] Configuration traceability :: Include base_url in the inherited configuration table without introducing URL/domain validation.
+        - Remediation :: Clarify existing boundaries and tests; explicitly propose small-poll inference disclosure without a new group-size restriction. No new user feature or infrastructure responsibility is added.
+
+        ** Local review, round 3
+        :PROPERTIES:
+        :ROUND: 3
+        :END:
+
+        - Gate :: definition.
+        - Revision :: SHA-256 =444bae86ec88c8094e29f58b876233b35a87170cc53527d0328789594ed8336d=.
+        - Context :: Authoring context.
+        - Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+        - Verdict :: PASS.
+        - Findings :: No remaining local blocking or conditional finding. RT003.11 defines worker summary outcomes; RT003.12 distinguishes the two randomness failure boundaries; RT003.13 covers one-person inference disclosure; RT003.17 defines session-token CSRF outcomes. The inherited base_url entry preserves Exodan ownership.
+        - Policy boundary :: Small-poll inference disclosure clarifies the existing proposed aggregate-only views and absence of an anonymity promise. It remains a proposal for operator sign-off, not an approval or an implemented access change.
+        - Verification :: Org parses with Pandoc, sanitize leaves the specification unchanged, and git diff --check passes. No implementation tests have run.
+
+        ** Retained independent review, round 2
+        :PROPERTIES:
+        :ROUND: 2
+        :END:
+
+        - Gate :: definition.
+        - Revision :: SHA-256 =444bae86ec88c8094e29f58b876233b35a87170cc53527d0328789594ed8336d=, before lifecycle-only DEFINITION_GATE update.
+        - Context :: Retained external =/root/workflow_definition_audit=, configured =gpt-5.6-luna=.
+        - Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=; the retained auditor explicitly confirmed all three were reapplied together.
+        - Verdict :: PASS.
+        - Findings :: No remaining blocking, conditional or material advisory findings. The auditor accepted the proportionate small-poll disclosure proposal, session-token CSRF boundary, distinct randomness failures, exact worker summary and inherited base_url configuration.
+        - Limitation :: Privacy and other product policies still require operator sign-off. No implementation or test execution is claimed.
+
+        ** Operator sign-off, 8 September 2026
+
+        - Authority :: Taḋg, explicit instruction: "approved all 3. i will build in another session".
+        - Scope :: Approval of all three specifications, including their labelled proposals.
+        - Revision :: Audited specification at =ec0bfd8= (three audited build specifications for review); only lifecycle/sign-off metadata changes accompany this receipt.
+        - Delivery :: Reserved for another session by operator instruction. No code or implementation-test evidence is added.
+
+        ** Architecture refresh, local review round 1, 8 September 2026
+
+        - Gate :: definition.
+        - Artefact :: W003 - Invited poll workflow.
+        - Revision :: SHA-256 =f6f90397834808dff2966156bd5b15c0113a3e59cba54ab994531bc9ed127a4f=.
+        - Context :: Authoring context; all three combined criteria applied to this specification and its shared boundaries.
+        - Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+        - Verdict :: PASS (local only).
+        - Authority :: Operator-approved current foundation and native web-linter selection, followed by the instruction to refresh the three existing specifications. No new work item or application implementation is introduced.
+        - Scope and receipt :: Approved policy wording replaces stale proposals; inherited native web validation covers workflow responses; backup verification explicitly quiesces all writers. Roles, access/retention, limits, routes, counting integration and announcement copy are retained.
+        - Review :: Checked summary/detail agreement, resolved versus historical decisions, requirement/test traceability, Go component boundaries, Exodan-owned configuration and operations, security/privacy and recovery, and proportionate test definitions. No required local correction remains.
+        - Evidence :: Fourteen documentation files sanitize and parse through Pandoc; 214 local links/anchors resolve with unique heading identifiers. The counting procedure/fixtures/fingerprints and VISION copy are unchanged. Initial CLI/store tests and Makefile were read as implementation evidence, not executed or treated as authority. Concurrent implementation edits are preserved.
+        - Approval :: Existing product/interface approvals are retained. The operator explicitly approved the web-tool selection before this refresh; that approval does not substitute for the refreshed audit. Any new material decision raised by review requires operator authority.
+        - External continuation :: One retained external context will review this three-spec refresh, applying each combined gate separately and returning a verdict for each exact specification revision. No prior implementation audit is resumed or replaced by this definition review.
+
+        ** Architecture refresh, independent runner incident, 8 September 2026
+
+        - Gate :: definition; refreshed batch of three existing specifications.
+        - Context :: One configured external audit invocation through =sdlc-harness start --phase audit=, using installed SDLC v3.1.11 and its configured audit harness/model/timeout. The preceding local-review hash identifies this specification's submitted revision.
+        - Result :: RUNNER INCIDENT; neither PASS nor FAIL. No fresh independent specification, design or test-definition verdict was accepted.
+        - Evidence :: The runner exited 1 with =sdlc-harness: audit harness response-malformed: composite verdict requires exactly one non-empty GATE field=.
+        - Cause of request mismatch :: The submitted instruction requested a separate GATE/verdict block for each of the three specifications. The runner requires one composite GATE field. This formatting request was incorrect; the rejection is not evidence of a specification defect.
+        - SESSION_ID :: Not returned. The command output supplied no resumable identity. The task's OS temporary directory contains only the submitted refresh diff; no project-local harness context was found through the inspected runtime paths. No replacement reviewer was started.
+        - Continuation :: Operator direction is required to authorize a replacement review context because the required retained context cannot be addressed. A retry must request exactly one composite verdict and identify per-spec findings within it, or use separately authorized per-spec gates. No prior implementation-audit incident is changed by this definition record.
+        - Approval boundary :: The approved product and architecture decisions remain recorded. This incident does not grant a current independent gate to materially changed tooling/test definitions; it does not invalidate the unchanged counting rules or their original review evidence.
+
+        ** Operator approval of refreshed specification, 8 September 2026
+
+        - Authority :: Taḋg: "ok approved", after the refreshed specifications were opened for review.
+        - Scope :: Approval of this refreshed specification, retaining the established product/architecture decisions and native web-tool selection.
+        - Revision :: Specification at =3f26bde= (refresh verification and audit runner incident checkpoint), followed only by this approval metadata update.
+        - Gate boundary :: Human approval is recorded separately from the independent audit. The runner incident remains unresolved; no independent PASS or implementation closure is inferred. No replacement audit context has yet been started.
+
+        ** Operator disposition of minor refresh, 8 September 2026
+
+        - Authority :: Taḋg described the changes as a minor lint-tool substitution and stated: "previously these passed, i am happy to mark them approved".
+        - Accepted revision :: SHA-256 =3a0d7030be61517dabee8c0f8387adcf7f2cdc51ca28db6bf9b6edf4774ee937=, before this disposition's metadata updates.
+        - Disposition :: Retain the prior effective definition PASS and mark the refreshed specification approved on the operator's explicit acceptance of the limited change. No replacement independent audit is required for this refresh.
+        - Evidence boundary :: The previous independent passing evidence and current local review remain recorded. The failed runner invocation supplied no accepted independent verdict and is not converted into audit PASS. This operator disposition supersedes the earlier pending-gate/replacement-context requests.
+        - Limits :: Acceptance covers the documented architecture reconciliation and native web-tooling refresh only. It introduces no new voting, privacy or infrastructure policy and does not waive implementation tests, implementation audit, required validation or operator closure.
+
+        * Implementation gate
+
+        - Execution :: Not started; this batch defines specifications only.
+      migrated: "2026-09-08T11:51:02Z"

@@ -4,6 +4,7 @@ VERSION ?= dev
 PREFIX ?= .local
 BIOME ?= biome
 TIDY ?= tidy
+GOVULNCHECK ?= go run golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
 .PHONY: build install lint test vulncheck sync
 
@@ -30,8 +31,7 @@ test:
 	go test -race ./...
 
 vulncheck:
-	command -v govulncheck >/dev/null
-	govulncheck ./...
+	$(GOVULNCHECK) ./...
 
 sync:
 	git add -A

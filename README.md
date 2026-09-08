@@ -6,14 +6,10 @@ application will count votes automatically using PR-STV guided by the Irish
 counting system. This is an online poll; conformity to election legislation is
 not a product requirement.
 
-**Project stage:** initial implementation underway. The product vision,
-application architecture, and three build specifications are recorded. All three
-passed the definition gate and were approved on 8 September 2026. The operator
-subsequently approved the refreshed architecture and native web tooling: Biome
-for CSS, tidy-html5 for rendered HTML, and oxlint only for later-approved
-JavaScript/TypeScript. Go linting remains separate. The work ledger and audit
-records hold the current specification-review, implementation and validation
-status.
+The product vision, application architecture, and three build specifications are
+recorded. Native web checks use Biome for CSS and tidy-html5 for rendered HTML;
+Go linting remains separate. The work ledger links each deliverable and its
+current evidence.
 
 ## Documentation
 
@@ -54,12 +50,29 @@ and static-asset paths exist:
 mkdir -p .local/state
 ```
 
+Copy `secrets/localhost.yaml.example` to the ignored
+`secrets/localhost.yaml`, then replace the signing-key placeholder with the
+base64 encoding of 32 random bytes. The example moderator address is synthetic.
+
 ```sh
 cd cmd/stv-poll
 DEFAULT_CONFIG_PATH=../../config/defaults.yaml \
+CONFIG_PATH=../../config/localhost.yaml.example \
+SECRETS_PATH=../../secrets/localhost.yaml \
 STATE_DIRECTORY=../../.local/state \
 ADDR=127.0.0.1:8080 \
 ../../bin/stv-poll serve
+```
+
+Run the same configuration through the bounded background-work entry point:
+
+```sh
+cd cmd/stv-poll
+DEFAULT_CONFIG_PATH=../../config/defaults.yaml \
+CONFIG_PATH=../../config/localhost.yaml.example \
+SECRETS_PATH=../../secrets/localhost.yaml \
+STATE_DIRECTORY=../../.local/state \
+../../bin/stv-poll process-due-work
 ```
 
 `CONFIG_PATH` and `SECRETS_PATH` are optional overlays. In deployment, Exodan
@@ -67,6 +80,11 @@ supplies all runtime paths and `ADDR`; the application does not configure
 domains, routing, TLS, or host services. `make install PREFIX=/path` copies the
 binary, help, templates, static assets and non-secret defaults beneath that
 prefix. Run the installed binary from `PREFIX/share/stv-poll`.
+
+For a consistent backup, stop both `serve` and every `process-due-work`
+invocation, copy the SQLite files under `STATE_DIRECTORY`, and then restart the
+processes. Restore only while both process types are stopped; replace the state
+files with the saved copy before starting either process.
 
 ## How a poll works
 

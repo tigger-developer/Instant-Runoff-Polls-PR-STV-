@@ -111,22 +111,66 @@ func TestClosePollCommitsSnapshotAndOneCountWork(t *testing.T) {
 	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='paused', version=4 WHERE id='poll-1'"); err != nil {
 		t.Fatal(err)
 	}
-	snapshot := CountSnapshot{ID: "snapshot-1", SchemaVersion: 1, Rule: "irish-guided-stv-v1", InputFingerprint: "fingerprint", InputJSON: []byte(`{"ballots":[]}`)}
-	if changed, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 4, snapshot, "count-work-1", time.Unix(100, 0)); err != nil || !changed {
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, `INSERT INTO ballots(poll_id,participant_id,version,preferences_json,accepted_at) VALUES ('poll-1','person',1,'["a"]',90)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES ('scheduled-close','poll-1','close','close:poll-1',999,'pending')"); err != nil {
+		t.Fatal(err)
+	}
+	build := func(CloseWork) (CountSnapshot, error) {
+		return CountSnapshot{ID: "snapshot-1", SchemaVersion: 1, Rule: "irish-guided-stv-v1", InputFingerprint: "fingerprint", InputJSON: []byte(`{"ballots":[]}`)}, nil
+	}
+	if changed, _, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 4, build, "count-work-1", time.Unix(100, 0)); err != nil || !changed {
 		t.Fatalf("close changed=%v error=%v", changed, err)
 	}
-	if changed, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 5, snapshot, "count-work-1", time.Unix(101, 0)); err != nil || changed {
+	if changed, _, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 5, build, "count-work-1", time.Unix(101, 0)); err != nil || changed {
 		t.Fatalf("repeat close changed=%v error=%v", changed, err)
 	}
-	var snapshots, work int
+	var snapshots, work, staleClose int
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM count_snapshots WHERE poll_id='poll-1'").Scan(&snapshots); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE logical_key='count:poll-1'").Scan(&work); err != nil {
 		t.Fatal(err)
 	}
-	if snapshots != 1 || work != 1 {
-		t.Fatalf("snapshots=%d work=%d", snapshots, work)
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE id='scheduled-close' AND status='succeeded'").Scan(&staleClose); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots != 1 || work != 1 || staleClose != 1 {
+		t.Fatalf("snapshots=%d work=%d stale-close=%d", snapshots, work, staleClose)
+	}
+}
+
+func TestClosePollBuildsSnapshotFromBallotsInsideWriteBoundary(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	for _, statement := range []string{
+		"UPDATE polls SET state='paused',version=3 WHERE id='poll-1'",
+		"INSERT INTO options(poll_id,id,label,display_order) VALUES ('poll-1','a','A',1),('poll-1','b','B',2)",
+		"INSERT INTO participants(id,poll_id) VALUES ('first','poll-1'),('second','poll-1')",
+		`INSERT INTO ballots(poll_id,participant_id,version,preferences_json,accepted_at) VALUES ('poll-1','first',1,'["a"]',90)`,
+	} {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.PollForClose(ctx, "moderator-1", "poll-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, `INSERT INTO ballots(poll_id,participant_id,version,preferences_json,accepted_at) VALUES ('poll-1','second',1,'["b"]',91)`); err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	build := func(work CloseWork) (CountSnapshot, error) {
+		seen = len(work.Ballots)
+		return CountSnapshot{ID: "snapshot-1", SchemaVersion: 1, Rule: "irish-guided-stv-v1", InputFingerprint: "fingerprint", InputJSON: []byte(`{"ballots":[]}`)}, nil
+	}
+	if changed, _, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 3, build, "count-work-1", time.Unix(100, 0)); err != nil || !changed || seen != 2 {
+		t.Fatalf("changed=%v ballots=%d error=%v", changed, seen, err)
 	}
 }
 
@@ -139,10 +183,10 @@ func TestConsumeModeratorGrantIsAtomicAndOneUse(t *testing.T) {
 	if _, err := st.DB.ExecContext(ctx, "INSERT INTO grants(id,purpose,principal_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES ('grant-1','moderator','moderator-1','key-1',?, '{}',0,200)", grantHash); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{2}, 32), bytes.Repeat([]byte{3}, 32), now.Add(12*time.Hour), now); err != nil {
+	if err := st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{2}, 32), bytes.Repeat([]byte{3}, 32), nil, nil, now.Add(12*time.Hour), now); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{4}, 32), bytes.Repeat([]byte{5}, 32), now.Add(12*time.Hour), now); !errors.Is(err, ErrConflict) {
+	if err := st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{4}, 32), bytes.Repeat([]byte{5}, 32), nil, nil, now.Add(12*time.Hour), now); !errors.Is(err, ErrConflict) {
 		t.Fatalf("repeat grant error = %v", err)
 	}
 	var consumed, sessions int
@@ -305,9 +349,12 @@ func TestCountEvidenceIsClaimBoundUniqueAndReplayable(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("result created=%v error=%v", created, err)
 	}
-	created, err = st.CommitCountResult(ctx, "count-1", "token", time.Unix(100, 0), []byte(`{"winners":["a"]}`))
-	if err != nil || created {
-		t.Fatalf("repeat result created=%v error=%v", created, err)
+	var countWorkStatus string
+	if err := st.DB.QueryRowContext(ctx, "SELECT status FROM work_items WHERE id='count-1'").Scan(&countWorkStatus); err != nil || countWorkStatus != "succeeded" {
+		t.Fatalf("count work status=%s error=%v", countWorkStatus, err)
+	}
+	if _, err = st.CommitCountResult(ctx, "count-1", "token", time.Unix(100, 0), []byte(`{"winners":["a"]}`)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale result acknowledgement error=%v", err)
 	}
 	if _, err := st.CommitCountResult(ctx, "count-1", "stale", time.Unix(100, 0), []byte(`{}`)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale result error=%v", err)
@@ -543,6 +590,51 @@ func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.
 	var count int
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM participants WHERE poll_id = 'poll-1'").Scan(&count); err != nil || count != 0 {
 		t.Fatalf("rollback participant count = %d, %v", count, err)
+	}
+}
+
+func TestWorkOutcomePersistenceCoversAcceptedFailedAndCloseReads(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	for _, statement := range []string{
+		"UPDATE polls SET state='open',deadline=500 WHERE id='poll-1'",
+		"INSERT INTO options(poll_id,id,label,display_order) VALUES ('poll-1','a','A',1),('poll-1','b','B',2)",
+		"INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')",
+		"INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll-1','person','reader@example.test','reader@example.test')",
+		"INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('accepted','poll-1','delivery','accepted',10,'claimed','accept-token',300)",
+		"INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES ('accepted-delivery','accepted','contact','reader@example.test','invitation','pending',10)",
+		"INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('failed','poll-1','delivery','failed',10,'claimed','fail-token',300)",
+		"INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES ('failed-delivery','failed','contact','reader@example.test','invitation','pending',10)",
+		"INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('close','poll-1','close','close-read',10,'claimed','close-token',300)",
+		`INSERT INTO ballots(poll_id,participant_id,version,preferences_json,accepted_at) VALUES ('poll-1','person',1,'["a"]',90)`,
+	} {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.BeginDeliveryAttempt(ctx, "accepted", "accept-token", time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AcceptDelivery(ctx, "accepted", "accept-token", time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.BeginDeliveryAttempt(ctx, "failed", "fail-token", time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FailDelivery(ctx, "failed", "fail-token", time.Unix(100, 0), "permanent rejection"); err != nil {
+		t.Fatal(err)
+	}
+	closeWork, err := st.LoadCloseWork(ctx, "close", "close-token", time.Unix(100, 0))
+	if err != nil || len(closeWork.Ballots) != 1 || len(closeWork.Options) != 2 {
+		t.Fatalf("close work=%#v error=%v", closeWork, err)
+	}
+	participant, err := st.PollForParticipant(ctx, "person", "poll-1")
+	if err != nil || participant.BallotVersion != 1 || len(participant.Preferences) != 1 {
+		t.Fatalf("participant poll=%#v error=%v", participant, err)
+	}
+	if err := st.FailWork(ctx, "close", "close-token", time.Unix(100, 0), "close failed"); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -207,15 +207,14 @@ func (app *authApplication) postVerify(response http.ResponseWriter, request *ht
 		return
 	}
 	if purpose == workflow.ModeratorSession {
-		err = app.store.ConsumeModeratorGrant(request.Context(), grantHash, claims.PrincipalID, issued.Record.TokenHash[:], issued.Record.CSRFHash[:], issued.Record.ExpiresAt, app.now())
+		err = app.store.ConsumeModeratorGrant(request.Context(), grantHash, claims.PrincipalID, issued.Record.TokenHash[:], issued.Record.CSRFHash[:], preAuthHash[:], app.presentedSessionHash(request, purpose), issued.Record.ExpiresAt, app.now())
 	} else {
-		err = app.store.CreateParticipantSession(request.Context(), grantHash, issued.Record.TokenHash[:], issued.Record.CSRFHash[:], issued.Record.ExpiresAt, app.now())
+		err = app.store.CreateParticipantSession(request.Context(), grantHash, issued.Record.TokenHash[:], issued.Record.CSRFHash[:], preAuthHash[:], app.presentedSessionHash(request, purpose), issued.Record.ExpiresAt, app.now())
 	}
 	if err != nil {
 		http.Error(response, "Invalid or expired link", http.StatusForbidden)
 		return
 	}
-	_ = app.store.RevokeSession(request.Context(), preAuthHash[:], app.now())
 	for _, name := range []string{"stv_preauth", "stv_preauth_csrf"} {
 		http.SetCookie(response, expiredCookie(name, app.config.HTTP.SecureCookies))
 	}
@@ -226,6 +225,19 @@ func (app *authApplication) postVerify(response http.ResponseWriter, request *ht
 		destination = "/moderator/polls"
 	}
 	http.Redirect(response, request, destination, http.StatusSeeOther)
+}
+
+func (app *authApplication) presentedSessionHash(request *http.Request, purpose workflow.SessionPurpose) []byte {
+	name := "stv_participant"
+	if purpose == workflow.ModeratorSession {
+		name = "stv_moderator"
+	}
+	cookie, err := request.Cookie(name)
+	if err != nil {
+		return nil
+	}
+	hash := sha256.Sum256([]byte(cookie.Value))
+	return hash[:]
 }
 
 func (app *authApplication) ensurePreAuth(response http.ResponseWriter, request *http.Request) (string, bool) {
@@ -278,14 +290,36 @@ func (app *authApplication) authorizeGrant(ctx context.Context, token string) (w
 
 func (app *authApplication) postLogout(response http.ResponseWriter, request *http.Request) {
 	securePrivateResponse(response)
-	for _, name := range []string{"stv_moderator", "stv_participant", "stv_moderator_csrf", "stv_participant_csrf"} {
-		if cookie, err := request.Cookie(name); err == nil {
-			hash := sha256.Sum256([]byte(cookie.Value))
-			_ = app.store.RevokeSession(request.Context(), hash[:], app.now())
-			http.SetCookie(response, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: app.config.HTTP.SecureCookies, SameSite: http.SameSiteLaxMode})
-		}
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
 	}
-	http.Redirect(response, request, "/", http.StatusSeeOther)
+	for _, purpose := range []workflow.SessionPurpose{workflow.ModeratorSession, workflow.ParticipantSession} {
+		cookieName, csrfName := "stv_participant", "stv_participant_csrf"
+		if purpose == workflow.ModeratorSession {
+			cookieName, csrfName = "stv_moderator", "stv_moderator_csrf"
+		}
+		cookie, err := request.Cookie(cookieName)
+		if err != nil {
+			continue
+		}
+		hash := sha256.Sum256([]byte(cookie.Value))
+		session, err := app.store.SessionByHash(request.Context(), hash[:], app.now())
+		csrfHash := sha256.Sum256([]byte(values.Get("csrf")))
+		if err != nil || session.Purpose != string(purpose) || subtle.ConstantTimeCompare(session.CSRFHash, csrfHash[:]) != 1 {
+			continue
+		}
+		if err := app.store.RevokeSession(request.Context(), hash[:], app.now()); err != nil {
+			http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		http.SetCookie(response, expiredCookie(cookieName, app.config.HTTP.SecureCookies))
+		http.SetCookie(response, expiredCookie(csrfName, app.config.HTTP.SecureCookies))
+		http.Redirect(response, request, "/", http.StatusSeeOther)
+		return
+	}
+	http.Error(response, "Invalid CSRF token", http.StatusForbidden)
 }
 
 func csrfCookie(purpose workflow.SessionPurpose, token string, secure bool) *http.Cookie {

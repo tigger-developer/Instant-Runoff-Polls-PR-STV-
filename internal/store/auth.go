@@ -146,17 +146,47 @@ func (s *Store) GrantByHash(ctx context.Context, tokenHash []byte, now time.Time
 	return grant, nil
 }
 
-func (s *Store) CreateParticipantSession(ctx context.Context, grantHash, sessionHash, csrfHash []byte, sessionExpiresAt, now time.Time) error {
-	if len(grantHash) != 32 || len(sessionHash) != 32 || len(csrfHash) != 32 || !sessionExpiresAt.After(now) {
+func (s *Store) CreateParticipantSession(ctx context.Context, grantHash, sessionHash, csrfHash, preAuthHash, replaceHash []byte, sessionExpiresAt, now time.Time) error {
+	if len(grantHash) != 32 || len(sessionHash) != 32 || len(csrfHash) != 32 || len(preAuthHash) != 0 && len(preAuthHash) != 32 || len(replaceHash) != 0 && len(replaceHash) != 32 || !sessionExpiresAt.After(now) {
 		return ErrConflict
 	}
-	result, err := s.DB.ExecContext(ctx, `INSERT INTO sessions(token_hash,purpose,principal_id,poll_id,csrf_hash,expires_at) SELECT ?,g.purpose,g.principal_id,g.poll_id,?,? FROM grants AS g JOIN contacts AS c ON c.id=g.contact_id AND c.poll_id=g.poll_id AND c.participant_id=g.principal_id WHERE g.token_hash=? AND g.purpose='participant' AND g.revoked_at IS NULL AND g.expires_at>?`, sessionHash, csrfHash, sessionExpiresAt.Unix(), grantHash, now.Unix())
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin participant session: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := rotateAuthenticationSessions(ctx, tx, preAuthHash, replaceHash, "participant", now); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,purpose,principal_id,poll_id,csrf_hash,expires_at) SELECT ?,g.purpose,g.principal_id,g.poll_id,?,? FROM grants AS g JOIN contacts AS c ON c.id=g.contact_id AND c.poll_id=g.poll_id AND c.participant_id=g.principal_id WHERE g.token_hash=? AND g.purpose='participant' AND g.revoked_at IS NULL AND g.expires_at>?`, sessionHash, csrfHash, sessionExpiresAt.Unix(), grantHash, now.Unix())
 	if err != nil {
 		return fmt.Errorf("create participant session: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil || changed != 1 {
 		return ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit participant session: %w", err)
+	}
+	return nil
+}
+
+func rotateAuthenticationSessions(ctx context.Context, tx *sql.Tx, preAuthHash, replaceHash []byte, purpose string, now time.Time) error {
+	if len(preAuthHash) != 0 {
+		result, err := tx.ExecContext(ctx, "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND purpose='preauth' AND revoked_at IS NULL AND expires_at>?", now.Unix(), preAuthHash, now.Unix())
+		if err != nil {
+			return fmt.Errorf("revoke pre-authentication session: %w", err)
+		}
+		changed, err := result.RowsAffected()
+		if err != nil || changed != 1 {
+			return ErrConflict
+		}
+	}
+	if len(replaceHash) != 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND purpose=? AND revoked_at IS NULL", now.Unix(), replaceHash, purpose); err != nil {
+			return fmt.Errorf("revoke presented session: %w", err)
+		}
 	}
 	return nil
 }
@@ -181,8 +211,13 @@ func (s *Store) RevokeSession(ctx context.Context, tokenHash []byte, now time.Ti
 	if len(tokenHash) != 32 {
 		return ErrConflict
 	}
-	if _, err := s.DB.ExecContext(ctx, "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL", now.Unix(), tokenHash); err != nil {
+	result, err := s.DB.ExecContext(ctx, "UPDATE sessions SET revoked_at=? WHERE token_hash=? AND revoked_at IS NULL", now.Unix(), tokenHash)
+	if err != nil {
 		return fmt.Errorf("revoke session: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
 	}
 	return nil
 }

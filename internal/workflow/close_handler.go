@@ -25,28 +25,20 @@ func NewCloseHandler(repository *store.Store, randomness io.Reader, now func() t
 		if err != nil {
 			return Summary{}, fmt.Errorf("load close work: %w", err)
 		}
-		if len(work.Ballots) == 0 {
-			changed, err := repository.ClosePollNoVotes(ctx, work.OwnerID, work.PollID, work.Version, at)
-			if err != nil {
-				return Summary{}, fmt.Errorf("close zero-turnout poll: %w", err)
-			}
-			if changed {
-				return Summary{Closed: 1, NoVotes: 1}, nil
-			}
-			return Summary{}, nil
-		}
-		snapshot, err := BuildCloseSnapshot(work, randomness)
-		if err != nil {
-			return Summary{}, err
-		}
-		changed, err := repository.ClosePoll(ctx, work.OwnerID, work.PollID, work.Version, snapshot, "count:"+work.PollID, at)
+		changed, noVotes, err := repository.ClosePoll(ctx, work.OwnerID, work.PollID, work.Version, func(current store.CloseWork) (store.CountSnapshot, error) {
+			return BuildCloseSnapshot(current, randomness)
+		}, "count:"+work.PollID, at)
 		if err != nil {
 			return Summary{}, fmt.Errorf("commit poll close: %w", err)
 		}
 		if changed {
-			return Summary{Closed: 1}, nil
+			summary := Summary{Closed: 1}
+			if noVotes {
+				summary.NoVotes = 1
+			}
+			return summary, ErrWorkHandled
 		}
-		return Summary{}, nil
+		return Summary{}, ErrWorkHandled
 	}
 }
 

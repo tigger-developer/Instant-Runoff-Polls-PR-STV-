@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -40,7 +41,7 @@ func TestCountHandlerPersistsLotAndAuthoritativeResult(t *testing.T) {
 	}
 	handler := NewCountHandler(st, bytes.NewReader(bytes.Repeat([]byte{0}, 128)), func() time.Time { return time.Unix(100, 0) })
 	summary, err := handler(ctx, &store.ClaimedWork{ID: "w", PollID: "p", Kind: "count", ClaimToken: "token", ClaimExpiresAt: 200})
-	if err != nil || summary.Counted != 1 {
+	if !errors.Is(err, ErrWorkHandled) || summary.Counted != 1 {
 		t.Fatalf("summary=%#v error=%v", summary, err)
 	}
 	var decisions, results int
@@ -53,9 +54,9 @@ func TestCountHandlerPersistsLotAndAuthoritativeResult(t *testing.T) {
 	if decisions != 1 || results != 1 {
 		t.Fatalf("decisions=%d results=%d", decisions, results)
 	}
-	summary, err = handler(ctx, &store.ClaimedWork{ID: "w", PollID: "p", Kind: "count", ClaimToken: "token", ClaimExpiresAt: 200})
-	if err != nil || summary.Counted != 0 {
-		t.Fatalf("replay summary=%#v error=%v", summary, err)
+	claimed, err := st.ClaimDueWork(ctx, "count", "replacement", time.Unix(101, 0))
+	if err != nil || claimed != nil {
+		t.Fatalf("replay claim=%#v error=%v", claimed, err)
 	}
 }
 
