@@ -185,6 +185,33 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 	}
 }
 
+func TestExecutableRejectsMalformedTemplateBeforeListening(t *testing.T) {
+	root := t.TempDir()
+	templates := filepath.Join(root, "templates")
+	static := filepath.Join(root, "static")
+	state := filepath.Join(root, "state")
+	for _, directory := range []string{templates, static, state} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(templates, "index.html"), []byte("{{ if }}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	defaults := filepath.Join(root, "defaults.yaml")
+	contents := "base_url: https://poll.example\ndata_dirs: [" + templates + ", " + static + "]\nhttp:\n  read_header_timeout: 5s\n  read_timeout: 15s\n  write_timeout: 15s\n  idle_timeout: 60s\n  shutdown_timeout: 10s\n"
+	if err := os.WriteFile(defaults, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(buildBinary(t), "serve")
+	command.Dir = root
+	command.Env = append(os.Environ(), "DEFAULT_CONFIG_PATH="+defaults, "STATE_DIRECTORY="+state, "ADDR=127.0.0.1:0")
+	output, err := command.CombinedOutput()
+	if exitCode(err) != 1 || !strings.Contains(string(output), "parse templates") {
+		t.Fatalf("malformed template outcome = %v %q", err, output)
+	}
+}
+
 func TestHTTPServerRejectsOversizedHeaders(t *testing.T) {
 	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
