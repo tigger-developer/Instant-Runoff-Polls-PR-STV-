@@ -178,3 +178,18 @@
 - Test evidence :: =make test= passed with the race detector; =make lint= passed Go, CSS and rendered-HTML checks; =make vulncheck= reported no vulnerabilities; focused count coverage was 91.9% before the final expanded matrix and remained above the 80% floor. All results were observed against the candidate committed as =baef447=.
 - Code review :: =Run= is a 49-line coordinator over cohesive election, surplus, exclusion, decision and record stages. Cancellation propagates through ballot scans, conservation fails closed, no hidden randomness or external dependency exists, and result/request ordering and fingerprints follow the signed-off versioned contract.
 - Findings :: No blocking or conditional local finding remains. External composite implementation audit and final validation remain pending.
+
+** External implementation review, runner incident, 8 September 2026
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: implementation.
+- Revision :: =baef447=.
+- Context :: One external context invoked through the =audit-implementation= workflow and =sdlc-harness start --phase audit=.
+- Audits :: Composite =audit-test-code= and =audit-code= only. The signed-off specification was supplied as authority and was explicitly excluded from renewed definition review.
+- Result :: RUNNER INCIDENT; neither PASS nor FAIL.
+- Evidence :: The runner exited 1 with =sdlc-harness: audit harness response-malformed: unsupported VERDICT "UNAVAILABLE"=.
+- SESSION_ID :: Not returned. No retained external context identity is available to resume.
+- Count :: This is not a failed audit round because the harness accepted no composite implementation verdict.
+- Continuation :: Do not create a replacement external context. Operator direction is required because the mandated retained context cannot be addressed.
