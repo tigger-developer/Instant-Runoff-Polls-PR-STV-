@@ -222,6 +222,51 @@ func TestRecordLinkRequestEnforcesIdentityAndGlobalBounds(t *testing.T) {
 	}
 }
 
+func TestClaimDueWorkUsesOrderAndLeaseToken(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES ('later','poll-1','count','later',20,'pending'),('first','poll-1','count','first',10,'pending')"); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := st.ClaimDueWork(ctx, "count", "token-one", time.Unix(30, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed == nil || claimed.ID != "first" || claimed.ClaimToken != "token-one" || claimed.ClaimExpiresAt != 150 {
+		t.Fatalf("claimed work = %#v", claimed)
+	}
+	if err := st.CompleteWork(ctx, "first", "wrong-token", time.Unix(31, 0)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale completion error = %v", err)
+	}
+	if err := st.CompleteWork(ctx, "first", "token-one", time.Unix(31, 0)); err != nil {
+		t.Fatal(err)
+	}
+	next, err := st.ClaimDueWork(ctx, "count", "token-two", time.Unix(30, 0))
+	if err != nil || next == nil || next.ID != "later" {
+		t.Fatalf("next = %#v, %v", next, err)
+	}
+}
+
+func TestClaimDueWorkReclaimsExpiredLeaseAndRejectsLiveLease(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('work','poll-1','delivery','work',10,'claimed','old',100)"); err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err := st.ClaimDueWork(ctx, "delivery", "early", time.Unix(99, 0)); err != nil || claimed != nil {
+		t.Fatalf("live lease claim = %#v, %v", claimed, err)
+	}
+	claimed, err := st.ClaimDueWork(ctx, "delivery", "replacement", time.Unix(100, 0))
+	if err != nil || claimed == nil || claimed.ClaimToken != "replacement" {
+		t.Fatalf("replacement claim = %#v, %v", claimed, err)
+	}
+	if err := st.CompleteWork(ctx, "work", "old", time.Unix(100, 0)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("old holder completion = %v", err)
+	}
+}
+
 func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)

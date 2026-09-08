@@ -42,6 +42,15 @@ type CountSnapshot struct {
 	InputJSON        []byte
 }
 
+type ClaimedWork struct {
+	ID             string
+	PollID         string
+	Kind           string
+	Attempts       int
+	ClaimToken     string
+	ClaimExpiresAt int64
+}
+
 func (s *Store) ReplaceElectorate(ctx context.Context, ownerID, pollID string, expectedVersion int, participants []ElectorateParticipant) error {
 	if s == nil || s.DB == nil || ownerID == "" || pollID == "" || expectedVersion < 1 {
 		return ErrConflict
@@ -318,4 +327,52 @@ func (s *Store) RecordLinkRequest(ctx context.Context, requestHash []byte, purpo
 		return false, fmt.Errorf("commit link request: %w", err)
 	}
 	return allowed, nil
+}
+
+func (s *Store) ClaimDueWork(ctx context.Context, kind, claimToken string, now time.Time) (*ClaimedWork, error) {
+	if kind == "" || claimToken == "" {
+		return nil, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin work claim: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var work ClaimedWork
+	err = tx.QueryRowContext(ctx, `SELECT id,COALESCE(poll_id,''),kind,attempts FROM work_items WHERE kind=? AND due_at<=? AND (status='pending' OR (status='claimed' AND claim_expires_at<=?)) ORDER BY due_at,id LIMIT 1`, kind, now.Unix(), now.Unix()).Scan(&work.ID, &work.PollID, &work.Kind, &work.Attempts)
+	if errors.Is(err, sql.ErrNoRows) {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit empty work claim: %w", err)
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("select due work: %w", err)
+	}
+	work.ClaimToken = claimToken
+	work.ClaimExpiresAt = now.Add(120 * time.Second).Unix()
+	result, err := tx.ExecContext(ctx, `UPDATE work_items SET status='claimed',claim_token=?,claim_expires_at=? WHERE id=? AND (status='pending' OR (status='claimed' AND claim_expires_at<=?))`, work.ClaimToken, work.ClaimExpiresAt, work.ID, now.Unix())
+	if err != nil {
+		return nil, fmt.Errorf("claim due work: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return nil, ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit work claim: %w", err)
+	}
+	return &work, nil
+}
+
+func (s *Store) CompleteWork(ctx context.Context, workID, claimToken string, now time.Time) error {
+	result, err := s.DB.ExecContext(ctx, `UPDATE work_items SET status='succeeded',claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?`, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("complete work: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	return nil
 }
