@@ -4,13 +4,18 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/web"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
 	"html/template"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -38,15 +43,73 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, version)
 		return 0
 	}
-	if len(args) != 1 || args[0] != "serve" {
-		fmt.Fprintln(stderr, "invalid invocation: expected serve")
+	if len(args) != 1 || args[0] != "serve" && args[0] != "process-due-work" {
+		fmt.Fprintln(stderr, "invalid invocation: expected serve or process-due-work")
 		return 2
+	}
+	if args[0] == "process-due-work" {
+		summary, err := processDueWork()
+		if encodeErr := json.NewEncoder(stdout).Encode(summary); encodeErr != nil {
+			fmt.Fprintf(stderr, "write worker summary: %v\n", encodeErr)
+			return 1
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "process due work failed: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 	if err := serve(); err != nil {
 		fmt.Fprintf(stderr, "serve failed: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+func processDueWork() (workflow.Summary, error) {
+	defaults := os.Getenv("DEFAULT_CONFIG_PATH")
+	if defaults == "" {
+		return workflow.Summary{Version: 1, Failed: 1}, errors.New("DEFAULT_CONFIG_PATH is required")
+	}
+	state := os.Getenv("STATE_DIRECTORY")
+	if state == "" {
+		return workflow.Summary{Version: 1, Failed: 1}, errors.New("STATE_DIRECTORY is required")
+	}
+	cfg, err := config.Load(defaults, os.Getenv("CONFIG_PATH"), os.Getenv("SECRETS_PATH"))
+	if err != nil {
+		return workflow.Summary{Version: 1, Failed: 1}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	st, err := store.Open(ctx, state)
+	if err != nil {
+		return workflow.Summary{Version: 1, Failed: 1}, err
+	}
+	defer st.Close()
+	now := time.Now
+	messageBuilder := workflow.NewInvitationMessageBuilder(st, cfg.BaseURL, cfg.Auth.KeyID, cfg.Auth.SigningKey, rand.Reader, now)
+	handlers := map[string]workflow.WorkHandler{
+		"close":    workflow.NewCloseHandler(st, rand.Reader, now),
+		"count":    workflow.NewCountHandler(st, rand.Reader, now),
+		"delivery": workflow.NewDeliveryHandler(st, workflow.SMTPTransport{Settings: cfg.SMTP}, messageBuilder, secureJitter, now),
+	}
+	return workflow.ProcessDueWork(ctx, st, handlers, secureToken, now)
+}
+
+func secureToken() string {
+	value := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, value); err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(value)
+}
+
+func secureJitter() (float64, error) {
+	value, err := rand.Int(rand.Reader, big.NewInt(1001))
+	if err != nil {
+		return 0, err
+	}
+	return float64(value.Int64()) / 10000, nil
 }
 
 func writeHelp(output io.Writer) error {

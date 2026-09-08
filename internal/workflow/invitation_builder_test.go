@@ -17,13 +17,7 @@ func TestInvitationBuilderPersistsClaimsAndReusesExactBearer(t *testing.T) {
 	defer st.Close()
 	key := bytes.Repeat([]byte{7}, 32)
 	randomness := bytes.NewReader(bytes.Repeat([]byte{9}, 128))
-	ids := []string{"grant-one", "grant-unused"}
-	index := 0
-	builder := NewInvitationMessageBuilder(st, "https://poll.example/", "key-1", key, randomness, func() string {
-		id := ids[index]
-		index++
-		return id
-	}, func() time.Time { return time.Unix(100, 0) })
+	builder := NewInvitationMessageBuilder(st, "https://poll.example/", "key-1", key, randomness, func() time.Time { return time.Unix(100, 0) })
 	attempt := store.DeliveryAttempt{PollID: "poll", ContactID: "contact", ParticipantID: "person", RecipientEmail: "reader@example.test", MessageKind: "invitation", Question: "Question"}
 	item := &store.ClaimedWork{ID: "mail", ClaimToken: "token"}
 	first, err := builder(context.Background(), item, attempt)

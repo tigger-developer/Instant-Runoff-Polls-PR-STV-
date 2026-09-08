@@ -31,6 +31,7 @@ func TestCLIOutcomesWithoutRuntimeConfiguration(t *testing.T) {
 		{name: "version", args: []string{"--version"}, code: 0, want: "dev"},
 		{name: "unknown command", args: []string{"unknown"}, code: 2, want: "invalid invocation"},
 		{name: "missing serve configuration", args: []string{"serve"}, code: 1, want: "DEFAULT_CONFIG_PATH is required"},
+		{name: "missing worker configuration", args: []string{"process-due-work"}, code: 1, want: `"failed":1`},
 	}
 
 	for _, tc := range cases {
@@ -49,6 +50,28 @@ func TestCLIOutcomesWithoutRuntimeConfiguration(t *testing.T) {
 				t.Fatalf("output = %q, want %q", combined, tc.want)
 			}
 		})
+	}
+}
+
+func TestProcessDueWorkNoWorkEmitsExactSummary(t *testing.T) {
+	binary := buildBinary(t)
+	defaults := filepath.Join(projectRoot(t), "config", "defaults.yaml")
+	host := filepath.Join(t.TempDir(), "host.yaml")
+	if err := os.WriteFile(host, []byte("base_url: https://poll.example\nmoderators: []\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(binary, "process-due-work")
+	command.Dir = projectRoot(t)
+	command.Env = append(os.Environ(), "DEFAULT_CONFIG_PATH="+defaults, "CONFIG_PATH="+host, "STATE_DIRECTORY="+t.TempDir())
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("worker error=%v stderr=%s", err, stderr.String())
+	}
+	want := "{\"version\":1,\"closed\":0,\"counted\":0,\"no_votes\":0,\"smtp_accepted\":0,\"retrying\":0,\"failed\":0,\"cancelled\":0}\n"
+	if stdout.String() != want || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 

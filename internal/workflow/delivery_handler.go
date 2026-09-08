@@ -19,7 +19,7 @@ type MessageSender interface {
 
 type DeliveryMessageBuilder func(context.Context, *store.ClaimedWork, store.DeliveryAttempt) (Message, error)
 
-func NewDeliveryHandler(repository *store.Store, sender MessageSender, build DeliveryMessageBuilder, jitter func() float64, now func() time.Time) WorkHandler {
+func NewDeliveryHandler(repository *store.Store, sender MessageSender, build DeliveryMessageBuilder, jitter func() (float64, error), now func() time.Time) WorkHandler {
 	return func(ctx context.Context, item *store.ClaimedWork) (Summary, error) {
 		if repository == nil || sender == nil || build == nil || jitter == nil || now == nil || item == nil || item.Kind != "delivery" {
 			return Summary{}, errors.New("delivery handler dependencies are invalid")
@@ -52,8 +52,12 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 			}
 			return Summary{}, fmt.Errorf("%w: %s", ErrWorkFinalized, failureClass)
 		}
+		jitterFraction, jitterErr := jitter()
+		if jitterErr != nil {
+			return Summary{}, fmt.Errorf("generate delivery jitter: %w", jitterErr)
+		}
 		delivery := Delivery{Status: DeliveryInFlight, Attempts: attempt.Attempts}
-		if transitionErr := delivery.TemporaryFailure(at, jitter()); transitionErr != nil {
+		if transitionErr := delivery.TemporaryFailure(at, jitterFraction); transitionErr != nil {
 			return Summary{}, fmt.Errorf("schedule delivery retry: %w", transitionErr)
 		}
 		if persistErr := repository.RetryDelivery(ctx, item.ID, item.ClaimToken, now(), delivery.NextDue, failureClass); persistErr != nil {

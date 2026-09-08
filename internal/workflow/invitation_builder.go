@@ -5,6 +5,7 @@ package workflow
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/url"
@@ -14,9 +15,9 @@ import (
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 )
 
-func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string, key []byte, randomness io.Reader, newID func() string, now func() time.Time) DeliveryMessageBuilder {
+func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string, key []byte, randomness io.Reader, now func() time.Time) DeliveryMessageBuilder {
 	return func(ctx context.Context, item *store.ClaimedWork, attempt store.DeliveryAttempt) (Message, error) {
-		if ctx == nil || repository == nil || strings.TrimSpace(baseURL) == "" || keyID == "" || len(key) != 32 || randomness == nil || newID == nil || now == nil || item == nil || item.ID == "" || item.ClaimToken == "" || attempt.MessageKind != "invitation" {
+		if ctx == nil || repository == nil || strings.TrimSpace(baseURL) == "" || keyID == "" || len(key) != 32 || randomness == nil || now == nil || item == nil || item.ID == "" || item.ClaimToken == "" || attempt.MessageKind != "invitation" {
 			return Message{}, errors.New("invitation builder dependencies are invalid")
 		}
 		at := now()
@@ -26,7 +27,7 @@ func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string,
 			return Message{}, err
 		}
 		tokenHash := sha256.Sum256([]byte(token))
-		material := store.GrantMaterial{ID: newID(), KeyID: keyID, TokenHash: tokenHash[:], ClaimsJSON: payload, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt}
+		material := store.GrantMaterial{ID: hex.EncodeToString(tokenHash[:]), KeyID: keyID, TokenHash: tokenHash[:], ClaimsJSON: payload, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt}
 		persistedPayload, err := repository.PrepareDeliveryGrant(ctx, item.ID, item.ClaimToken, keyID, at, material)
 		if err != nil {
 			return Message{}, err
