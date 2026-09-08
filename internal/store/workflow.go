@@ -376,3 +376,18 @@ func (s *Store) CompleteWork(ctx context.Context, workID, claimToken string, now
 	}
 	return nil
 }
+
+func (s *Store) FailWork(ctx context.Context, workID, claimToken string, now time.Time, failureClass string) error {
+	if failureClass == "" {
+		return ErrConflict
+	}
+	result, err := s.DB.ExecContext(ctx, `UPDATE work_items SET status='failed',failure_class=?,claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?`, failureClass, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("fail work: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	return nil
+}
