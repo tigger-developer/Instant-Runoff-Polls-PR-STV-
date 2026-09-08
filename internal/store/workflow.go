@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-var ErrConflict = errors.New("workflow conflict")
+var (
+	ErrConflict = errors.New("workflow conflict")
+	ErrCapacity = errors.New("workflow capacity reached")
+)
 
 type Contact struct {
 	ID              string
@@ -220,4 +223,62 @@ func (s *Store) ClosePoll(ctx context.Context, ownerID, pollID string, expectedV
 		return false, fmt.Errorf("commit poll close: %w", err)
 	}
 	return true, nil
+}
+
+func (s *Store) ConsumeModeratorGrant(ctx context.Context, grantHash []byte, moderatorID string, sessionHash, csrfHash []byte, sessionExpiresAt, now time.Time) error {
+	if len(grantHash) != 32 || len(sessionHash) != 32 || len(csrfHash) != 32 || moderatorID == "" || !sessionExpiresAt.After(now) {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin moderator grant consumption: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var configured string
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM moderators WHERE id=?", moderatorID).Scan(&configured); err != nil {
+		return ErrConflict
+	}
+	result, err := tx.ExecContext(ctx, "UPDATE grants SET consumed_at=? WHERE token_hash=? AND purpose='moderator' AND principal_id=? AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at>?", now.Unix(), grantHash, moderatorID, now.Unix())
+	if err != nil {
+		return fmt.Errorf("consume moderator grant: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,csrf_hash,expires_at) VALUES (?,'moderator',?,?,?)", sessionHash, moderatorID, csrfHash, sessionExpiresAt.Unix()); err != nil {
+		return fmt.Errorf("create moderator session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit moderator grant consumption: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) CreatePreAuthSession(ctx context.Context, sessionHash, csrfHash []byte, expiresAt, now time.Time) error {
+	if len(sessionHash) != 32 || len(csrfHash) != 32 || !expiresAt.After(now) {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin pre-authentication session: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at<=?", now.Unix()); err != nil {
+		return fmt.Errorf("remove expired sessions: %w", err)
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE purpose='preauth' AND revoked_at IS NULL AND expires_at>?", now.Unix()).Scan(&count); err != nil {
+		return fmt.Errorf("count pre-authentication sessions: %w", err)
+	}
+	if count >= 1000 {
+		return ErrCapacity
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,csrf_hash,expires_at) VALUES (?,'preauth','',?,?)", sessionHash, csrfHash, expiresAt.Unix()); err != nil {
+		return fmt.Errorf("create pre-authentication session: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit pre-authentication session: %w", err)
+	}
+	return nil
 }

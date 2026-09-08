@@ -3,8 +3,11 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -120,6 +123,56 @@ func TestClosePollCommitsSnapshotAndOneCountWork(t *testing.T) {
 	}
 	if snapshots != 1 || work != 1 {
 		t.Fatalf("snapshots=%d work=%d", snapshots, work)
+	}
+}
+
+func TestConsumeModeratorGrantIsAtomicAndOneUse(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	now := time.Unix(100, 0)
+	grantHash := bytes.Repeat([]byte{1}, 32)
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO grants(id,purpose,principal_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES ('grant-1','moderator','moderator-1','key-1',?, '{}',0,200)", grantHash); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{2}, 32), bytes.Repeat([]byte{3}, 32), now.Add(12*time.Hour), now); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ConsumeModeratorGrant(ctx, grantHash, "moderator-1", bytes.Repeat([]byte{4}, 32), bytes.Repeat([]byte{5}, 32), now.Add(12*time.Hour), now); !errors.Is(err, ErrConflict) {
+		t.Fatalf("repeat grant error = %v", err)
+	}
+	var consumed, sessions int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM grants WHERE consumed_at=100").Scan(&consumed); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM sessions WHERE purpose='moderator'").Scan(&sessions); err != nil {
+		t.Fatal(err)
+	}
+	if consumed != 1 || sessions != 1 {
+		t.Fatalf("consumed=%d sessions=%d", consumed, sessions)
+	}
+}
+
+func TestCreatePreAuthSessionEnforcesCapacityAndCleansExpiry(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	now := time.Unix(100, 0)
+	for index := 0; index < 1000; index++ {
+		token := sha256.Sum256([]byte("token-" + fmt.Sprint(index)))
+		csrf := sha256.Sum256([]byte("csrf-" + fmt.Sprint(index)))
+		if err := st.CreatePreAuthSession(ctx, token[:], csrf[:], now.Add(15*time.Minute), now); err != nil {
+			t.Fatalf("session %d: %v", index, err)
+		}
+	}
+	overflow := sha256.Sum256([]byte("overflow"))
+	csrf := sha256.Sum256([]byte("csrf"))
+	if err := st.CreatePreAuthSession(ctx, overflow[:], csrf[:], now.Add(15*time.Minute), now); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("capacity error = %v", err)
+	}
+	replacement := sha256.Sum256([]byte("replacement"))
+	if err := st.CreatePreAuthSession(ctx, replacement[:], csrf[:], now.Add(31*time.Minute), now.Add(16*time.Minute)); err != nil {
+		t.Fatalf("post-expiry session: %v", err)
 	}
 }
 
