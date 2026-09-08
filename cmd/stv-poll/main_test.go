@@ -32,3 +32,11 @@ func TestCLIHelpAndVersionReturnWithoutRuntimeConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestCLIRejectsUnknownInvocation(t *testing.T) {
+	command := exec.Command("go", "run", ".", "unknown")
+	err := command.Run()
+	if err == nil {
+		t.Fatal("unknown invocation unexpectedly succeeded")
+	}
+}

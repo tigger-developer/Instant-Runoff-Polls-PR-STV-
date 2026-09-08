@@ -18,6 +18,10 @@ lint:
 	go vet ./...
 	command -v golangci-lint >/dev/null
 	golangci-lint run
+	command -v biome >/dev/null
+	biome check cmd/stv-poll/static
+	command -v tidy >/dev/null
+	go run ./cmd/stv-poll render-html | tidy -errors -quiet -
 
 test:
 	go test -race ./...

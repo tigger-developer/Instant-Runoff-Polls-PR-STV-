@@ -7,23 +7,32 @@ import (
 	"encoding/json"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"time"
 )
 
 func Handler(baseURL string, st *store.Store, page *template.Template, assets http.Handler) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) { _ = page.Execute(w, struct{ BaseURL string }{baseURL}) })
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		if err := page.Execute(w, struct{ BaseURL string }{baseURL}); err != nil {
+			slog.Error("render landing page", "error", err)
+		}
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
 		defer cancel()
 		w.Header().Set("Content-Type", "application/json")
 		if !st.Healthy(ctx) {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_ = json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"})
+			if err := json.NewEncoder(w).Encode(map[string]string{"status": "unavailable"}); err != nil {
+				slog.Error("write health response", "error", err)
+			}
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			slog.Error("write health response", "error", err)
+		}
 	})
 	mux.Handle("/static/", http.StripPrefix("/static/", assets))
 	return mux

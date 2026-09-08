@@ -11,7 +11,7 @@ import (
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/web"
 	"html/template"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,14 +31,29 @@ func main() {
 		fmt.Println(version)
 		return
 	}
+	if len(os.Args) == 2 && os.Args[1] == "render-html" {
+		if err := renderHTML(os.Stdout); err != nil {
+			slog.Error("render HTML failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) < 2 || os.Args[1] != "serve" {
 		fmt.Fprintln(os.Stderr, "invalid invocation: expected serve")
 		os.Exit(2)
 	}
 	if err := serve(); err != nil {
-		log.Print(err)
+		slog.Error("serve failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+func renderHTML(output *os.File) error {
+	tmpl, err := template.ParseFS(assets, "templates/*.html")
+	if err != nil {
+		return fmt.Errorf("parse templates: %w", err)
+	}
+	return tmpl.Execute(output, struct{ BaseURL string }{"http://localhost:8080"})
 }
 func serve() error {
 	defaults := os.Getenv("DEFAULT_CONFIG_PATH")
@@ -70,14 +85,19 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: addr, Handler: web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.FS(staticFS))), ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout, ReadTimeout: cfg.HTTP.ReadTimeout, WriteTimeout: cfg.HTTP.WriteTimeout, IdleTimeout: cfg.HTTP.IdleTimeout}
+	server := &http.Server{Addr: addr, Handler: web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.FS(staticFS))), ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout, ReadTimeout: cfg.HTTP.ReadTimeout, WriteTimeout: cfg.HTTP.WriteTimeout, IdleTimeout: cfg.HTTP.IdleTimeout, MaxHeaderBytes: 64 * 1024}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	shutdownErr := make(chan error, 1)
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
 		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
+		shutdownErr <- server.Shutdown(shutdownCtx)
 	}()
-	return server.ListenAndServe()
+	err = server.ListenAndServe()
+	if err == http.ErrServerClosed {
+		return <-shutdownErr
+	}
+	return err
 }

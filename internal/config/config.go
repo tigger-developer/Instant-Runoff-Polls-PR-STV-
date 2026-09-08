@@ -17,6 +17,44 @@ type HTTP struct {
 	IdleTimeout       time.Duration `yaml:"idle_timeout"`
 	ShutdownTimeout   time.Duration `yaml:"shutdown_timeout"`
 }
+
+func (h *HTTP) UnmarshalYAML(node *yaml.Node) error {
+	var raw struct {
+		ReadHeaderTimeout string `yaml:"read_header_timeout"`
+		ReadTimeout       string `yaml:"read_timeout"`
+		WriteTimeout      string `yaml:"write_timeout"`
+		IdleTimeout       string `yaml:"idle_timeout"`
+		ShutdownTimeout   string `yaml:"shutdown_timeout"`
+	}
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	parse := func(name, value string) (time.Duration, error) {
+		parsed, err := time.ParseDuration(value)
+		if err != nil {
+			return 0, fmt.Errorf("configuration field %s: %w", name, err)
+		}
+		return parsed, nil
+	}
+	var err error
+	if h.ReadHeaderTimeout, err = parse("http.read_header_timeout", raw.ReadHeaderTimeout); err != nil {
+		return err
+	}
+	if h.ReadTimeout, err = parse("http.read_timeout", raw.ReadTimeout); err != nil {
+		return err
+	}
+	if h.WriteTimeout, err = parse("http.write_timeout", raw.WriteTimeout); err != nil {
+		return err
+	}
+	if h.IdleTimeout, err = parse("http.idle_timeout", raw.IdleTimeout); err != nil {
+		return err
+	}
+	if h.ShutdownTimeout, err = parse("http.shutdown_timeout", raw.ShutdownTimeout); err != nil {
+		return err
+	}
+	return nil
+}
+
 type Config struct {
 	BaseURL  string   `yaml:"base_url"`
 	DataDirs []string `yaml:"data_dirs"`

@@ -1,0 +1,5 @@
+{
+  "files": { "includes": ["cmd/stv-poll/static/**/*.css", "cmd/stv-poll/static/**/*.svg"] },
+  "linter": { "enabled": true },
+  "formatter": { "enabled": true }
+}

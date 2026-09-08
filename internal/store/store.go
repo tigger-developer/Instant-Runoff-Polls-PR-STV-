@@ -16,11 +16,15 @@ type Migration struct {
 	Statements []string
 }
 
-var migrations = []Migration{{Version: 1, Statements: []string{"CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)", "INSERT INTO schema_version(version) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version)"}}}
+var migrations = []Migration{{Version: 1}}
 
 type Store struct{ DB *sql.DB }
 
 func Open(ctx context.Context, stateDirectory string) (*Store, error) {
+	return OpenWithMigrations(ctx, stateDirectory, migrations)
+}
+
+func OpenWithMigrations(ctx context.Context, stateDirectory string, appliedMigrations []Migration) (*Store, error) {
 	if stateDirectory == "" {
 		return nil, fmt.Errorf("state directory is required")
 	}
@@ -28,40 +32,54 @@ func Open(ctx context.Context, stateDirectory string) (*Store, error) {
 	if err != nil || !info.IsDir() {
 		return nil, fmt.Errorf("state directory is unavailable: %q", stateDirectory)
 	}
-	db, err := sql.Open("sqlite", filepath.Join(stateDirectory, "stv-poll.sqlite")+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	path := filepath.Join(stateDirectory, "stv-poll.sqlite")
+	_, statErr := os.Stat(path)
+	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	db.SetMaxOpenConns(1)
 	st := &Store{DB: db}
-	if err := st.migrate(ctx); err != nil {
+	if err := st.migrate(ctx, appliedMigrations); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
+	if os.IsNotExist(statErr) {
+		if err := os.Chmod(path, 0o600); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("set database permissions: %w", err)
+		}
+	}
 	return st, nil
 }
-func (s *Store) migrate(ctx context.Context) error {
+func (s *Store) migrate(ctx context.Context, appliedMigrations []Migration) error {
+	if len(appliedMigrations) == 0 {
+		return fmt.Errorf("no migrations configured")
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin migration: %w", err)
 	}
 	// Rollback is best-effort cleanup; a committed transaction returns sql.ErrTxDone.
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, migrations[0].Statements[0]); err != nil {
+	if _, err := tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"); err != nil {
 		return fmt.Errorf("create schema version: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_version(version) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version)"); err != nil {
+		return fmt.Errorf("initialize schema version: %w", err)
 	}
 	var version int
 	if err := tx.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&version); err != nil {
 		return fmt.Errorf("read schema version: %w", err)
 	}
-	if version > migrations[len(migrations)-1].Version {
+	if version > appliedMigrations[len(appliedMigrations)-1].Version {
 		return fmt.Errorf("unsupported schema version %d", version)
 	}
-	for _, m := range migrations {
+	for _, m := range appliedMigrations {
 		if m.Version <= version {
 			continue
 		}
-		for _, statement := range m.Statements[1:] {
+		for _, statement := range m.Statements {
 			if _, err := tx.ExecContext(ctx, statement); err != nil {
 				return fmt.Errorf("apply migration %d: %w", m.Version, err)
 			}
