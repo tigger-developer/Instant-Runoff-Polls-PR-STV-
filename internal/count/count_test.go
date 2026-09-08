@@ -44,6 +44,21 @@ func TestRunTransfersOriginalSurplusUsingWholeBallots(t *testing.T) {
 	if outcome.Result == nil || len(outcome.Result.Winners) != 2 || outcome.Result.Winners[0] != "A" || outcome.Result.Winners[1] != "B" {
 		t.Fatalf("outcome = %#v", outcome)
 	}
+	if !recordContains(outcome.Result.Counts, func(record CountRecord) bool {
+		return len(record.ElectedOptionIDs) > 0 && record.ElectedOptionIDs[0] == "A"
+	}) {
+		t.Fatalf("counts = %#v, want A election event", outcome.Result.Counts)
+	}
+	if !recordContains(outcome.Result.Counts, func(record CountRecord) bool {
+		return record.SurplusOptionID == "A" && len(record.Transfers) > 0
+	}) {
+		t.Fatalf("counts = %#v, want A surplus movements", outcome.Result.Counts)
+	}
+	if !recordContains(outcome.Result.Counts, func(record CountRecord) bool {
+		return len(record.ExcludedOptionIDs) > 0 && record.ExcludedOptionIDs[0] == "D"
+	}) {
+		t.Fatalf("counts = %#v, want D exclusion event", outcome.Result.Counts)
+	}
 }
 
 func TestRunRequestsDecisionForUnresolvedExclusionTie(t *testing.T) {
@@ -207,10 +222,35 @@ func TestRunReturnsWinnersInDeclaredOptionOrder(t *testing.T) {
 	}
 }
 
+func TestRunUsesHistoricalHighForRemainderTie(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C", "D"}, Places: 2, Ballots: []Ballot{
+		{ID: "a1", Preferences: []string{"A"}}, {ID: "a2", Preferences: []string{"A"}}, {ID: "a3", Preferences: []string{"A"}}, {ID: "a4", Preferences: []string{"A"}},
+		{ID: "b1", Preferences: []string{"B"}}, {ID: "b2", Preferences: []string{"B"}}, {ID: "b3", Preferences: []string{"B"}}, {ID: "b4", Preferences: []string{"B"}},
+		{ID: "c1", Preferences: []string{"C"}}, {ID: "c2", Preferences: []string{"C"}}, {ID: "c3", Preferences: []string{"C"}},
+		{ID: "d1", Preferences: []string{"D", "A", "B"}}, {ID: "d2", Preferences: []string{"D", "A", "C"}},
+	}}
+	outcome, err := Run(context.Background(), input, nil)
+	if err != nil || outcome.Result == nil {
+		t.Fatalf("outcome = %#v, error = %v, want history to resolve remainder", outcome, err)
+	}
+	if len(outcome.Result.Winners) != 2 || outcome.Result.Winners[0] != "A" || outcome.Result.Winners[1] != "B" {
+		t.Fatalf("winners = %#v, want [A B]", outcome.Result.Winners)
+	}
+}
+
 func ballots(preferences ...string) []Ballot {
 	result := make([]Ballot, 0, len(preferences))
 	for index, preference := range preferences {
 		result = append(result, Ballot{ID: string(rune('a' + index)), Preferences: []string{preference}})
 	}
 	return result
+}
+
+func recordContains(records []CountRecord, predicate func(CountRecord) bool) bool {
+	for _, record := range records {
+		if predicate(record) {
+			return true
+		}
+	}
+	return false
 }

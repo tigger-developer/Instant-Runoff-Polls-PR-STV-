@@ -40,9 +40,18 @@ type OptionTotal struct {
 	Votes    int    `json:"votes"`
 }
 type CountRecord struct {
-	Index     int           `json:"index"`
-	Totals    []OptionTotal `json:"totals"`
-	Exhausted int           `json:"exhausted"`
+	Index             int           `json:"index"`
+	Totals            []OptionTotal `json:"totals"`
+	Exhausted         int           `json:"exhausted"`
+	ElectedOptionIDs  []string      `json:"elected_option_ids"`
+	ExcludedOptionIDs []string      `json:"excluded_option_ids"`
+	SurplusOptionID   string        `json:"surplus_option_id,omitempty"`
+	Transfers         []Transfer    `json:"transfers"`
+}
+type Transfer struct {
+	BallotID     string `json:"ballot_id"`
+	FromOptionID string `json:"from_option_id"`
+	ToOptionID   string `json:"to_option_id,omitempty"`
 }
 type Decision struct {
 	Sequence           int      `json:"sequence"`
@@ -94,16 +103,27 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 	decisionIndex := 0
 	operation := 0
 	countRecords := []CountRecord{}
+	pendingExcluded := []string(nil)
+	pendingSurplus := ""
+	pendingTransfers := []Transfer(nil)
 	for steps := 0; steps < 100; steps++ {
 		if err := ctx.Err(); err != nil {
 			return Outcome{}, err
 		}
 		tallies := tally(input.Options, allocations)
-		countRecords = append(countRecords, recordTotals(operation+1, input.Options, tallies, allocations))
+		record := recordTotals(operation+1, input.Options, tallies, allocations)
+		record.ExcludedOptionIDs = pendingExcluded
+		record.SurplusOptionID = pendingSurplus
+		record.Transfers = pendingTransfers
+		countRecords = append(countRecords, record)
+		pendingExcluded = nil
+		pendingSurplus = ""
+		pendingTransfers = nil
 		for _, option := range input.Options {
 			if continuing[option] && tallies[option] >= quota {
 				continuing[option] = false
 				winners = append(winners, option)
+				countRecords[len(countRecords)-1].ElectedOptionIDs = append(countRecords[len(countRecords)-1].ElectedOptionIDs, option)
 				electionParcel[option] = operation
 				if len(winners) == input.Places {
 					if decisionIndex != len(decisions) {
@@ -161,8 +181,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			}
 		}
 		if selected != "" {
-			eligible := surplusRemainderTie(input.Options, selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected])
-			choice := ""
+			eligible, choice := surplusRemainderTie(input.Options, selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected], countRecords[:len(countRecords)-1])
 			if len(eligible) > 0 {
 				request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "remainder_lot", operation+1, eligible)
 				if err != nil {
@@ -179,7 +198,8 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 				decisionIndex++
 			}
 			operation++
-			transferSurplus(selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected], operation, choice)
+			pendingSurplus = selected
+			pendingTransfers = transferSurplus(selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected], operation, choice)
 			processed[selected] = true
 			continue
 		}
@@ -230,10 +250,14 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			continuing[option] = false
 		}
 		operation++
+		pendingExcluded = append([]string(nil), exclusionSet...)
 		for index := range allocations {
 			if contains(exclusionSet, allocations[index].option) {
-				allocations[index].option = nextPreference(allocations[index].ballot, continuing)
+				from := allocations[index].option
+				to := nextPreference(allocations[index].ballot, continuing)
+				allocations[index].option = to
 				allocations[index].parcel = operation
+				pendingTransfers = append(pendingTransfers, Transfer{BallotID: allocations[index].ballot.ID, FromOptionID: from, ToOptionID: to})
 			}
 		}
 	}
@@ -269,7 +293,7 @@ func nextPreference(ballot Ballot, continuing map[string]bool) string {
 	}
 	return ""
 }
-func transferSurplus(winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel, destinationParcel int, remainderChoice string) {
+func transferSurplus(winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel, destinationParcel int, remainderChoice string) []Transfer {
 	groups := map[string][]int{}
 	order := []string{}
 	for i, a := range allocations {
@@ -288,45 +312,44 @@ func transferSurplus(winner string, surplus int, allocations []allocation, conti
 		total += len(ids)
 	}
 	if total == 0 {
-		return
+		return nil
 	}
-	remaining := surplus
-	for _, d := range order {
-		count := surplus * len(groups[d]) / total
-		if count > remaining {
-			count = remaining
+	transfers := []Transfer{}
+	moveCounts := map[string]int{}
+	if total <= surplus {
+		for destination, indexes := range groups {
+			moveCounts[destination] = len(indexes)
 		}
-		for _, i := range groups[d][:count] {
-			allocations[i].option = d
-			allocations[i].parcel = destinationParcel
+	} else {
+		remaining := surplus
+		for _, destination := range order {
+			moveCounts[destination] = surplus * len(groups[destination]) / total
+			remaining -= moveCounts[destination]
 		}
-		remaining -= count
-	}
-	if remainderChoice != "" && remaining > 0 {
-		for _, i := range groups[remainderChoice] {
-			if allocations[i].option == winner {
-				allocations[i].option = remainderChoice
-				allocations[i].parcel = destinationParcel
-				remaining--
-				break
+		remainderOrder := append([]string(nil), order...)
+		sort.SliceStable(remainderOrder, func(i, j int) bool {
+			left := surplus * len(groups[remainderOrder[i]]) % total
+			right := surplus * len(groups[remainderOrder[j]]) % total
+			if left == right && remainderChoice != "" {
+				return remainderOrder[i] == remainderChoice
 			}
+			return left > right
+		})
+		for _, destination := range remainderOrder[:remaining] {
+			moveCounts[destination]++
 		}
 	}
-	for _, d := range order {
-		for _, i := range groups[d] {
-			if remaining == 0 {
-				return
-			}
-			if allocations[i].option == winner {
-				allocations[i].option = d
-				allocations[i].parcel = destinationParcel
-				remaining--
-			}
+	for _, destination := range order {
+		for _, index := range groups[destination][:moveCounts[destination]] {
+			allocations[index].option = destination
+			allocations[index].parcel = destinationParcel
+			transfers = append(transfers, Transfer{BallotID: allocations[index].ballot.ID, FromOptionID: winner, ToOptionID: destination})
 		}
 	}
+	return transfers
 }
 
-func surplusRemainderTie(options []string, winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel int) []string {
+func surplusRemainderTie(options []string, winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel int, history []CountRecord) ([]string, string) {
 	counts := map[string]int{}
 	total := 0
 	for _, allocation := range allocations {
@@ -340,14 +363,14 @@ func surplusRemainderTie(options []string, winner string, surplus int, allocatio
 		}
 	}
 	if total == 0 || total <= surplus {
-		return nil
+		return nil, ""
 	}
 	allocated := 0
 	for _, count := range counts {
 		allocated += surplus * count / total
 	}
 	if surplus-allocated != 1 {
-		return nil
+		return nil, ""
 	}
 	maxRemainder := -1
 	eligible := []string{}
@@ -365,9 +388,13 @@ func surplusRemainderTie(options []string, winner string, surplus int, allocatio
 		}
 	}
 	if len(eligible) < 2 {
-		return nil
+		return nil, ""
 	}
-	return eligible
+	eligible = historicalCandidates(eligible, history, true)
+	if len(eligible) == 1 {
+		return nil, eligible[0]
+	}
+	return eligible, ""
 }
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
