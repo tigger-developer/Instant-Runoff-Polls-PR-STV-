@@ -4,8 +4,13 @@ package count
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"sort"
 )
 
 const RuleIrishGuidedSTV = "irish-guided-stv-v1"
@@ -22,14 +27,35 @@ type Input struct {
 	Ballots       []Ballot `json:"ballots"`
 }
 type Result struct {
-	Quota   int      `json:"quota"`
-	Winners []string `json:"winners"`
+	SchemaVersion    int           `json:"schema_version"`
+	Rule             string        `json:"rule"`
+	InputFingerprint string        `json:"input_fingerprint"`
+	Quota            int           `json:"quota"`
+	Winners          []string      `json:"winners"`
+	Counts           []CountRecord `json:"counts"`
+	UsedDecisions    []Decision    `json:"used_decisions"`
+}
+type OptionTotal struct {
+	OptionID string `json:"option_id"`
+	Votes    int    `json:"votes"`
+}
+type CountRecord struct {
+	Index     int           `json:"index"`
+	Totals    []OptionTotal `json:"totals"`
+	Exhausted int           `json:"exhausted"`
+}
+type Decision struct {
+	Sequence           int      `json:"sequence"`
+	Kind               string   `json:"kind"`
+	RequestFingerprint string   `json:"request_fingerprint"`
+	SelectedOptionIDs  []string `json:"selected_option_ids"`
 }
 type DecisionRequest struct {
-	Sequence           int
-	Kind               string
-	EligibleOptionIDs  []string
-	RequiredSelections int
+	Sequence           int      `json:"sequence"`
+	Kind               string   `json:"kind"`
+	RequestFingerprint string   `json:"request_fingerprint"`
+	EligibleOptionIDs  []string `json:"eligible_option_ids"`
+	RequiredSelections int      `json:"required_selections"`
 }
 type Outcome struct {
 	Result          *Result
@@ -42,7 +68,7 @@ type allocation struct {
 	parcel int
 }
 
-func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) {
+func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error) {
 	if err := ctx.Err(); err != nil {
 		return Outcome{}, err
 	}
@@ -50,6 +76,10 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 		return Outcome{}, err
 	}
 	quota := len(input.Ballots)/(input.Places+1) + 1
+	inputFingerprint, err := fingerprintInput(input)
+	if err != nil {
+		return Outcome{}, fmt.Errorf("fingerprinting count input: %w", err)
+	}
 	allocations := make([]allocation, len(input.Ballots))
 	for index, ballot := range input.Ballots {
 		allocations[index] = allocation{ballot: ballot, option: ballot.Preferences[0]}
@@ -63,11 +93,13 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 	electionParcel := map[string]int{}
 	decisionIndex := 0
 	operation := 0
+	countRecords := []CountRecord{}
 	for steps := 0; steps < 100; steps++ {
 		if err := ctx.Err(); err != nil {
 			return Outcome{}, err
 		}
 		tallies := tally(input.Options, allocations)
+		countRecords = append(countRecords, recordTotals(operation+1, input.Options, tallies, allocations))
 		for _, option := range input.Options {
 			if continuing[option] && tallies[option] >= quota {
 				continuing[option] = false
@@ -77,7 +109,7 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 					if decisionIndex != len(decisions) {
 						return Outcome{}, errors.New("unused count decision")
 					}
-					return Outcome{Result: &Result{Quota: quota, Winners: winners}}, nil
+					return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: winners, Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
 				}
 			}
 		}
@@ -90,26 +122,54 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 			if decisionIndex != len(decisions) {
 				return Outcome{}, errors.New("unused count decision")
 			}
-			return Outcome{Result: &Result{Quota: quota, Winners: winners}}, nil
+			return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: winners, Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
 		}
 		selected := ""
+		pendingSurpluses := []string{}
+		largestSurplus := 0
 		for _, winner := range winners {
 			if !processed[winner] && tallies[winner] > quota {
-				selected = winner
-				break
+				surplus := tallies[winner] - quota
+				if surplus > largestSurplus {
+					largestSurplus = surplus
+					pendingSurpluses = []string{winner}
+				} else if surplus == largestSurplus {
+					pendingSurpluses = append(pendingSurpluses, winner)
+				}
+			}
+		}
+		if len(pendingSurpluses) == 1 {
+			selected = pendingSurpluses[0]
+		} else if len(pendingSurpluses) > 1 {
+			pendingSurpluses = historicalCandidates(pendingSurpluses, countRecords[:len(countRecords)-1], true)
+			if len(pendingSurpluses) == 1 {
+				selected = pendingSurpluses[0]
+			} else {
+				request := newDecisionRequest(inputFingerprint, decisionIndex+1, "surplus_order_lot", operation+1, orderByOptions(input.Options, pendingSurpluses))
+				if decisionIndex == len(decisions) {
+					return Outcome{DecisionRequest: &request}, nil
+				}
+				decision := decisions[decisionIndex]
+				if err := validateDecision(decision, request); err != nil {
+					return Outcome{}, err
+				}
+				selected = decision.SelectedOptionIDs[0]
+				decisionIndex++
 			}
 		}
 		if selected != "" {
-			eligible := surplusRemainderTie(selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected])
+			eligible := surplusRemainderTie(input.Options, selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected])
 			choice := ""
 			if len(eligible) > 0 {
+				request := newDecisionRequest(inputFingerprint, decisionIndex+1, "remainder_lot", operation+1, eligible)
 				if decisionIndex == len(decisions) {
-					return Outcome{DecisionRequest: &DecisionRequest{Sequence: decisionIndex + 1, Kind: "remainder_lot", EligibleOptionIDs: eligible, RequiredSelections: 1}}, nil
+					return Outcome{DecisionRequest: &request}, nil
 				}
-				choice = decisions[decisionIndex]
-				if !contains(eligible, choice) {
+				decision := decisions[decisionIndex]
+				if err := validateDecision(decision, request); err != nil {
 					return Outcome{}, errors.New("ineligible count decision")
 				}
+				choice = decision.SelectedOptionIDs[0]
 				decisionIndex++
 			}
 			operation++
@@ -136,21 +196,33 @@ func Run(ctx context.Context, input Input, decisions []string) (Outcome, error) 
 			return Outcome{}, errors.New("count made no progress")
 		}
 		if len(lowestOptions) > 1 {
+			lowestOptions = historicalCandidates(lowestOptions, countRecords[:len(countRecords)-1], false)
+			if len(lowestOptions) == 1 {
+				lowest = lowestOptions[0]
+			}
+		}
+		exclusionSet := bulkExclusionSet(input.Options, continuing, tallies, input.Places-len(winners))
+		if len(exclusionSet) == 0 && len(lowestOptions) > 1 {
+			request := newDecisionRequest(inputFingerprint, decisionIndex+1, "exclusion_lot", operation+1, lowestOptions)
 			if decisionIndex == len(decisions) {
-				return Outcome{DecisionRequest: &DecisionRequest{
-					Sequence: decisionIndex + 1, Kind: "exclusion_lot", EligibleOptionIDs: lowestOptions, RequiredSelections: 1,
-				}}, nil
+				return Outcome{DecisionRequest: &request}, nil
 			}
-			lowest = decisions[decisionIndex]
-			if !contains(lowestOptions, lowest) {
-				return Outcome{}, errors.New("ineligible count decision")
+			decision := decisions[decisionIndex]
+			if err := validateDecision(decision, request); err != nil {
+				return Outcome{}, err
 			}
+			lowest = decision.SelectedOptionIDs[0]
 			decisionIndex++
 		}
-		continuing[lowest] = false
+		if len(exclusionSet) == 0 {
+			exclusionSet = []string{lowest}
+		}
+		for _, option := range exclusionSet {
+			continuing[option] = false
+		}
 		operation++
 		for index := range allocations {
-			if allocations[index].option == lowest {
+			if contains(exclusionSet, allocations[index].option) {
 				allocations[index].option = nextPreference(allocations[index].ballot, continuing)
 				allocations[index].parcel = operation
 			}
@@ -245,7 +317,7 @@ func transferSurplus(winner string, surplus int, allocations []allocation, conti
 	}
 }
 
-func surplusRemainderTie(winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel int) []string {
+func surplusRemainderTie(options []string, winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel int) []string {
 	counts := map[string]int{}
 	total := 0
 	for _, allocation := range allocations {
@@ -270,7 +342,11 @@ func surplusRemainderTie(winner string, surplus int, allocations []allocation, c
 	}
 	maxRemainder := -1
 	eligible := []string{}
-	for option, count := range counts {
+	for _, option := range options {
+		count, ok := counts[option]
+		if !ok {
+			continue
+		}
 		remainder := surplus * count % total
 		if remainder > maxRemainder {
 			maxRemainder = remainder
@@ -285,6 +361,8 @@ func surplusRemainderTie(winner string, surplus int, allocations []allocation, c
 	return eligible
 }
 
+var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 func contains(values []string, value string) bool {
 	for _, candidate := range values {
 		if candidate == value {
@@ -292,6 +370,70 @@ func contains(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func historicalCandidates(candidates []string, history []CountRecord, high bool) []string {
+	remaining := append([]string(nil), candidates...)
+	for _, record := range history {
+		valueByOption := map[string]int{}
+		for _, total := range record.Totals {
+			valueByOption[total.OptionID] = total.Votes
+		}
+		best := valueByOption[remaining[0]]
+		for _, option := range remaining[1:] {
+			value := valueByOption[option]
+			if (high && value > best) || (!high && value < best) {
+				best = value
+			}
+		}
+		filtered := remaining[:0]
+		for _, option := range remaining {
+			if valueByOption[option] == best {
+				filtered = append(filtered, option)
+			}
+		}
+		remaining = filtered
+		if len(remaining) == 1 {
+			return remaining
+		}
+	}
+	return remaining
+}
+
+func orderByOptions(options, candidates []string) []string {
+	ordered := make([]string, 0, len(candidates))
+	for _, option := range options {
+		if contains(candidates, option) {
+			ordered = append(ordered, option)
+		}
+	}
+	return ordered
+}
+
+func bulkExclusionSet(options []string, continuing map[string]bool, tallies map[string]int, remainingPlaces int) []string {
+	ordered := make([]string, 0, len(options))
+	for _, option := range options {
+		if continuing[option] {
+			ordered = append(ordered, option)
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return tallies[ordered[i]] < tallies[ordered[j]] })
+	best := []string(nil)
+	sum := 0
+	for index := 0; index < len(ordered)-1; index++ {
+		sum += tallies[ordered[index]]
+		count := index + 1
+		if count < 2 || len(ordered)-count < remainingPlaces {
+			continue
+		}
+		if tallies[ordered[index]] == tallies[ordered[index+1]] {
+			continue
+		}
+		if sum < tallies[ordered[index+1]] {
+			best = append([]string(nil), ordered[:count]...)
+		}
+	}
+	return best
 }
 func validate(input Input) error {
 	if input.SchemaVersion != 1 || input.Rule != RuleIrishGuidedSTV {
@@ -305,14 +447,14 @@ func validate(input Input) error {
 	}
 	options := map[string]bool{}
 	for _, o := range input.Options {
-		if o == "" || options[o] {
+		if !validID.MatchString(o) || options[o] {
 			return errors.New("duplicate or empty option identifier")
 		}
 		options[o] = true
 	}
 	ballots := map[string]bool{}
 	for _, b := range input.Ballots {
-		if b.ID == "" || ballots[b.ID] || len(b.Preferences) == 0 {
+		if !validID.MatchString(b.ID) || ballots[b.ID] || len(b.Preferences) == 0 || len(b.Preferences) > len(input.Options) {
 			return errors.New("invalid ballot identifier or preferences")
 		}
 		ballots[b.ID] = true
@@ -325,4 +467,49 @@ func validate(input Input) error {
 		}
 	}
 	return nil
+}
+
+func fingerprintInput(input Input) (string, error) {
+	ballots := make([]any, 0, len(input.Ballots))
+	for _, ballot := range input.Ballots {
+		ballots = append(ballots, []any{ballot.ID, ballot.Preferences})
+	}
+	return fingerprint([]any{input.SchemaVersion, input.Rule, input.Options, input.Places, ballots})
+}
+
+func fingerprint(value any) (string, error) {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func newDecisionRequest(inputFingerprint string, sequence int, kind string, countIndex int, eligible []string) DecisionRequest {
+	requestFingerprint, err := fingerprint([]any{inputFingerprint, sequence, kind, countIndex, eligible, 1})
+	if err != nil {
+		panic(err)
+	}
+	return DecisionRequest{Sequence: sequence, Kind: kind, RequestFingerprint: requestFingerprint, EligibleOptionIDs: append([]string(nil), eligible...), RequiredSelections: 1}
+}
+
+func validateDecision(decision Decision, request DecisionRequest) error {
+	if decision.Sequence != request.Sequence || decision.Kind != request.Kind || decision.RequestFingerprint != request.RequestFingerprint || len(decision.SelectedOptionIDs) != 1 || !contains(request.EligibleOptionIDs, decision.SelectedOptionIDs[0]) {
+		return errors.New("count decision does not match request")
+	}
+	return nil
+}
+
+func recordTotals(index int, options []string, tallies map[string]int, allocations []allocation) CountRecord {
+	record := CountRecord{Index: index, Totals: make([]OptionTotal, 0, len(options))}
+	for _, option := range options {
+		record.Totals = append(record.Totals, OptionTotal{OptionID: option, Votes: tallies[option]})
+	}
+	for _, allocation := range allocations {
+		if allocation.option == "" {
+			record.Exhausted++
+		}
+	}
+	return record
 }
