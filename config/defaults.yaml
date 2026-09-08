@@ -1,8 +1,14 @@
 base_url: http://localhost:8080
 data_dirs: [templates, static]
 http:
+  secure_cookies: true
   read_header_timeout: 5s
   read_timeout: 15s
   write_timeout: 15s
   idle_timeout: 60s
   shutdown_timeout: 10s
+smtp:
+  host: 127.0.0.1
+  port: 1025
+  from: polls@example.test
+  tls_mode: development_plain

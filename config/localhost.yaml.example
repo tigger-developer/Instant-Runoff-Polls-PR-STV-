@@ -1,1 +1,8 @@
 base_url: http://localhost:8080
+http:
+  secure_cookies: false
+smtp:
+  host: 127.0.0.1
+  port: 1025
+  from: polls@example.test
+  tls_mode: development_plain

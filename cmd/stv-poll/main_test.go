@@ -125,7 +125,7 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 	state := t.TempDir()
 	defaults := filepath.Join(projectRoot(t), "config", "defaults.yaml")
 	host := filepath.Join(t.TempDir(), "host.yaml")
-	if err := os.WriteFile(host, []byte("base_url: https://poll.example\n"), 0o600); err != nil {
+	if err := os.WriteFile(host, []byte("base_url: https://poll.example\nmoderators: []\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.Command(binary, "serve")
@@ -202,7 +202,7 @@ func TestExecutableRejectsMalformedTemplateBeforeListening(t *testing.T) {
 		t.Fatal(err)
 	}
 	defaults := filepath.Join(root, "defaults.yaml")
-	contents := "base_url: https://poll.example\ndata_dirs: [" + templates + ", " + static + "]\nhttp:\n  read_header_timeout: 5s\n  read_timeout: 15s\n  write_timeout: 15s\n  idle_timeout: 60s\n  shutdown_timeout: 10s\n"
+	contents := "base_url: https://poll.example\ndata_dirs: [" + templates + ", " + static + "]\nhttp:\n  secure_cookies: true\n  read_header_timeout: 5s\n  read_timeout: 15s\n  write_timeout: 15s\n  idle_timeout: 60s\n  shutdown_timeout: 10s\nmoderators: []\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nsmtp:\n  host: 127.0.0.1\n  port: 1025\n  from: polls@example.test\n  tls_mode: development_plain\n"
 	if err := os.WriteFile(defaults, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

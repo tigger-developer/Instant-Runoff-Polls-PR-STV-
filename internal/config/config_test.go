@@ -15,6 +15,15 @@ http:
   write_timeout: 15s
   idle_timeout: 60s
   shutdown_timeout: 10s
+moderators: []
+auth:
+  key_id: key-1
+  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+smtp:
+  host: 127.0.0.1
+  port: 1025
+  from: polls@example.test
+  tls_mode: development_plain
 `
 
 func TestLoadMergesLayersRecursively(t *testing.T) {
@@ -38,6 +47,34 @@ func TestLoadMergesLayersRecursively(t *testing.T) {
 	}
 	if got := cfg.HTTP.IdleTimeout.String(); got != "1m30s" {
 		t.Fatalf("IdleTimeout = %s", got)
+	}
+}
+
+func TestLoadValidatesWorkflowConfiguration(t *testing.T) {
+	directory := t.TempDir()
+	defaults := filepath.Join(directory, "defaults.yaml")
+	writeConfig(t, defaults, validDefaults)
+	cfg, err := Load(defaults, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth.KeyID != "key-1" || len(cfg.Auth.SigningKey) != 32 || cfg.SMTP.Port != 1025 || cfg.HTTP.SecureCookies {
+		t.Fatalf("workflow configuration = %#v", cfg)
+	}
+
+	for name, overlay := range map[string]string{
+		"duplicate moderator":   "moderators:\n  - {id: one, email: SAME@example.test}\n  - {id: two, email: same@example.test}\n",
+		"invalid signing key":   "auth:\n  signing_key: c2hvcnQ=\n",
+		"plaintext remote smtp": "smtp:\n  host: smtp.example.test\n  tls_mode: development_plain\n",
+		"partial credentials":   "smtp:\n  username: user\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(directory, name+".yaml")
+			writeConfig(t, path, overlay)
+			if _, err := Load(defaults, path, ""); err == nil {
+				t.Fatal("expected invalid workflow configuration")
+			}
+		})
 	}
 }
 
