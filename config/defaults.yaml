@@ -1,5 +1,9 @@
 base_url: http://localhost:8080
-data_dirs: [templates, static]
+
+data_dirs:
+  - cmd/stv-poll/templates
+  - cmd/stv-poll/static
+
 http:
   secure_cookies: true
   read_header_timeout: 5s
