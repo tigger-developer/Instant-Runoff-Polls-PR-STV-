@@ -23,14 +23,19 @@ import (
 var adminPollID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 type pollDefinition struct {
-	ID           string   `json:"id"`
-	OwnerID      string   `json:"owner_id"`
-	Question     string   `json:"question"`
-	Options      []string `json:"options"`
-	Places       int      `json:"places"`
-	Deadline     string   `json:"deadline"`
-	Announce     bool     `json:"announce"`
-	Participants []string `json:"participants"`
+	ID           string                      `json:"id"`
+	OwnerID      string                      `json:"owner_id"`
+	Question     string                      `json:"question"`
+	Options      []string                    `json:"options"`
+	Places       int                         `json:"places"`
+	Deadline     string                      `json:"deadline"`
+	Announce     bool                        `json:"announce"`
+	Participants []pollParticipantDefinition `json:"participants"`
+}
+
+type pollParticipantDefinition struct {
+	Name   string   `json:"name"`
+	Emails []string `json:"emails"`
 }
 
 type createdPoll struct {
@@ -113,17 +118,25 @@ func createPollFromDefinition(ctx context.Context, st *store.Store, cfg config.C
 		}
 		options = append(options, store.PollOption{ID: id, Label: label})
 	}
-	parsed, err := workflow.ParseElectorate(definition.Participants)
+	participantRows := make([]string, 0, len(definition.Participants))
+	for index := range definition.Participants {
+		definition.Participants[index].Name = strings.TrimSpace(definition.Participants[index].Name)
+		if len([]rune(definition.Participants[index].Name)) < 1 || len([]rune(definition.Participants[index].Name)) > 200 || len(definition.Participants[index].Emails) < 1 {
+			return createdPoll{}, errors.New("participants require a name and at least one email address")
+		}
+		participantRows = append(participantRows, strings.Join(definition.Participants[index].Emails, ","))
+	}
+	parsed, err := workflow.ParseElectorate(participantRows)
 	if err != nil {
 		return createdPoll{}, fmt.Errorf("parse participants: %w", err)
 	}
 	participants := make([]store.ElectorateParticipant, 0, len(parsed))
-	for _, source := range parsed {
+	for index, source := range parsed {
 		participantID, err := adminID(randomness)
 		if err != nil {
 			return createdPoll{}, err
 		}
-		participant := store.ElectorateParticipant{ID: participantID}
+		participant := store.ElectorateParticipant{ID: participantID, DisplayName: definition.Participants[index].Name}
 		for _, address := range source.Addresses {
 			contactID, err := adminID(randomness)
 			if err != nil {

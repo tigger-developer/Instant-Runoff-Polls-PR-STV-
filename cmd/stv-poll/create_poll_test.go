@@ -31,7 +31,10 @@ func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T)
 		"places":1,
 		"deadline":"2030-01-01T18:00:00Z",
 		"announce":false,
-		"participants":["one@example.test, alias@example.test","two@example.test"]
+		"participants":[
+			{"name":"Alex","emails":["one@example.test","alias@example.test"]},
+			{"name":"Sam","emails":["two@example.test"]}
+		]
 	}`)
 	created, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, deterministicIDMaterial(), time.Unix(100, 0))
 	if err != nil {
@@ -42,10 +45,14 @@ func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T)
 	}
 	var state string
 	var participants, contacts, invitations int
+	var firstName string
 	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id='first-poll'").Scan(&state); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM participants WHERE poll_id='first-poll'").Scan(&participants); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT display_name FROM participants WHERE poll_id='first-poll' ORDER BY display_name LIMIT 1").Scan(&firstName); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id='first-poll'").Scan(&contacts); err != nil {
@@ -54,8 +61,8 @@ func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T)
 	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM deliveries WHERE work_id IN (SELECT id FROM work_items WHERE poll_id='first-poll') AND message_kind='invitation'").Scan(&invitations); err != nil {
 		t.Fatal(err)
 	}
-	if state != "open" || participants != 2 || contacts != 3 || invitations != 3 {
-		t.Fatalf("state=%s participants=%d contacts=%d invitations=%d", state, participants, contacts, invitations)
+	if state != "open" || participants != 2 || firstName != "Alex" || contacts != 3 || invitations != 3 {
+		t.Fatalf("state=%s participants=%d first name=%s contacts=%d invitations=%d", state, participants, firstName, contacts, invitations)
 	}
 }
 
@@ -77,7 +84,7 @@ func TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll(t *testin
 	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
 		t.Fatal(err)
 	}
-	definition := strings.NewReader(`{"id":"bad","owner_id":"owner","question":"Question","options":["A","A"],"places":1,"deadline":"2030-01-01T18:00:00Z","participants":["same@example.test","SAME@example.test"]}`)
+	definition := strings.NewReader(`{"id":"bad","owner_id":"owner","question":"Question","options":["A","A"],"places":1,"deadline":"2030-01-01T18:00:00Z","participants":[{"name":"One","emails":["same@example.test"]},{"name":"Two","emails":["SAME@example.test"]}]}`)
 	if _, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
 		t.Fatal("invalid definition unexpectedly created a poll")
 	}

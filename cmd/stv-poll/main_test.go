@@ -170,13 +170,41 @@ func TestBallotPageContainsVotingAndCountingHelp(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rendered bytes.Buffer
-	data := map[string]any{"CSRF": "token", "Version": 0, "Options": []map[string]any{{"ID": "a", "Label": "A"}}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Unix(500, 0), State: "open"}}
+	data := map[string]any{"CSRF": "token", "Version": 0, "ParticipantName": "Alex", "NextPreference": "first", "Available": []map[string]any{{"Label": "A", "SelectURL": "/polls/poll?preference=a"}}, "Selected": []map[string]any{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Unix(500, 0), State: "open"}}
 	if err := tmpl.ExecuteTemplate(&rendered, "ballot.html", data); err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"Number the options", "one vote", "quota", "next available preference", "single transferable vote"} {
+	for _, required := range []string{"Hello Alex", "Please select your first preference", "one vote", "quota", "next available preference", "Single Transferable Vote", "Start again", "Submit vote"} {
 		if !strings.Contains(rendered.String(), required) {
 			t.Fatalf("ballot page missing %q: %s", required, rendered.String())
+		}
+	}
+}
+
+func TestBallotPageConfirmsRecordedVoteAndOffersProtectedChange(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/ballot.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered bytes.Buffer
+	data := map[string]any{"CSRF": "token", "Version": 2, "ParticipantName": "Alex", "Recorded": true, "Selected": []map[string]any{{"Rank": 1, "Label": "A"}}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Unix(500, 0), State: "open"}}
+	if err := tmpl.ExecuteTemplate(&rendered, "ballot.html", data); err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"Your vote was already recorded", "If you wish to change it", `action="/polls/poll/ballot/clear"`, `name="csrf"`, `value="token"`} {
+		if !strings.Contains(rendered.String(), required) {
+			t.Fatalf("recorded ballot page missing %q: %s", required, rendered.String())
+		}
+	}
+
+	rendered.Reset()
+	data["JustRecorded"] = true
+	if err := tmpl.ExecuteTemplate(&rendered, "ballot.html", data); err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"Your vote has been recorded", "You can close this page"} {
+		if !strings.Contains(rendered.String(), required) {
+			t.Fatalf("submitted ballot page missing %q: %s", required, rendered.String())
 		}
 	}
 }

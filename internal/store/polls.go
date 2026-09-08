@@ -41,10 +41,11 @@ type DraftPoll struct {
 }
 
 type ParticipantPoll struct {
-	Poll          PollRecord
-	ParticipantID string
-	Preferences   []string
-	BallotVersion int
+	Poll            PollRecord
+	ParticipantID   string
+	ParticipantName string
+	Preferences     []string
+	BallotVersion   int
 }
 
 func (s *Store) CreateDraftPoll(ctx context.Context, ownerID, pollID string, draft DraftPoll, now time.Time) error {
@@ -234,7 +235,7 @@ func (s *Store) OwnedElectorate(ctx context.Context, ownerID, pollID string) ([]
 func (s *Store) PollForParticipant(ctx context.Context, participantID, pollID string) (ParticipantPoll, error) {
 	var view ParticipantPoll
 	var deadline, createdAt int64
-	err := s.DB.QueryRowContext(ctx, `SELECT poll.id,poll.owner_id,poll.question,poll.deadline,poll.display_offset,poll.places,poll.announce,poll.state,poll.counting_status,poll.version,poll.created_at,participant.id FROM polls AS poll JOIN participants AS participant ON participant.poll_id=poll.id WHERE poll.id=? AND participant.id=?`, pollID, participantID).Scan(&view.Poll.ID, &view.Poll.OwnerID, &view.Poll.Question, &deadline, &view.Poll.DisplayOffset, &view.Poll.Places, &view.Poll.Announce, &view.Poll.State, &view.Poll.CountingStatus, &view.Poll.Version, &createdAt, &view.ParticipantID)
+	err := s.DB.QueryRowContext(ctx, `SELECT poll.id,poll.owner_id,poll.question,poll.deadline,poll.display_offset,poll.places,poll.announce,poll.state,poll.counting_status,poll.version,poll.created_at,participant.id,participant.display_name FROM polls AS poll JOIN participants AS participant ON participant.poll_id=poll.id WHERE poll.id=? AND participant.id=?`, pollID, participantID).Scan(&view.Poll.ID, &view.Poll.OwnerID, &view.Poll.Question, &deadline, &view.Poll.DisplayOffset, &view.Poll.Places, &view.Poll.Announce, &view.Poll.State, &view.Poll.CountingStatus, &view.Poll.Version, &createdAt, &view.ParticipantID, &view.ParticipantName)
 	if err != nil {
 		return ParticipantPoll{}, ErrConflict
 	}

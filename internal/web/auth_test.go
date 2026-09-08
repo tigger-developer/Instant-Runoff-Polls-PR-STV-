@@ -355,7 +355,7 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM options WHERE poll_id=? ORDER BY display_order LIMIT 1", pollID).Scan(&firstOption); err != nil {
 		t.Fatal(err)
 	}
-	ballotForm := url.Values{"csrf": {participantCSRF}, "version": {"0"}, "rank": {"1", ""}}
+	ballotForm := url.Values{"csrf": {participantCSRF}, "version": {"0"}, "rank": {firstOption}}
 	ballotRequest := httptest.NewRequest(http.MethodPost, "/polls/"+pollID+"/ballot", strings.NewReader(ballotForm.Encode()))
 	ballotRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	ballotRequest.AddCookie(&http.Cookie{Name: "stv_participant", Value: participantToken})
@@ -437,7 +437,7 @@ func authTemplates(t *testing.T) *template.Template {
 	template.Must(page.New("moderator_poll.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><p>{{.Poll.State}}</p></body></html>`))
 	template.Must(page.New("participants.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><textarea>{{.Rows}}</textarea></body></html>`))
 	template.Must(page.New("poll_access.html").Parse(`<html><body><h1>Access {{.PollID}}</h1><form><input name="csrf" type="hidden" value="{{.CSRF}}"></form></body></html>`))
-	template.Must(page.New("ballot.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{range .Options}}{{.Label}}{{end}}</body></html>`))
+	template.Must(page.New("ballot.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{range .Available}}{{.Label}}{{end}}</body></html>`))
 	template.Must(page.New("results.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{.Poll.CountingStatus}}</body></html>`))
 	return page
 }

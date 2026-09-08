@@ -58,6 +58,7 @@ func WorkflowHandler(cfg config.Config, st *store.Store, page *template.Template
 	mux.HandleFunc("GET /polls/{id}", application.getParticipantPoll)
 	mux.HandleFunc("POST /polls/{id}/access", application.postParticipantAccess)
 	mux.HandleFunc("POST /polls/{id}/ballot", application.postBallot)
+	mux.HandleFunc("POST /polls/{id}/ballot/clear", application.postClearBallot)
 	mux.Handle("/", base)
 	return mux
 }

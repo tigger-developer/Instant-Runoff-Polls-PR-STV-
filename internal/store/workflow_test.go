@@ -68,6 +68,31 @@ func TestReplaceBallotEnforcesDeadlineAndIndependentVersion(t *testing.T) {
 	}
 }
 
+func TestClearBallotRequiresCurrentVersionAndOpenPoll(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id, poll_id) VALUES ('person-1','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='open', deadline=200 WHERE id='poll-1'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 0, []byte(`["a"]`), func() time.Time { return time.Unix(100, 0) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ClearBallot(ctx, "poll-1", "person-1", 0, func() time.Time { return time.Unix(101, 0) }); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale clear error=%v", err)
+	}
+	if err := st.ClearBallot(ctx, "poll-1", "person-1", 1, func() time.Time { return time.Unix(101, 0) }); err != nil {
+		t.Fatal(err)
+	}
+	var ballots int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM ballots WHERE poll_id='poll-1' AND participant_id='person-1'").Scan(&ballots); err != nil || ballots != 0 {
+		t.Fatalf("ballots=%d error=%v", ballots, err)
+	}
+}
+
 func TestReplaceBallotSamplesAcceptanceTimeInsideWriteBoundary(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)

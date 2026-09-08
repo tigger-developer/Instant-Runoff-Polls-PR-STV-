@@ -8,8 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -389,9 +391,22 @@ func (app *authApplication) postOpenPoll(response http.ResponseWriter, request *
 }
 
 type ballotOption struct {
-	ID    string
-	Label string
-	Rank  int
+	ID        string
+	Label     string
+	Rank      int
+	SelectURL string
+}
+
+type ballotPage struct {
+	Poll            store.PollRecord
+	ParticipantName string
+	Available       []ballotOption
+	Selected        []ballotOption
+	NextPreference  string
+	Version         int
+	CSRF            string
+	Recorded        bool
+	JustRecorded    bool
 }
 
 func (app *authApplication) participantAccess(response http.ResponseWriter, request *http.Request) (store.PersistedSession, string, bool) {
@@ -433,15 +448,20 @@ func (app *authApplication) getParticipantPoll(response http.ResponseWriter, req
 		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
 		return
 	}
-	ranks := make(map[string]int, len(view.Preferences))
-	for index, optionID := range view.Preferences {
-		ranks[optionID] = index + 1
+	var draft []string
+	if preferences, present := request.URL.Query()["preference"]; present {
+		draft = preferences
+	} else if request.URL.Query().Get("start") == "1" && len(view.Preferences) == 0 {
+		draft = []string{}
 	}
-	options := make([]ballotOption, 0, len(view.Poll.Options))
-	for _, option := range view.Poll.Options {
-		options = append(options, ballotOption{ID: option.ID, Label: option.Label, Rank: ranks[option.ID]})
+	page, err := buildBallotPage(view, draft)
+	if err != nil {
+		http.Error(response, "Invalid preferences", http.StatusUnprocessableEntity)
+		return
 	}
-	app.render(response, "ballot.html", map[string]any{"Poll": view.Poll, "Options": options, "Version": view.BallotVersion, "CSRF": csrf, "Saved": request.URL.Query().Get("saved") == "1"})
+	page.CSRF = csrf
+	page.JustRecorded = page.Recorded && request.URL.Query().Get("saved") == "1"
+	app.render(response, "ballot.html", page)
 }
 
 func (app *authApplication) postBallot(response http.ResponseWriter, request *http.Request) {
@@ -462,9 +482,9 @@ func (app *authApplication) postBallot(response http.ResponseWriter, request *ht
 	}
 	view, err := app.store.PollForParticipant(request.Context(), session.PrincipalID, session.PollID)
 	version, versionErr := strconv.Atoi(values.Get("version"))
-	preferences, rankErr := rankedPreferences(view.Poll.Options, values["rank"])
+	preferences, rankErr := selectedPreferences(view.Poll.Options, values["rank"])
 	if err != nil || versionErr != nil || rankErr != nil {
-		http.Error(response, "Ranks must be unique and consecutive from 1", http.StatusUnprocessableEntity)
+		http.Error(response, "Select at least one valid preference", http.StatusUnprocessableEntity)
 		return
 	}
 	encodedPreferences, err := json.Marshal(preferences)
@@ -479,36 +499,105 @@ func (app *authApplication) postBallot(response http.ResponseWriter, request *ht
 	http.Redirect(response, request, "/polls/"+session.PollID+"?saved=1", http.StatusSeeOther)
 }
 
-func rankedPreferences(options []store.PollOption, ranks []string) ([]string, error) {
-	if len(ranks) != len(options) {
-		return nil, errors.New("one rank per option is required")
+func (app *authApplication) postClearBallot(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	session, csrf, ok := app.participantAccess(response, request)
+	if !ok {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
 	}
-	byRank := make(map[int]string)
-	for index, raw := range ranks {
-		if strings.TrimSpace(raw) == "" {
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(values.Get("csrf")), []byte(csrf)) != 1 {
+		http.Error(response, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	version, err := strconv.Atoi(values.Get("version"))
+	if err != nil || app.store.ClearBallot(request.Context(), session.PollID, session.PrincipalID, version, app.now) != nil {
+		http.Error(response, "Conflict", http.StatusConflict)
+		return
+	}
+	http.Redirect(response, request, "/polls/"+session.PollID+"?start=1", http.StatusSeeOther)
+}
+
+func selectedPreferences(options []store.PollOption, selected []string) ([]string, error) {
+	if len(selected) < 1 || len(selected) > len(options) {
+		return nil, errors.New("at least one preference is required")
+	}
+	labels := make(map[string]struct{}, len(options))
+	for _, option := range options {
+		labels[option.ID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(selected))
+	for _, optionID := range selected {
+		if _, exists := labels[optionID]; !exists {
+			return nil, errors.New("unknown preference")
+		}
+		if _, duplicate := seen[optionID]; duplicate {
+			return nil, errors.New("duplicate preference")
+		}
+		seen[optionID] = struct{}{}
+	}
+	return append([]string(nil), selected...), nil
+}
+
+func buildBallotPage(view store.ParticipantPoll, draft []string) (ballotPage, error) {
+	page := ballotPage{Poll: view.Poll, ParticipantName: view.ParticipantName, Version: view.BallotVersion}
+	selected := draft
+	if draft == nil && len(view.Preferences) > 0 {
+		selected = view.Preferences
+		page.Recorded = true
+	}
+	if len(selected) > 0 {
+		if _, err := selectedPreferences(view.Poll.Options, selected); err != nil {
+			return ballotPage{}, err
+		}
+	}
+	byID := make(map[string]store.PollOption, len(view.Poll.Options))
+	for _, option := range view.Poll.Options {
+		byID[option.ID] = option
+	}
+	chosen := make(map[string]struct{}, len(selected))
+	for index, optionID := range selected {
+		option := byID[optionID]
+		page.Selected = append(page.Selected, ballotOption{ID: option.ID, Label: option.Label, Rank: index + 1})
+		chosen[optionID] = struct{}{}
+	}
+	if page.Recorded {
+		return page, nil
+	}
+	page.NextPreference = ordinalPreference(len(selected) + 1)
+	for _, option := range view.Poll.Options {
+		if _, selected := chosen[option.ID]; selected {
 			continue
 		}
-		rank, err := strconv.Atoi(raw)
-		if err != nil || rank < 1 || rank > len(options) {
-			return nil, errors.New("invalid rank")
+		query := url.Values{}
+		for _, optionID := range selected {
+			query.Add("preference", optionID)
 		}
-		if _, duplicate := byRank[rank]; duplicate {
-			return nil, errors.New("duplicate rank")
-		}
-		byRank[rank] = options[index].ID
+		query.Add("preference", option.ID)
+		page.Available = append(page.Available, ballotOption{ID: option.ID, Label: option.Label, SelectURL: "/polls/" + view.Poll.ID + "?" + query.Encode()})
 	}
-	if len(byRank) == 0 {
-		return nil, errors.New("at least one rank is required")
+	if len(page.Available) == 0 {
+		page.NextPreference = ""
 	}
-	preferences := make([]string, len(byRank))
-	for rank := 1; rank <= len(byRank); rank++ {
-		optionID, exists := byRank[rank]
-		if !exists {
-			return nil, errors.New("ranks are not consecutive")
-		}
-		preferences[rank-1] = optionID
+	return page, nil
+}
+
+func ordinalPreference(rank int) string {
+	switch rank {
+	case 1:
+		return "first"
+	case 2:
+		return "2nd"
+	case 3:
+		return "3rd"
+	default:
+		return fmt.Sprintf("%dth", rank)
 	}
-	return preferences, nil
 }
 
 func (app *authApplication) postClosePoll(response http.ResponseWriter, request *http.Request) {

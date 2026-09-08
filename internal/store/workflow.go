@@ -218,6 +218,38 @@ func (s *Store) ReplaceBallot(ctx context.Context, pollID, participantID string,
 	return nil
 }
 
+func (s *Store) ClearBallot(ctx context.Context, pollID, participantID string, expectedVersion int, now func() time.Time) error {
+	if s == nil || s.DB == nil || pollID == "" || participantID == "" || expectedVersion < 1 || now == nil {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin ballot clearing: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, "UPDATE polls SET version=version WHERE id=?", pollID); err != nil {
+		return fmt.Errorf("lock poll for ballot clearing: %w", err)
+	}
+	clearedAt := now()
+	var state string
+	var deadline int64
+	if err := tx.QueryRowContext(ctx, "SELECT state,deadline FROM polls WHERE id=?", pollID).Scan(&state, &deadline); err != nil || state != "open" || clearedAt.Unix() >= deadline {
+		return ErrConflict
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM ballots WHERE poll_id=? AND participant_id=? AND version=?", pollID, participantID, expectedVersion)
+	if err != nil {
+		return fmt.Errorf("clear ballot: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit ballot clearing: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVersion int, closeWorkID string, invitations []InvitationWork, now time.Time) (bool, error) {
 	if closeWorkID == "" {
 		return false, ErrConflict

@@ -1,1 +1,83 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><link rel="stylesheet" href="/static/site.css"><title>{{.Poll.Question}}</title></head><body><main><h1>{{.Poll.Question}}</h1><p>Status: {{.Poll.State}}. Deadline: <time datetime="{{.Poll.Deadline.Format "2006-01-02T15:04:05Z07:00"}}">{{.Poll.Deadline.Format "2006-01-02 15:04 MST"}}</time>.</p>{{if .Saved}}<p>Your vote was saved.</p>{{end}}<p>In a small poll, the results or turnout may allow someone to infer how a person voted or whether they took part.</p><section aria-labelledby="voting-help"><h2 id="voting-help">How to vote</h2><p>Number the options in the order you prefer them. Put 1 beside your first choice, 2 beside your second, and continue for as many or as few options as you wish.</p><p>Your preferences form one vote. You can return and replace it while voting is open.</p></section>{{if eq .Poll.State "open"}}<form method="post" action="/polls/{{.Poll.ID}}/ballot"><input name="csrf" type="hidden" value="{{.CSRF}}"><input name="version" type="hidden" value="{{.Version}}">{{range .Options}}<label for="rank-{{.ID}}">Rank {{.Label}}</label><input id="rank-{{.ID}}" name="rank" type="number" min="1" max="50" value="{{if .Rank}}{{.Rank}}{{end}}">{{end}}<button type="submit">Save vote</button></form>{{else}}<p>Voting is not currently open. Your last accepted preferences remain recorded.</p>{{end}}<section aria-labelledby="counting-help"><h2 id="counting-help">How votes are counted</h2><p>A quota is calculated from the number of votes and winning places. An option reaching the quota is selected.</p><p>Surplus votes and votes for excluded options can move to each ballot's next available preference. This lets later preferences help choose the result without creating another vote.</p><p><a href="https://en.wikipedia.org/wiki/Single_transferable_vote">Learn more about single transferable vote</a>.</p></section><form method="post" action="/logout"><input name="csrf" type="hidden" value="{{.CSRF}}"><button type="submit">Sign out</button></form></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <link rel="stylesheet" href="/static/site.css">
+  <title>{{.Poll.Question}}</title>
+</head>
+<body class="voting-page">
+<main>
+  <header class="page-header">
+    <p class="eyebrow">Polling card</p>
+    <h1>Hello {{.ParticipantName}}</h1>
+  </header>
+
+  <article class="poll-card">
+    <h2>{{.Poll.Question}}</h2>
+    {{if .Recorded}}
+      {{if .JustRecorded}}
+        <section class="notice" aria-live="polite">
+          <h3>Your vote has been recorded.</h3>
+          <p>You can close this page.</p>
+        </section>
+      {{else}}
+        <section class="notice">
+          <h3>Your vote was already recorded.</h3>
+          {{if eq .Poll.State "open"}}
+            <form method="post" action="/polls/{{.Poll.ID}}/ballot/clear">
+              <input name="csrf" type="hidden" value="{{.CSRF}}">
+              <input name="version" type="hidden" value="{{.Version}}">
+              <p>If you wish to change it, <button class="text-button" type="submit">click here</button>.</p>
+            </form>
+          {{end}}
+        </section>
+      {{end}}
+      <ol class="recorded-preferences" aria-label="Recorded preferences">
+        {{range .Selected}}<li><span>#{{.Rank}}</span> {{.Label}}</li>{{end}}
+      </ol>
+    {{else if eq .Poll.State "open"}}
+      {{if .NextPreference}}
+        <h3>Please select your {{.NextPreference}} preference</h3>
+      {{else}}
+        <h3>Review and submit your preferences</h3>
+      {{end}}
+      <div class="ballot-builder">
+        <section aria-labelledby="available-options">
+          <h4 id="available-options">Options</h4>
+          <div class="option-list">
+            {{range .Available}}<a class="option-card" href="{{.SelectURL}}">{{.Label}}</a>{{else}}<p>All options have been ranked.</p>{{end}}
+          </div>
+        </section>
+        <section class="vote-tracker" aria-labelledby="your-vote">
+          <h4 id="your-vote">Your vote</h4>
+          <ol>
+            {{range .Selected}}<li><span>#{{.Rank}}</span> {{.Label}}</li>{{else}}<li class="empty">No preferences selected yet.</li>{{end}}
+          </ol>
+        </section>
+      </div>
+      <form class="ballot-actions" method="post" action="/polls/{{.Poll.ID}}/ballot">
+        <input name="csrf" type="hidden" value="{{.CSRF}}">
+        <input name="version" type="hidden" value="{{.Version}}">
+        {{range .Selected}}<input name="rank" type="hidden" value="{{.ID}}">{{end}}
+        <a class="button secondary" href="/polls/{{.Poll.ID}}?start=1">Start again</a>
+        <button type="submit" {{if not .Selected}}disabled{{end}}>Submit vote</button>
+      </form>
+    {{else}}
+      <p>Voting is not currently open. Your last accepted preferences remain recorded.</p>
+    {{end}}
+  </article>
+
+  <section class="explainer" aria-labelledby="how-it-works">
+    <h2 id="how-it-works">How it works</h2>
+    <p>This is a ranked choice poll. You have a Single Transferable Vote (STV). This means every vote counts, and order of preference matters.</p>
+    <p>Your ranked preferences form one vote.</p>
+    <p>If your first choice is unpopular, it may be "eliminated". This means your vote moves to your 2nd preference.</p>
+    <p>This process continues until the poll has a clear result.</p>
+    <p>A quota is calculated from the number of votes and winning places. Surplus votes and votes for eliminated options move to the next available preference.</p>
+    <p>For a more detailed description of this method, see <a href="https://en.wikipedia.org/wiki/Single_transferable_vote">Wikipedia's Single Transferable Vote article</a>.</p>
+  </section>
+</main>
+</body>
+</html>
