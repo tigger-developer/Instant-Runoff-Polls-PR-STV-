@@ -3,7 +3,14 @@
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
 #+DEFINITION_GATE: PASS
-#+OPERATOR_SIGNOFF: PENDING
+#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08
+
+#+begin_comment
+Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".
+Approval covers this specification and all its labelled policy, interface, rule
+and limit proposals. Earlier references to pending sign-off describe the audited
+draft before this approval. Implementation is reserved for another session.
+#+end_comment
 
 * Deliver the invited poll workflow
 :PROPERTIES:

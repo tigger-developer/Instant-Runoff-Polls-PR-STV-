@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Effective definition PASS; operator sign-off pending.
+- Execution :: Effective definition PASS; operator sign-off recorded in spec.org on 2026-09-08.
 - Artefact :: [[file:spec.org][W001 - Go application foundation specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -83,6 +83,13 @@
 - Condition receipt :: Added exactly those outcomes to OT001.1's Expected field. No other substantive change. Verified the revised field against the condition and confirmed sanitize produces identical text.
 - Condition-satisfied revision :: SHA-256 =aaf5037d12a574d767eb77d6b4db828705ade01666ff9a5f721406af5bb8b685=, before lifecycle-only DEFINITION_GATE update.
 - Effective verdict :: PASS under AUDITS.md's deterministic-condition rule. Operator sign-off and all implementation/user validation remain pending.
+
+** Operator sign-off, 8 September 2026
+
+- Authority :: Taḋg, explicit instruction: "approved all 3. i will build in another session".
+- Scope :: Approval of all three specifications, including their labelled proposals.
+- Revision :: Audited specification at =ec0bfd8= (three audited build specifications for review); only lifecycle/sign-off metadata changes accompany this receipt.
+- Delivery :: Reserved for another session by operator instruction. No code or implementation-test evidence is added.
 
 * Implementation gate
 

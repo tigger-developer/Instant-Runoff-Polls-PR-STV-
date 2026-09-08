@@ -6,11 +6,12 @@ application will count votes automatically using PR-STV guided by the Irish
 counting system. This is an online poll; conformity to election legislation is
 not a product requirement.
 
-**Project stage:** specification review. The product vision, application
+**Project stage:** approved for implementation. The product vision, application
 architecture, and three build specifications are recorded. All three have passed
 the definition gate covering requirements, design, and test definitions, with
-local and retained independent audit evidence. Operator sign-off is pending;
-the Go application has not been implemented.
+local and retained independent audit evidence. Taḋg approved all three on
+8 September 2026 and reserved the build for another session. The Go application
+has not been implemented.
 
 ## Documentation
 
@@ -175,8 +176,9 @@ The [vision's decision list](docs/VISION.md#decisions-needed-to-develop-the-visi
 preserves the outstanding questions about privacy, result visibility,
 announcements, moderator authority, participant corrections, ballot validation,
 and poll timing. The [poll workflow specification](specs/003-invited-poll-workflow/spec.org)
-now records explicit policy proposals for operator sign-off; they are not prior
-approvals. The [counting specification](specs/002-irish-pr-stv-counting/spec.org)
+records the explicit policies approved with all three specifications on
+8 September 2026. The earlier open-question and proposal wording is preserved
+as definition history. The [counting specification](specs/002-irish-pr-stv-counting/spec.org)
 defines the detailed counting procedure and worked cases.
 
 ## Documentation history

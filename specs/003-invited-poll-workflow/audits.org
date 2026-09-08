@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Effective definition PASS; operator sign-off pending.
+- Execution :: Effective definition PASS; operator sign-off recorded in spec.org on 2026-09-08.
 - Artefact :: [[file:spec.org][W003 - Invited poll workflow specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -82,6 +82,13 @@
 - Verdict :: PASS.
 - Findings :: No remaining blocking, conditional or material advisory findings. The auditor accepted the proportionate small-poll disclosure proposal, session-token CSRF boundary, distinct randomness failures, exact worker summary and inherited base_url configuration.
 - Limitation :: Privacy and other product policies still require operator sign-off. No implementation or test execution is claimed.
+
+** Operator sign-off, 8 September 2026
+
+- Authority :: Taḋg, explicit instruction: "approved all 3. i will build in another session".
+- Scope :: Approval of all three specifications, including their labelled proposals.
+- Revision :: Audited specification at =ec0bfd8= (three audited build specifications for review); only lifecycle/sign-off metadata changes accompany this receipt.
+- Delivery :: Reserved for another session by operator instruction. No code or implementation-test evidence is added.
 
 * Implementation gate
 
