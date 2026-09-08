@@ -186,6 +186,20 @@
 - [audit-code] [BLOCKING] AC001.8 - A shutdown deadline still returns a generic context error rather than a defined safe lifecycle diagnostic and exit outcome.
 - Remediation :: Define and exercise write-timeout and shutdown-deadline behaviour through the shared server lifecycle, add conditional IPv6 coverage, then rerun this local composite review.
 
+** Local implementation review, reset round 3
+:PROPERTIES:
+:ROUND: 3
+:END:
+
+- Gate :: implementation.
+- Revision :: =f661c6e=.
+- Context :: Authoring context.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: FAIL.
+- [audit-test-code] [BLOCKING] RT001.6 - Socket tests now cover header, incomplete-body and idle limits; graceful shutdown and shutdown-grace expiry have defined, observed outcomes. The write-timeout path remains unexercised at the socket boundary.
+- [audit-code] [BLOCKING] AC001.10 - The one-off build/tooling procedure has not yet been recorded against this candidate revision, including Linux cross-compilation and native-tool failure paths.
+- Remediation :: Add a bounded socket write-timeout regression test. Then run and record the defined one-off build/tooling checks against the resulting revision before the next local review.
+
 ** Retained independent implementation audit, runner incident
 :PROPERTIES:
 :CONTEXT: not issued
