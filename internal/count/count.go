@@ -109,7 +109,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 					if decisionIndex != len(decisions) {
 						return Outcome{}, errors.New("unused count decision")
 					}
-					return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: winners, Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
+					return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: orderByOptions(input.Options, winners), Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
 				}
 			}
 		}
@@ -122,7 +122,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			if decisionIndex != len(decisions) {
 				return Outcome{}, errors.New("unused count decision")
 			}
-			return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: winners, Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
+			return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: orderByOptions(input.Options, winners), Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
 		}
 		selected := ""
 		pendingSurpluses := []string{}
@@ -145,7 +145,10 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			if len(pendingSurpluses) == 1 {
 				selected = pendingSurpluses[0]
 			} else {
-				request := newDecisionRequest(inputFingerprint, decisionIndex+1, "surplus_order_lot", operation+1, orderByOptions(input.Options, pendingSurpluses))
+				request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "surplus_order_lot", operation+1, orderByOptions(input.Options, pendingSurpluses))
+				if err != nil {
+					return Outcome{}, fmt.Errorf("fingerprinting surplus decision request: %w", err)
+				}
 				if decisionIndex == len(decisions) {
 					return Outcome{DecisionRequest: &request}, nil
 				}
@@ -161,7 +164,10 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			eligible := surplusRemainderTie(input.Options, selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected])
 			choice := ""
 			if len(eligible) > 0 {
-				request := newDecisionRequest(inputFingerprint, decisionIndex+1, "remainder_lot", operation+1, eligible)
+				request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "remainder_lot", operation+1, eligible)
+				if err != nil {
+					return Outcome{}, fmt.Errorf("fingerprinting remainder decision request: %w", err)
+				}
 				if decisionIndex == len(decisions) {
 					return Outcome{DecisionRequest: &request}, nil
 				}
@@ -203,7 +209,10 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 		}
 		exclusionSet := bulkExclusionSet(input.Options, continuing, tallies, input.Places-len(winners))
 		if len(exclusionSet) == 0 && len(lowestOptions) > 1 {
-			request := newDecisionRequest(inputFingerprint, decisionIndex+1, "exclusion_lot", operation+1, lowestOptions)
+			request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "exclusion_lot", operation+1, lowestOptions)
+			if err != nil {
+				return Outcome{}, fmt.Errorf("fingerprinting exclusion decision request: %w", err)
+			}
 			if decisionIndex == len(decisions) {
 				return Outcome{DecisionRequest: &request}, nil
 			}
@@ -486,12 +495,12 @@ func fingerprint(value any) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-func newDecisionRequest(inputFingerprint string, sequence int, kind string, countIndex int, eligible []string) DecisionRequest {
+func newDecisionRequest(inputFingerprint string, sequence int, kind string, countIndex int, eligible []string) (DecisionRequest, error) {
 	requestFingerprint, err := fingerprint([]any{inputFingerprint, sequence, kind, countIndex, eligible, 1})
 	if err != nil {
-		panic(err)
+		return DecisionRequest{}, err
 	}
-	return DecisionRequest{Sequence: sequence, Kind: kind, RequestFingerprint: requestFingerprint, EligibleOptionIDs: append([]string(nil), eligible...), RequiredSelections: 1}
+	return DecisionRequest{Sequence: sequence, Kind: kind, RequestFingerprint: requestFingerprint, EligibleOptionIDs: append([]string(nil), eligible...), RequiredSelections: 1}, nil
 }
 
 func validateDecision(decision Decision, request DecisionRequest) error {

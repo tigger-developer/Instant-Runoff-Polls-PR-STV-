@@ -192,6 +192,21 @@ func TestRunRequestsLotForEqualOutcomeSensitiveSurpluses(t *testing.T) {
 	}
 }
 
+func TestRunReturnsWinnersInDeclaredOptionOrder(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C"}, Places: 2, Ballots: []Ballot{
+		{ID: "b1", Preferences: []string{"B"}}, {ID: "b2", Preferences: []string{"B"}}, {ID: "b3", Preferences: []string{"B"}}, {ID: "b4", Preferences: []string{"B"}}, {ID: "b5", Preferences: []string{"B"}},
+		{ID: "a1", Preferences: []string{"A"}}, {ID: "a2", Preferences: []string{"A"}}, {ID: "a3", Preferences: []string{"A"}},
+		{ID: "c1", Preferences: []string{"C", "A"}}, {ID: "c2", Preferences: []string{"C", "A"}},
+	}}
+	outcome, err := Run(context.Background(), input, nil)
+	if err != nil || outcome.Result == nil {
+		t.Fatalf("outcome = %#v, error = %v", outcome, err)
+	}
+	if len(outcome.Result.Winners) != 2 || outcome.Result.Winners[0] != "A" || outcome.Result.Winners[1] != "B" {
+		t.Fatalf("winners = %#v, want declared order [A B]", outcome.Result.Winners)
+	}
+}
+
 func ballots(preferences ...string) []Ballot {
 	result := make([]Ballot, 0, len(preferences))
 	for index, preference := range preferences {
