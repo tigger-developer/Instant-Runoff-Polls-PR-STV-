@@ -4,7 +4,13 @@
 
 * Automated regression
 
-- Execution :: Not run; test definitions precede implementation.
+- Revision :: Production and test candidate =baef447=; evidence-record baseline =6076bf7=.
+- Environment :: Darwin host, project Go toolchain and repository-owned Make targets, 8 September 2026.
+- Result :: PASS.
+- Complete suite :: =make test= passed =go test -race ./...= for =cmd/stv-poll=, =internal/config=, =internal/count=, =internal/store= and =internal/web=.
+- Static checks :: =make lint= passed =gofmt=, =go vet=, =golangci-lint=, Biome checks and the rendered-landing Tidy test.
+- Vulnerability check :: =make vulncheck= passed; =govulncheck ./...= reported no vulnerabilities.
+- Boundary :: This is automated implementation evidence. OT002.1 remains pending until the implementation audit has an effective PASS, as required by the delivery workflow.
 
 * User tests
 
