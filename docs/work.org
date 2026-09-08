@@ -83,6 +83,7 @@ classification; it is provenance, not current state.
 - Evidence :: [[file:foundation-audits.org][Foundation review and independent audit evidence]], including exact reviewed revisions and the retained advisory.
 - Approval :: Taḋg explicitly approved the current foundation pair and clarified native web-linter selection on 2026-09-08: "ah yes, those are not go linters though. APPROVED". Earlier approvals remain in the evidence history.
 - Scope :: This review introduces no new requirements, specifications or implementation work. The Go-foundation tooling amendment retains its separate review status below.
+- Refreshed specifications :: Taḋg approved all three refreshed sheets on 2026-09-08: "ok approved". This approval is recorded in each specification and audit history. The independent runner incident remains separate; affected gates stay pending until valid audit evidence is recorded.
 
 * Work items
 

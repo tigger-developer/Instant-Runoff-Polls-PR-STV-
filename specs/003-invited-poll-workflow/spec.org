@@ -3,7 +3,7 @@
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
 #+DEFINITION_GATE: PENDING
-#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08
+#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; refreshed specification approved
 
 #+begin_comment
 Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".

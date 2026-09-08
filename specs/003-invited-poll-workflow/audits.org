@@ -116,6 +116,13 @@
 - Continuation :: Operator direction is required to authorize a replacement review context because the required retained context cannot be addressed. A retry must request exactly one composite verdict and identify per-spec findings within it, or use separately authorized per-spec gates. No prior implementation-audit incident is changed by this definition record.
 - Approval boundary :: The approved product and architecture decisions remain recorded. This incident does not grant a current independent gate to materially changed tooling/test definitions; it does not invalidate the unchanged counting rules or their original review evidence.
 
+** Operator approval of refreshed specification, 8 September 2026
+
+- Authority :: Taḋg: "ok approved", after the refreshed specifications were opened for review.
+- Scope :: Approval of this refreshed specification, retaining the established product/architecture decisions and native web-tool selection.
+- Revision :: Specification at =3f26bde= (refresh verification and audit runner incident checkpoint), followed only by this approval metadata update.
+- Gate boundary :: Human approval is recorded separately from the independent audit. The runner incident remains unresolved; no independent PASS or implementation closure is inferred. No replacement audit context has yet been started.
+
 * Implementation gate
 
 - Execution :: Not started; this batch defines specifications only.
