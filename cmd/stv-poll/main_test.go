@@ -376,6 +376,26 @@ func TestRunServerReportsShutdownDeadline(t *testing.T) {
 	close(release)
 }
 
+func TestHTTPServerAcceptsIPv6LoopbackWhenAvailable(t *testing.T) {
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	defer listener.Close()
+	server := newHTTPServer(listener.Addr().String(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}), config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second})
+	go func() { _ = server.Serve(listener) }()
+	response, err := (&http.Client{Timeout: time.Second}).Get("http://" + listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("IPv6 status = %d", response.StatusCode)
+	}
+}
+
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "stv-poll")
