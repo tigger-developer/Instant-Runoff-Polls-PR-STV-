@@ -2,6 +2,8 @@ SHELL := /usr/bin/env bash
 APP := stv-poll
 VERSION ?= dev
 PREFIX ?= .local
+BIOME ?= biome
+TIDY ?= tidy
 
 .PHONY: build install lint test vulncheck sync
 
@@ -19,10 +21,10 @@ lint:
 	go vet ./...
 	command -v golangci-lint >/dev/null
 	golangci-lint run
-	command -v biome >/dev/null
-	biome check cmd/stv-poll/static
-	command -v tidy >/dev/null
-	cd cmd/stv-poll && STV_POLL_TIDY=tidy go test -run '^TestRenderedLandingPassesTidy$$'
+	command -v "$(BIOME)" >/dev/null
+	"$(BIOME)" check cmd/stv-poll/static
+	command -v "$(TIDY)" >/dev/null
+	cd cmd/stv-poll && STV_POLL_TIDY="$(TIDY)" go test -run '^TestRenderedLandingPassesTidy$$'
 
 test:
 	go test -race ./...
