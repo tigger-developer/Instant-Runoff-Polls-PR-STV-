@@ -782,6 +782,18 @@ establish the bounded local integration/packaging evidence.
 
 * Hands-off mode decision log
 
+** 2026-09-08T10:06:00Z :hands-off:review:
+
+*** Dependency branch baseline
+
+- Authority :: Taḋg directed =JFDI= after authorizing replacement of the unavailable W002 implementation auditor.
+- Decision :: Create =w003-invited-poll-workflow= from the synchronized, implementation-gate-passing W002 branch rather than from =master=, because W003 directly consumes W002's unmerged counting interface. Publish the new branch before implementation.
+- Boundary :: This preserves the configured feature-branch strategy and prerequisite history without merging, rewriting or closing W001 or W002. It introduces no product or infrastructure decision.
+
+*** Initial implementation seam
+
+- Decision :: Establish pure workflow-domain boundaries for grouped electorate parsing, poll lifecycle and effective-ballot replacement before adding SQLite and HTTP orchestration. These boundaries permit deterministic RED/GREEN evidence for RT003.2, RT003.3, RT003.7 through RT003.10 and RT003.17 without weakening their required integration coverage.
+
 ** 2026-09-08T09:19:40Z :hands-off:review:
 
 *** Restart branch and delivery order
