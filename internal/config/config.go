@@ -154,11 +154,27 @@ func validateKnownTypes(values map[string]any) error {
 
 func parseLayer(data []byte) (map[string]any, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
-	var values map[string]any
-	if err := decoder.Decode(&values); err != nil {
+	var document yaml.Node
+	if err := decoder.Decode(&document); err == io.EOF {
+		return nil, nil
+	} else if err != nil {
 		return nil, err
 	}
-	var additional any
+	if len(document.Content) != 1 || document.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("configuration document must be a mapping")
+	}
+	mapping := document.Content[0]
+	for index := 0; index < len(mapping.Content); index += 2 {
+		key := mapping.Content[index]
+		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" {
+			return nil, errors.New("configuration mapping keys must be strings")
+		}
+	}
+	var values map[string]any
+	if err := document.Decode(&values); err != nil {
+		return nil, err
+	}
+	var additional yaml.Node
 	if err := decoder.Decode(&additional); err != io.EOF {
 		if err != nil {
 			return nil, err

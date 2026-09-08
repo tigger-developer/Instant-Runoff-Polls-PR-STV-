@@ -56,6 +56,7 @@ func TestLoadRejectsInvalidLayersWithoutLeakingSecretValues(t *testing.T) {
 		{name: "multiple documents", contents: "base_url: https://one.example\n---\nbase_url: https://two.example\n", want: "multiple documents"},
 		{name: "wrong type", contents: "data_dirs: wrong\n", want: "data_dirs"},
 		{name: "null required value", contents: "base_url: null\n", want: "base_url"},
+		{name: "non-string mapping key", contents: "1: value\n", want: "parse configuration layer"},
 	}
 
 	for _, tc := range cases {
@@ -74,6 +75,22 @@ func TestLoadRejectsInvalidLayersWithoutLeakingSecretValues(t *testing.T) {
 	_, err := Load(defaults, "", secret)
 	if err == nil || strings.Contains(err.Error(), "very-secret-value") {
 		t.Fatalf("secret diagnostic = %v", err)
+	}
+}
+
+func TestLoadHandlesEmptyOptionalOverlayAndRejectsEmptyDefaults(t *testing.T) {
+	directory := t.TempDir()
+	defaults := filepath.Join(directory, "defaults.yaml")
+	overlay := filepath.Join(directory, "overlay.yaml")
+	writeConfig(t, defaults, validDefaults)
+	writeConfig(t, overlay, "")
+	if _, err := Load(defaults, overlay, ""); err != nil {
+		t.Fatalf("empty optional overlay: %v", err)
+	}
+	empty := filepath.Join(directory, "empty.yaml")
+	writeConfig(t, empty, "")
+	if _, err := Load(empty, "", ""); err == nil || !strings.Contains(err.Error(), "must be a mapping") {
+		t.Fatalf("empty defaults error = %v", err)
 	}
 }
 
