@@ -15,7 +15,7 @@ import (
 )
 
 func NewCountHandler(repository *store.Store, randomness io.Reader, now func() time.Time) WorkHandler {
-	return func(ctx context.Context, item *store.ClaimedWork) (Summary, error) {
+	return func(ctx context.Context, item *store.ClaimedWork) (summary Summary, returnErr error) {
 		if repository == nil || randomness == nil || now == nil || item == nil || item.Kind != "count" {
 			return Summary{}, errors.New("count handler dependencies are invalid")
 		}
@@ -26,6 +26,11 @@ func NewCountHandler(repository *store.Store, randomness io.Reader, now func() t
 		if len(work.ExistingResult) != 0 {
 			return Summary{}, nil
 		}
+		defer func() {
+			if returnErr != nil {
+				_ = repository.MarkCountFailed(ctx, item.ID, item.ClaimToken, now())
+			}
+		}()
 		var input count.Input
 		if err := json.Unmarshal(work.InputJSON, &input); err != nil {
 			return Summary{}, fmt.Errorf("decode count input: %w", err)

@@ -860,6 +860,18 @@ func (s *Store) CommitCountResult(ctx context.Context, workID, claimToken string
 	return true, nil
 }
 
+func (s *Store) MarkCountFailed(ctx context.Context, workID, claimToken string, now time.Time) error {
+	result, err := s.DB.ExecContext(ctx, `UPDATE polls SET counting_status='failed' WHERE id=(SELECT poll_id FROM work_items WHERE id=? AND kind='count' AND status='claimed' AND claim_token=? AND claim_expires_at>?)`, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("mark count failed: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	return nil
+}
+
 func insertAnnouncementWork(ctx context.Context, tx *sql.Tx, pollID, resultKey string, now time.Time) error {
 	var announce bool
 	if err := tx.QueryRowContext(ctx, "SELECT announce FROM polls WHERE id=?", pollID).Scan(&announce); err != nil {
