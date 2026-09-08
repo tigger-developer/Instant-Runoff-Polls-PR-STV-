@@ -29,10 +29,10 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
 		if err := writeHelp(stdout); err != nil {
 			fmt.Fprintf(stderr, "read help: %v\n", err)
@@ -44,8 +44,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, version)
 		return 0
 	}
+	if len(args) == 1 && args[0] == "create-poll" {
+		if err := createPollCommand(stdin, stdout); err != nil {
+			fmt.Fprintf(stderr, "create poll failed: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	if len(args) != 1 || args[0] != "serve" && args[0] != "process-due-work" {
-		fmt.Fprintln(stderr, "invalid invocation: expected serve or process-due-work")
+		fmt.Fprintln(stderr, "invalid invocation: expected serve, process-due-work, or create-poll")
 		return 2
 	}
 	if args[0] == "process-due-work" {

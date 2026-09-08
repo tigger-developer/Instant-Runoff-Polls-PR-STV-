@@ -87,7 +87,7 @@ func TestRunProcessesNoWorkThroughConfiguredBoundary(t *testing.T) {
 	t.Setenv("SECRETS_PATH", "")
 	t.Setenv("STATE_DIRECTORY", t.TempDir())
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"process-due-work"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"process-due-work"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
 	}
 	if stdout.String() != "{\"version\":1,\"closed\":0,\"counted\":0,\"no_votes\":0,\"smtp_accepted\":0,\"retrying\":0,\"failed\":0,\"cancelled\":0}\n" || stderr.Len() != 0 {
@@ -116,7 +116,7 @@ func TestRunHandlesHelpVersionAndInvalidConfiguration(t *testing.T) {
 		t.Setenv("DEFAULT_CONFIG_PATH", "")
 		t.Setenv("STATE_DIRECTORY", "")
 		var stdout, stderr bytes.Buffer
-		if code := run(tc.args, &stdout, &stderr); code != tc.code {
+		if code := run(tc.args, strings.NewReader(""), &stdout, &stderr); code != tc.code {
 			t.Fatalf("args=%v code=%d stdout=%s stderr=%s", tc.args, code, stdout.String(), stderr.String())
 		}
 	}
@@ -160,6 +160,23 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 		command.Stdin = &rendered
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("tidy rendered %s: %v\n%s", name, err, output)
+		}
+	}
+}
+
+func TestBallotPageContainsVotingAndCountingHelp(t *testing.T) {
+	tmpl, err := template.ParseGlob("templates/*.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered bytes.Buffer
+	data := map[string]any{"CSRF": "token", "Version": 0, "Options": []map[string]any{{"ID": "a", "Label": "A"}}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Unix(500, 0), State: "open"}}
+	if err := tmpl.ExecuteTemplate(&rendered, "ballot.html", data); err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"Number the options", "one vote", "quota", "next available preference", "single transferable vote"} {
+		if !strings.Contains(rendered.String(), required) {
+			t.Fatalf("ballot page missing %q: %s", required, rendered.String())
 		}
 	}
 }

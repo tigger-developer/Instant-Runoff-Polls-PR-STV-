@@ -1,0 +1,88 @@
+// ABOUTME: Verifies voter-first poll creation through the emergency CLI boundary.
+// ABOUTME: It protects grouped entitlements and one invitation per address.
+package main
+
+import (
+	"bytes"
+	"context"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
+)
+
+func TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	definition := strings.NewReader(`{
+		"id":"first-poll",
+		"owner_id":"owner",
+		"question":"Where shall we eat?",
+		"options":["Cafe","Pizza","Sushi"],
+		"places":1,
+		"deadline":"2030-01-01T18:00:00Z",
+		"announce":false,
+		"participants":["one@example.test, alias@example.test","two@example.test"]
+	}`)
+	created, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, deterministicIDMaterial(), time.Unix(100, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.PollURL != "https://poll.example/polls/first-poll" || created.Invitations != 3 {
+		t.Fatalf("created=%#v", created)
+	}
+	var state string
+	var participants, contacts, invitations int
+	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id='first-poll'").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM participants WHERE poll_id='first-poll'").Scan(&participants); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id='first-poll'").Scan(&contacts); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM deliveries WHERE work_id IN (SELECT id FROM work_items WHERE poll_id='first-poll') AND message_kind='invitation'").Scan(&invitations); err != nil {
+		t.Fatal(err)
+	}
+	if state != "open" || participants != 2 || contacts != 3 || invitations != 3 {
+		t.Fatalf("state=%s participants=%d contacts=%d invitations=%d", state, participants, contacts, invitations)
+	}
+}
+
+func deterministicIDMaterial() *bytes.Reader {
+	material := make([]byte, 0, 512)
+	for value := byte(1); value <= 32; value++ {
+		material = append(material, bytes.Repeat([]byte{value}, 16)...)
+	}
+	return bytes.NewReader(material)
+}
+
+func TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	definition := strings.NewReader(`{"id":"bad","owner_id":"owner","question":"Question","options":["A","A"],"places":1,"deadline":"2030-01-01T18:00:00Z","participants":["same@example.test","SAME@example.test"]}`)
+	if _, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
+		t.Fatal("invalid definition unexpectedly created a poll")
+	}
+	var polls int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM polls").Scan(&polls); err != nil || polls != 0 {
+		t.Fatalf("polls=%d error=%v", polls, err)
+	}
+}
