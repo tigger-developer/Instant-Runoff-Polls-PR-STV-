@@ -67,6 +67,23 @@ func TestProcessDueWorkStopsAtHundredAndPreservesFailureProgress(t *testing.T) {
 	}
 }
 
+func TestProcessDueWorkDoesNotOverwriteDurableRetry(t *testing.T) {
+	repository := &fakeWorkRepository{items: map[string][]*store.ClaimedWork{
+		"delivery": {{ID: "mail", Kind: "delivery"}},
+	}}
+	summary, err := ProcessDueWork(context.Background(), repository, map[string]WorkHandler{
+		"delivery": func(context.Context, *store.ClaimedWork) (Summary, error) {
+			return Summary{Retrying: 1}, ErrWorkRescheduled
+		},
+	}, func() string { return "token" }, func() time.Time { return time.Unix(100, 0) })
+	if !errors.Is(err, ErrWorkRescheduled) || summary.Retrying != 1 || summary.Failed != 1 {
+		t.Fatalf("summary=%#v error=%v", summary, err)
+	}
+	if len(repository.failed) != 0 || len(repository.completed) != 0 {
+		t.Fatalf("retry was overwritten: failed=%v completed=%v", repository.failed, repository.completed)
+	}
+}
+
 type fakeWorkRepository struct {
 	items      map[string][]*store.ClaimedWork
 	claimOrder []string

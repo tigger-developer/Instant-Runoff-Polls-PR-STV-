@@ -30,6 +30,8 @@ type WorkRepository interface {
 
 type WorkHandler func(context.Context, *store.ClaimedWork) (Summary, error)
 
+var ErrWorkRescheduled = errors.New("work item was durably rescheduled")
+
 func ProcessDueWork(ctx context.Context, repository WorkRepository, handlers map[string]WorkHandler, newToken func() string, now func() time.Time) (Summary, error) {
 	summary := Summary{Version: 1}
 	if repository == nil || newToken == nil || now == nil {
@@ -67,6 +69,9 @@ func ProcessDueWork(ctx context.Context, repository WorkRepository, handlers map
 			processed++
 			if handleErr != nil {
 				summary.Failed++
+				if errors.Is(handleErr, ErrWorkRescheduled) {
+					return summary, fmt.Errorf("process %s work: %w", kind, handleErr)
+				}
 				if err := repository.FailWork(ctx, item.ID, token, now(), "operation failed"); err != nil {
 					return summary, fmt.Errorf("record %s failure: %w", kind, err)
 				}
