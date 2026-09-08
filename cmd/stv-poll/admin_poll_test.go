@@ -151,6 +151,35 @@ func TestCountAuditExportsFrozenInputAndResultWithoutVoterIdentity(t *testing.T)
 	}
 }
 
+func TestAdminPollOperationsRejectInvalidScopeAndPrematureAudit(t *testing.T) {
+	ctx := context.Background()
+	st := adminPollStore(t)
+	defer st.Close()
+
+	if _, err := closePoll(ctx, st, adminConfig(), "not valid", bytes.NewReader(make([]byte, 64)), time.Unix(100, 0)); err == nil {
+		t.Fatal("invalid poll ID was accepted")
+	}
+	if _, err := closePoll(ctx, st, config.Config{}, "poll", bytes.NewReader(make([]byte, 64)), time.Unix(100, 0)); err == nil {
+		t.Fatal("unconfigured owner was authorized")
+	}
+	if err := exportCountAudit(ctx, st, adminConfig(), "poll", &bytes.Buffer{}); err == nil {
+		t.Fatal("pending count audit was exported")
+	}
+	if err := exportCountAudit(ctx, st, adminConfig(), "poll", nil); err == nil {
+		t.Fatal("nil audit output was accepted")
+	}
+	if _, err := closePoll(ctx, st, adminConfig(), "poll", bytes.NewReader(make([]byte, 64)), time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closePoll(ctx, st, adminConfig(), "poll", bytes.NewReader(make([]byte, 64)), time.Unix(101, 0)); err != nil {
+		t.Fatalf("repeated close was not idempotent: %v", err)
+	}
+	var snapshots int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM count_snapshots WHERE poll_id='poll'").Scan(&snapshots); err != nil || snapshots != 1 {
+		t.Fatalf("snapshots=%d error=%v", snapshots, err)
+	}
+}
+
 func adminConfig() config.Config {
 	return config.Config{Moderators: []config.Moderator{{ID: "owner", Email: "owner@example.test"}}}
 }

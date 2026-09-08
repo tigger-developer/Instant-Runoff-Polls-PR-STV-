@@ -102,3 +102,24 @@ func TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll(t *testin
 		t.Fatalf("polls=%d error=%v", polls, err)
 	}
 }
+
+func TestCreatePollDefinitionRejectsUnknownFieldsAndTrailingDocuments(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	definitions := []string{
+		"id: poll\nowner_id: owner\nquestion: Question\noptions: [A, B]\nplaces: 1\ndeadline: 2099-01-01T18:00:00Z\nparticipants: [{name: Alex, emails: [one@example.test]}]\nunexpected: true\n",
+		"id: poll\nowner_id: owner\nquestion: Question\noptions: [A, B]\nplaces: 1\ndeadline: 2099-01-01T18:00:00Z\nparticipants: [{name: Alex, emails: [one@example.test]}]\n---\nextra: document\n",
+	}
+	for _, definition := range definitions {
+		if _, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, strings.NewReader(definition), deterministicIDMaterial(), time.Unix(100, 0)); err == nil {
+			t.Fatalf("invalid YAML was accepted: %s", definition)
+		}
+	}
+}
