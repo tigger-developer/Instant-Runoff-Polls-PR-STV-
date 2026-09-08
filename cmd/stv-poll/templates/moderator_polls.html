@@ -8,6 +8,7 @@
   <title>Your polls</title>
 </head>
 <body>
+{{template "site-banner" .}}
 <main>
   <h1>Your polls</h1>
   <ul>{{range .Polls}}<li><a href="/moderator/polls/{{.ID}}">{{.Question}}</a> ({{.State}})</li>{{else}}<li>No polls yet.</li>{{end}}</ul>

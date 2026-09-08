@@ -18,6 +18,8 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/mail"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -114,12 +116,29 @@ func processDueWork() (workflow.Summary, error) {
 		activeModerators[moderator.ID] = strings.ToLower(moderator.Email)
 	}
 	messageBuilder := workflow.NewInvitationMessageBuilder(st, cfg.BaseURL, cfg.Auth.KeyID, cfg.Auth.SigningKey, activeModerators, rand.Reader, now)
+	mailTransport, err := mailTransportFromEnvironment()
+	if err != nil {
+		return workflow.Summary{Version: 1, Failed: 1}, err
+	}
 	handlers := map[string]workflow.WorkHandler{
 		"close":    workflow.NewCloseHandler(st, rand.Reader, now),
 		"count":    workflow.NewCountHandler(st, rand.Reader, now),
-		"delivery": workflow.NewDeliveryHandler(st, workflow.SMTPTransport{Settings: cfg.SMTP}, messageBuilder, secureJitter, now),
+		"delivery": workflow.NewDeliveryHandler(st, mailTransport, messageBuilder, secureJitter, now),
 	}
 	return workflow.ProcessDueWork(ctx, st, handlers, secureToken, now)
+}
+
+func mailTransportFromEnvironment() (workflow.SendmailTransport, error) {
+	path := os.Getenv("SENDMAIL_PATH")
+	if !filepath.IsAbs(path) {
+		return workflow.SendmailTransport{}, errors.New("SENDMAIL_PATH must be an absolute path")
+	}
+	sender := "stv-poll@" + os.Getenv("MAIL_DEFAULT_SENDER_DOMAIN")
+	address, err := mail.ParseAddress(sender)
+	if err != nil || address.Name != "" || address.Address != sender {
+		return workflow.SendmailTransport{}, errors.New("MAIL_DEFAULT_SENDER_DOMAIN is invalid")
+	}
+	return workflow.SendmailTransport{Path: path, From: sender}, nil
 }
 
 func secureToken() string {
@@ -173,7 +192,7 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	tmpl, err := template.ParseGlob(filepath.Join(templateDirectory, "*.html"))
+	tmpl, err := parseTemplates(filepath.Join(templateDirectory, "*.html"), cfg.BaseURL)
 	if err != nil {
 		return fmt.Errorf("parse templates: %w", err)
 	}
@@ -192,6 +211,27 @@ func serve() error {
 		return fmt.Errorf("listen on configured address: %w", err)
 	}
 	return runServer(ctx, server, listener, cfg.HTTP.ShutdownTimeout)
+}
+
+func parseTemplates(pattern, baseURL string) (*template.Template, error) {
+	first, rest := domainParts(baseURL)
+	return template.New("").Funcs(template.FuncMap{
+		"domainFirst": func() string { return first },
+		"domainRest":  func() string { return rest },
+	}).ParseGlob(pattern)
+}
+
+func domainParts(baseURL string) (string, string) {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return baseURL, ""
+	}
+	host := parsed.Hostname()
+	separator := strings.Index(host, ".")
+	if separator < 0 {
+		return host, ""
+	}
+	return host[:separator], host[separator:]
 }
 
 func runServer(ctx context.Context, server *http.Server, listener net.Listener, shutdownTimeout time.Duration) error {

@@ -1,5 +1,5 @@
-// ABOUTME: Sends one claimed message and persists its bounded SMTP outcome.
-// ABOUTME: It keeps network I/O outside transactions and preserves retry state.
+// ABOUTME: Submits one claimed message and persists its bounded local-queue outcome.
+// ABOUTME: It keeps process I/O outside transactions and preserves retry state.
 package workflow
 
 import (
@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/textproto"
 	"time"
 
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
@@ -33,7 +32,7 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 			return Summary{Cancelled: 1}, ErrWorkHandled
 		}
 		if errors.Is(err, store.ErrDeliveryExhausted) {
-			return Summary{}, fmt.Errorf("%w: SMTP attempt interrupted", ErrWorkFinalized)
+			return Summary{}, fmt.Errorf("%w: mail submission attempt interrupted", ErrWorkFinalized)
 		}
 		if err != nil {
 			return Summary{}, fmt.Errorf("begin delivery attempt: %w", err)
@@ -44,7 +43,7 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 		}
 		if err == nil {
 			if err := repository.AcceptDelivery(ctx, item.ID, item.ClaimToken, now()); err != nil {
-				return finalizeDeliveryError(ctx, repository, item, now(), "SMTP acceptance persistence failure", fmt.Errorf("record SMTP acceptance: %w", err))
+				return finalizeDeliveryError(ctx, repository, item, now(), "mail queue acceptance persistence failure", fmt.Errorf("record mail queue acceptance: %w", err))
 			}
 			return Summary{SMTPAccepted: 1}, ErrWorkHandled
 		}
@@ -81,16 +80,16 @@ func classifyDeliveryFailure(err error) (string, bool) {
 	if errors.Is(err, ErrInvalidMessage) {
 		return "invalid message", false
 	}
-	var protocolError *textproto.Error
-	if errors.As(err, &protocolError) {
-		if protocolError.Code >= 400 && protocolError.Code < 500 {
-			return "temporary SMTP rejection", true
+	var submissionError *sendmailError
+	if errors.As(err, &submissionError) {
+		if submissionError.temporary {
+			return "temporary local mail submission failure", true
 		}
-		return "permanent SMTP rejection", false
+		return "local mail submission rejected", false
 	}
 	var networkError net.Error
 	if errors.As(err, &networkError) {
-		return "SMTP connection failure", true
+		return "mail submission interrupted", true
 	}
-	return "SMTP policy or authentication failure", false
+	return "mail submission failure", false
 }

@@ -1,4 +1,4 @@
-// ABOUTME: Verifies SMTP acceptance, retry, and terminal delivery outcomes.
+// ABOUTME: Verifies mail-queue acceptance, retry, and terminal delivery outcomes.
 // ABOUTME: It checks that each attempt is persisted through the real store.
 package workflow
 
@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"net/textproto"
 	"testing"
 	"time"
 
@@ -29,7 +28,7 @@ func TestDeliveryHandlerPersistsAcceptedTemporaryAndPermanentOutcomes(t *testing
 	}{
 		{name: "accepted", wantStatus: "smtp_accepted", wantAccept: 1, wantError: true, wantHandled: true},
 		{name: "temporary", sendErr: &net.DNSError{IsTimeout: true}, wantStatus: "retrying", wantRetry: 1, wantError: true},
-		{name: "permanent", sendErr: &textproto.Error{Code: 550, Msg: "rejected"}, wantStatus: "failed", wantError: true},
+		{name: "permanent", sendErr: ErrInvalidMessage, wantStatus: "failed", wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			st := deliveryHandlerStore(t)

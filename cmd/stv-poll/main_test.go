@@ -8,7 +8,6 @@ import (
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
-	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -68,7 +67,7 @@ func TestProcessDueWorkNoWorkEmitsExactSummary(t *testing.T) {
 	}
 	command := exec.Command(binary, "process-due-work")
 	command.Dir = projectRoot(t)
-	command.Env = append(os.Environ(), "DEFAULT_CONFIG_PATH="+defaults, "CONFIG_PATH="+host, "STATE_DIRECTORY="+t.TempDir())
+	command.Env = append(os.Environ(), "DEFAULT_CONFIG_PATH="+defaults, "CONFIG_PATH="+host, "STATE_DIRECTORY="+t.TempDir(), "SENDMAIL_PATH=/nix/store/test/bin/exodan-sendmail", "MAIL_DEFAULT_SENDER_DOMAIN=lobb.ie")
 	var stdout, stderr bytes.Buffer
 	command.Stdout = &stdout
 	command.Stderr = &stderr
@@ -90,6 +89,8 @@ func TestRunProcessesNoWorkThroughConfiguredBoundary(t *testing.T) {
 	t.Setenv("CONFIG_PATH", host)
 	t.Setenv("SECRETS_PATH", "")
 	t.Setenv("STATE_DIRECTORY", t.TempDir())
+	t.Setenv("SENDMAIL_PATH", "/nix/store/test/bin/exodan-sendmail")
+	t.Setenv("MAIL_DEFAULT_SENDER_DOMAIN", "lobb.ie")
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"process-due-work"}, strings.NewReader(""), &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
@@ -102,6 +103,18 @@ func TestRunProcessesNoWorkThroughConfiguredBoundary(t *testing.T) {
 	}
 	if jitter, err := secureJitter(); err != nil || jitter < 0 || jitter > 0.1 {
 		t.Fatalf("jitter=%f error=%v", jitter, err)
+	}
+}
+
+func TestMailTransportUsesExodanRuntimeContract(t *testing.T) {
+	t.Setenv("SENDMAIL_PATH", "/nix/store/example/bin/exodan-sendmail")
+	t.Setenv("MAIL_DEFAULT_SENDER_DOMAIN", "lobb.ie")
+	transport, err := mailTransportFromEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transport.Path != "/nix/store/example/bin/exodan-sendmail" || transport.From != "stv-poll@lobb.ie" {
+		t.Fatalf("transport = %#v", transport)
 	}
 }
 
@@ -152,7 +165,7 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 	if tidy == "" {
 		t.Skip("tidy is run through make lint")
 	}
-	tmpl, err := template.ParseGlob("templates/*.html")
+	tmpl, err := parseTemplates("templates/*.html", "https://poll.example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,8 +183,26 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 	}
 }
 
+func TestRenderedPagesUseConfiguredDomainBanner(t *testing.T) {
+	tmpl, err := parseTemplates("templates/*.html", "https://vote.lobb.ie")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := map[string]any{"BaseURL": "https://vote.lobb.ie", "CSRF": "token", "Grant": "grant", "Rows": "one@example.test", "PollID": "poll", "Version": 0, "Options": []map[string]any{{"ID": "a", "Label": "A", "Rank": 1}}, "Polls": []store.PollRecord{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Now(), Places: 1, State: "draft", CountingStatus: "pending", Version: 1, Options: []store.PollOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}, "Result": workflow.ResultView{}, "Deliveries": map[string]int{}}
+	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html", "moderator_polls.html", "moderator_poll.html", "participants.html", "poll_access.html", "ballot.html", "results.html"} {
+		var rendered bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&rendered, name, data); err != nil {
+			t.Fatal(err)
+		}
+		page := rendered.String()
+		if !strings.Contains(page, `class="site-banner"`) || !strings.Contains(page, `class="domain-highlight">vote</span><span class="domain-dim">.lobb.ie</span>`) {
+			t.Fatalf("%s does not show the configured domain banner: %s", name, page)
+		}
+	}
+}
+
 func TestBallotPageContainsVotingAndCountingHelp(t *testing.T) {
-	tmpl, err := template.ParseGlob("templates/*.html")
+	tmpl, err := parseTemplates("templates/*.html", "https://poll.example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +219,7 @@ func TestBallotPageContainsVotingAndCountingHelp(t *testing.T) {
 }
 
 func TestBallotPageConfirmsRecordedVoteAndOffersProtectedChange(t *testing.T) {
-	tmpl, err := template.ParseFiles("templates/ballot.html")
+	tmpl, err := parseTemplates("templates/*.html", "https://poll.example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +357,7 @@ func TestExecutableRejectsMalformedTemplateBeforeListening(t *testing.T) {
 		t.Fatal(err)
 	}
 	defaults := filepath.Join(root, "defaults.yaml")
-	contents := "base_url: https://poll.example\ndata_dirs: [" + templates + ", " + static + "]\nhttp:\n  secure_cookies: true\n  read_header_timeout: 5s\n  read_timeout: 15s\n  write_timeout: 15s\n  idle_timeout: 60s\n  shutdown_timeout: 10s\nmoderators: []\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nsmtp:\n  host: 127.0.0.1\n  port: 1025\n  from: polls@example.test\n  tls_mode: development_plain\n"
+	contents := "base_url: https://poll.example\ndata_dirs: [" + templates + ", " + static + "]\nhttp:\n  secure_cookies: true\n  read_header_timeout: 5s\n  read_timeout: 15s\n  write_timeout: 15s\n  idle_timeout: 60s\n  shutdown_timeout: 10s\nmoderators: []\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
 	if err := os.WriteFile(defaults, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}

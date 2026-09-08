@@ -19,11 +19,6 @@ moderators: []
 auth:
   key_id: key-1
   signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
-smtp:
-  host: 127.0.0.1
-  port: 1025
-  from: polls@example.test
-  tls_mode: development_plain
 `
 
 func TestLoadMergesLayersRecursively(t *testing.T) {
@@ -58,15 +53,13 @@ func TestLoadValidatesWorkflowConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Auth.KeyID != "key-1" || len(cfg.Auth.SigningKey) != 32 || cfg.SMTP.Port != 1025 || cfg.HTTP.SecureCookies {
+	if cfg.Auth.KeyID != "key-1" || len(cfg.Auth.SigningKey) != 32 || cfg.HTTP.SecureCookies {
 		t.Fatalf("workflow configuration = %#v", cfg)
 	}
 
 	for name, overlay := range map[string]string{
-		"duplicate moderator":   "moderators:\n  - {id: one, email: SAME@example.test}\n  - {id: two, email: same@example.test}\n",
-		"invalid signing key":   "auth:\n  signing_key: c2hvcnQ=\n",
-		"plaintext remote smtp": "smtp:\n  host: smtp.example.test\n  tls_mode: development_plain\n",
-		"partial credentials":   "smtp:\n  username: user\n",
+		"duplicate moderator": "moderators:\n  - {id: one, email: SAME@example.test}\n  - {id: two, email: same@example.test}\n",
+		"invalid signing key": "auth:\n  signing_key: c2hvcnQ=\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(directory, name+".yaml")

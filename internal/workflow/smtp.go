@@ -1,95 +1,49 @@
-// ABOUTME: Sends poll messages to their complete recipient list through the configured SMTP policy.
-// ABOUTME: It requires verified TLS except for explicit loopback development capture.
+// ABOUTME: Submits complete poll messages through Exodan's host-local Sendmail adapter.
+// ABOUTME: It passes one envelope sender and separate envelope recipients without SMTP credentials.
 package workflow
 
 import (
 	"context"
-	"crypto/tls"
-	"errors"
 	"fmt"
-	"net"
-	"net/smtp"
-	"strconv"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 )
 
-type SMTPTransport struct {
-	Settings config.SMTP
+type SendmailTransport struct {
+	Path string
+	From string
 }
 
-func (transport SMTPTransport) Send(ctx context.Context, message Message) error {
-	if err := validateRecipients(message.To); err != nil || validateValues(message.Subject) != nil {
+type sendmailError struct {
+	cause     error
+	temporary bool
+}
+
+func (failure *sendmailError) Error() string { return failure.cause.Error() }
+func (failure *sendmailError) Unwrap() error { return failure.cause }
+
+func (transport SendmailTransport) Send(ctx context.Context, message Message) error {
+	if !filepath.IsAbs(transport.Path) || validateMessageFields(transport.From) != nil || validateRecipients(message.To) != nil || validateValues(message.Subject) != nil {
 		return ErrInvalidMessage
 	}
 	attemptCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	address := net.JoinHostPort(transport.Settings.Host, strconv.Itoa(transport.Settings.Port))
-	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: transport.Settings.Host}
-	var connection net.Conn
-	var err error
-	if transport.Settings.TLSMode == "implicit" {
-		connection, err = (&tls.Dialer{NetDialer: &net.Dialer{}, Config: tlsConfig}).DialContext(attemptCtx, "tcp", address)
-	} else {
-		connection, err = (&net.Dialer{}).DialContext(attemptCtx, "tcp", address)
-	}
-	if err != nil {
-		return fmt.Errorf("connect SMTP: %w", err)
-	}
-	defer connection.Close()
-	deadline := time.Now().Add(10 * time.Second)
-	if contextDeadline, ok := attemptCtx.Deadline(); ok && contextDeadline.Before(deadline) {
-		deadline = contextDeadline
-	}
-	if err := connection.SetDeadline(deadline); err != nil {
-		return fmt.Errorf("set SMTP deadline: %w", err)
-	}
-	client, err := smtp.NewClient(connection, transport.Settings.Host)
-	if err != nil {
-		return fmt.Errorf("start SMTP: %w", err)
-	}
-	defer client.Close()
-	if transport.Settings.TLSMode == "starttls" {
-		if supported, _ := client.Extension("STARTTLS"); !supported {
-			return errors.New("SMTP server does not advertise required STARTTLS")
-		}
-		if err := client.StartTLS(tlsConfig); err != nil {
-			return fmt.Errorf("start SMTP TLS: %w", err)
-		}
-	} else if transport.Settings.TLSMode != "implicit" && transport.Settings.TLSMode != "development_plain" {
-		return errors.New("unsupported SMTP TLS mode")
-	}
-	if transport.Settings.Username != "" {
-		auth := smtp.PlainAuth("", transport.Settings.Username, transport.Settings.Password, transport.Settings.Host)
-		if err := client.Auth(auth); err != nil {
-			return fmt.Errorf("authenticate SMTP: %w", err)
-		}
-	}
-	if err := client.Mail(transport.Settings.From); err != nil {
-		return fmt.Errorf("set SMTP sender: %w", err)
-	}
-	for _, recipient := range message.To {
-		if err := client.Rcpt(recipient); err != nil {
-			return fmt.Errorf("set SMTP recipient: %w", err)
-		}
-	}
-	data, err := client.Data()
-	if err != nil {
-		return fmt.Errorf("start SMTP data: %w", err)
-	}
 	body := strings.ReplaceAll(strings.ReplaceAll(message.Body, "\r\n", "\n"), "\n", "\r\n")
-	wire := "From: " + transport.Settings.From + "\r\nTo: " + strings.Join(message.To, ", ") + "\r\nSubject: " + message.Subject + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body
-	if _, err := data.Write([]byte(wire)); err != nil {
-		_ = data.Close()
-		return fmt.Errorf("write SMTP data: %w", err)
-	}
-	if err := data.Close(); err != nil {
-		return fmt.Errorf("finish SMTP data: %w", err)
-	}
-	if err := client.Quit(); err != nil {
-		return fmt.Errorf("finish SMTP session: %w", err)
+	wire := "From: " + transport.From + "\r\nTo: " + strings.Join(message.To, ", ") + "\r\nSubject: " + message.Subject + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body
+	arguments := append([]string{"--from", transport.From}, message.To...)
+	command := exec.CommandContext(attemptCtx, transport.Path, arguments...)
+	command.Stdin = strings.NewReader(wire)
+	if err := command.Run(); err != nil {
+		failure := &sendmailError{cause: fmt.Errorf("submit message to local mail queue: %w", err), temporary: true}
+		if exit, ok := err.(*exec.ExitError); ok {
+			switch exit.ExitCode() {
+			case 2, 64, 65, 67, 77:
+				failure.temporary = false
+			}
+		}
+		return failure
 	}
 	return nil
 }

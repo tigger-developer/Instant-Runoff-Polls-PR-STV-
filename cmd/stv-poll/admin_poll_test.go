@@ -3,15 +3,11 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -24,8 +20,8 @@ import (
 func TestAdminCLIProcessesPollLifecycleThroughConfiguredBoundary(t *testing.T) {
 	state := t.TempDir()
 	overlay := filepath.Join(t.TempDir(), "host.yaml")
-	smtpHost, smtpPort, captured := startAdminSMTP(t)
-	configuration := fmt.Sprintf("base_url: https://poll.example\nmoderators:\n  - id: owner\n    email: owner@example.test\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nsmtp:\n  host: %s\n  port: %d\n  from: polls@example.test\n  tls_mode: development_plain\n", smtpHost, smtpPort)
+	adapter, argumentsFile, messageFile := startAdminSendmail(t)
+	configuration := "base_url: https://poll.example\nmoderators:\n  - id: owner\n    email: owner@example.test\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
 	if err := os.WriteFile(overlay, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +29,8 @@ func TestAdminCLIProcessesPollLifecycleThroughConfiguredBoundary(t *testing.T) {
 	t.Setenv("CONFIG_PATH", overlay)
 	t.Setenv("SECRETS_PATH", "")
 	t.Setenv("STATE_DIRECTORY", state)
+	t.Setenv("SENDMAIL_PATH", adapter)
+	t.Setenv("MAIL_DEFAULT_SENDER_DOMAIN", "lobb.ie")
 
 	definition := `id: cli-poll
 owner_id: owner
@@ -56,14 +54,24 @@ participants:
 	if code := run([]string{"process-due-work"}, strings.NewReader(""), &deliveryOutput, &commandError); code != 0 || !strings.Contains(deliveryOutput.String(), `"smtp_accepted":1`) {
 		t.Fatalf("delivery code=%d stdout=%s stderr=%s", code, deliveryOutput.String(), commandError.String())
 	}
-	transcript := <-captured
-	for _, evidence := range []string{"RCPT TO:<one@example.test>", "RCPT TO:<alias@example.test>", "To: one@example.test, alias@example.test", "/auth/verify?grant="} {
-		if !strings.Contains(transcript, evidence) {
-			t.Fatalf("SMTP transcript missing %q: %s", evidence, transcript)
+	arguments, err := os.ReadFile(argumentsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(arguments) != "--from\nstv-poll@lobb.ie\none@example.test\nalias@example.test\n" {
+		t.Fatalf("mail adapter arguments = %q", arguments)
+	}
+	message, err := os.ReadFile(messageFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, evidence := range []string{"From: stv-poll@lobb.ie", "To: one@example.test, alias@example.test", "/auth/verify?grant="} {
+		if !strings.Contains(string(message), evidence) {
+			t.Fatalf("submitted message missing %q: %s", evidence, message)
 		}
 	}
-	if strings.Count(transcript, "RCPT TO:") != 2 || strings.Count(transcript, "/auth/verify?grant=") != 1 || strings.Count(transcript, "DATA\n") != 1 {
-		t.Fatalf("SMTP cardinality mismatch in %s", transcript)
+	if strings.Count(string(message), "/auth/verify?grant=") != 1 {
+		t.Fatalf("secure link cardinality mismatch in %s", message)
 	}
 
 	ctx := context.Background()
@@ -111,71 +119,19 @@ participants:
 	}
 }
 
-func startAdminSMTP(t *testing.T) (string, int, <-chan string) {
+func startAdminSendmail(t *testing.T) (string, string, string) {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
+	directory := t.TempDir()
+	adapter := filepath.Join(directory, "exodan-sendmail")
+	arguments := filepath.Join(directory, "arguments")
+	message := filepath.Join(directory, "message")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAPTURE_ARGUMENTS\"\n/usr/bin/tee \"$CAPTURE_MESSAGE\" >/dev/null\n"
+	if err := os.WriteFile(adapter, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = listener.Close() })
-	host, portText, err := net.SplitHostPort(listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	port, err := strconv.Atoi(portText)
-	if err != nil {
-		t.Fatal(err)
-	}
-	captured := make(chan string, 1)
-	go func() {
-		connection, acceptErr := listener.Accept()
-		if acceptErr != nil {
-			captured <- "accept failed: " + acceptErr.Error()
-			return
-		}
-		defer connection.Close()
-		reader := bufio.NewReader(connection)
-		writer := bufio.NewWriter(connection)
-		reply := func(line string) {
-			_, _ = writer.WriteString(line + "\r\n")
-			_ = writer.Flush()
-		}
-		var transcript strings.Builder
-		reply("220 local test")
-		for {
-			line, readErr := reader.ReadString('\n')
-			if readErr != nil {
-				captured <- transcript.String()
-				return
-			}
-			command := strings.ToUpper(strings.TrimSpace(line))
-			switch {
-			case strings.HasPrefix(command, "EHLO"):
-				reply("250 localhost")
-			case strings.HasPrefix(command, "MAIL FROM:"), strings.HasPrefix(command, "RCPT TO:"):
-				transcript.WriteString(strings.TrimSpace(line) + "\n")
-				reply("250 OK")
-			case command == "DATA":
-				transcript.WriteString("DATA\n")
-				reply("354 End data")
-				for {
-					part, dataErr := reader.ReadString('\n')
-					if dataErr != nil || strings.TrimSpace(part) == "." {
-						break
-					}
-					transcript.WriteString(part)
-				}
-				reply("250 accepted")
-			case command == "QUIT":
-				reply("221 bye")
-				captured <- transcript.String()
-				return
-			default:
-				reply("250 OK")
-			}
-		}
-	}()
-	return host, port, captured
+	t.Setenv("CAPTURE_ARGUMENTS", arguments)
+	t.Setenv("CAPTURE_MESSAGE", message)
+	return adapter, arguments, message
 }
 
 func TestManualCloseFreezesBallotsAndQueuesCount(t *testing.T) {

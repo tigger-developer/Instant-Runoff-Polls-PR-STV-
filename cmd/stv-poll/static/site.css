@@ -1,3 +1,11 @@
+@font-face {
+	font-display: swap;
+	font-family: "Special Elite";
+	font-style: normal;
+	font-weight: 400;
+	src: url("/static/SpecialElite-Regular.woff2") format("woff2");
+}
+
 :root {
 	color: #17202a;
 	background: #f5f4f0;
@@ -18,6 +26,43 @@
 
 body {
 	margin: 0;
+}
+
+a {
+	color: var(--blue-dark);
+}
+
+.site-banner {
+	align-items: center;
+	background: var(--blue);
+	display: flex;
+	height: 2.8rem;
+	justify-content: center;
+	left: 0;
+	padding: 0 1rem;
+	position: fixed;
+	right: 0;
+	top: 0;
+	z-index: 100;
+}
+
+.site-banner a {
+	font-family: "Special Elite", ui-monospace, monospace;
+	font-size: 1.6rem;
+	line-height: 1;
+	text-decoration: none;
+}
+
+.site-banner .domain-highlight {
+	color: #f0f0f0;
+}
+
+.site-banner .domain-dim {
+	color: #8a9bae;
+}
+
+.site-banner-spacer {
+	height: 2.8rem;
 }
 
 main {
@@ -181,10 +226,6 @@ button:disabled {
 .notice h3,
 .notice p {
 	margin: 0.25rem 0;
-}
-
-a {
-	color: var(--blue-dark);
 }
 
 a:focus-visible,

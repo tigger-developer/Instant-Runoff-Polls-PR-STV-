@@ -37,6 +37,11 @@ participant invitations. The YAML structure is demonstrated in
 `process-due-work` performs one bounded pass over pending close, count, and
 delivery work, then writes a JSON summary and exits.
 
+The Exodan deployment must enable the `local_mail` capability. Exodan supplies
+`SENDMAIL_PATH` and `MAIL_DEFAULT_SENDER_DOMAIN` to the worker. STV Poll submits
+one complete message through that adapter using `stv-poll@<provided-domain>` as
+both its envelope sender and `From` header; it receives no SMTP credential.
+
 ## Close and count a poll
 
 `close-poll POLL_ID` immediately closes an open or paused poll, freezes its

@@ -8,11 +8,6 @@ http:
   idle_timeout: 60s
   shutdown_timeout: 10s
 moderators: []
-smtp:
-  host: 127.0.0.1
-  port: 1025
-  from: polls@example.test
-  tls_mode: development_plain
 timers:
   - name: process-due-work
     interval: 1min

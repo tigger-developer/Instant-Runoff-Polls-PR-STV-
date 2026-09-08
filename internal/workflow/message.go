@@ -63,7 +63,7 @@ func ResultMessage(recipient, question string, winners []string, noVotes bool) (
 }
 
 func validateRecipients(recipients []string) error {
-	if len(recipients) < 1 || len(recipients) > 20 {
+	if len(recipients) < 1 || len(recipients) > 50 {
 		return ErrInvalidMessage
 	}
 	seen := make(map[string]struct{}, len(recipients))

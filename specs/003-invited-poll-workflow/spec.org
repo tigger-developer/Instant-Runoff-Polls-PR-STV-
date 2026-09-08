@@ -112,9 +112,15 @@ as history.
   Scheduled closure remains in the data model for later use. The bounded worker
   runs the count. =APP-admin count-audit POLL_ID= exports the option mapping,
   frozen anonymized input, fingerprint, recorded decisions, and result as JSON.
-- Further moderator-web-interface work is deferred. The existing mail boundary
-  remains replaceable pending the announced Exodan email-provider contract; this
-  amendment does not authorize a new infrastructure connector.
+- Further moderator-web-interface work is deferred. The earlier pending-provider
+  boundary is superseded by Exodan's =local_mail= application contract. The app
+  receives =SENDMAIL_PATH= and =MAIL_DEFAULT_SENDER_DOMAIN=, submits one complete
+  RFC message with separate recipient arguments, and uses
+  =stv-poll@<provided-domain>= as both envelope sender and =From= header. It
+  receives no SMTP endpoint or credential.
+- Every rendered page carries the shared suite banner. Its bright first label
+  and dim remainder are derived from the configured =base_url= hostname; no
+  product name, final domain, request =Host=, or forwarded header is used.
 
 ** Unresolved blockers
 
@@ -630,6 +636,11 @@ Unknown routes return 404 and unsupported methods 405.
 
 *** Application configuration
 
+The =smtp.*= rows and examples below are retained as signed-off history and are
+superseded by the emergency =local_mail= amendment. The application no longer
+loads an SMTP endpoint, sender or credential from YAML. Exodan supplies the
+adapter path and permitted sender domain to =process-due-work= at runtime.
+
 Use W001's defaults, host and decrypted-secrets loader for *both serve and
 process-due-work*. Exodan decrypts =secrets/<host>.yaml.age= and supplies
 =SECRETS_PATH=; the application never opens an age file or rewrites deployment
@@ -759,17 +770,17 @@ anonymity.
 
 - Command :: =stv-poll process-due-work= uses the same configuration and database as serve. It reconciles due polls, advances counts, then dispatches due messages; it performs one bounded pass and exits.
 - Bounds :: Maximum 60 seconds per invocation and 100 work items, including each close, count or delivery operation. Query in due-time/ID order, processing closing, counting and then delivery within the shared bound. A claim lasts 120 seconds; every mutation/acknowledgement checks its token, pending state and unexpired lease inside the transaction. Cancellation leaves unfinished work reclaimable; successful earlier operations remain committed.
-- Command outcomes :: Help/version and invocation errors follow W001. No work or a healthy bounded batch exits 0; any attempted dependency/count/mail failure or execution-deadline cancellation exits 1 with a safe diagnostic. Existing terminal failures are not retried by each invocation and do not independently fail otherwise healthy sweeps. A full batch with remaining work exits 0; the next timer invocation resumes it. Emit one JSON stdout summary with version=1 and counts for closed, counted, no_votes, smtp_accepted, retrying, failed and cancelled; diagnostics go to stderr.
-- Summary meanings :: Emit exactly those eight fields, all non-negative integers, for this invocation only. closed counts committed closes (including zero turnout); counted counts committed engine results; no_votes counts committed zero-turnout outcomes; smtp_accepted counts successful SMTP attempts; retrying counts attempts scheduled for retry; cancelled counts unsent deliveries cancelled by closing or expiry; failed counts failed attempted operations, including retryable failures, plus one for startup or execution-deadline failure. A retryable failure increments both failed and retrying. Startup failure emits failed=1 and all other counters zero. Invocation errors follow W001's exit 2/usage contract without a worker summary. Output contains no personal or secret values.
+- Command outcomes :: Help/version and invocation errors follow W001. No work or a healthy bounded batch exits 0; any attempted dependency/count/mail failure or execution-deadline cancellation exits 1 with a safe diagnostic. Existing terminal failures are not retried by each invocation and do not independently fail otherwise healthy sweeps. A full batch with remaining work exits 0; the next timer invocation resumes it. Emit one JSON stdout summary with version=1 and counts for closed, counted, no_votes, smtp_accepted, retrying, failed and cancelled; diagnostics go to stderr. The retained =smtp_accepted= field name is a version-1 compatibility name for Exodan local-queue acceptance.
+- Summary meanings :: Emit exactly those eight fields, all non-negative integers, for this invocation only. closed counts committed closes (including zero turnout); counted counts committed engine results; no_votes counts committed zero-turnout outcomes; smtp_accepted counts successful Exodan local-queue submissions; retrying counts attempts scheduled for retry; cancelled counts unsent deliveries cancelled by closing or expiry; failed counts failed attempted operations, including retryable failures, plus one for startup or execution-deadline failure. A retryable failure increments both failed and retrying. Startup failure emits failed=1 and all other counters zero. Invocation errors follow W001's exit 2/usage contract without a worker summary. Output contains no personal or secret values.
 - Scheduler :: Declare a one-minute interval and this argument vector through Exodan's timer intent. The application creates no timer/cron/service definition.
 - Result commit :: Store result, mark count work successful, and insert the logical announcement deliveries in one transaction. Never send before commit.
-- SMTP :: Connect using the configured host/port and a 10-second overall attempt deadline. Require verified TLS through explicit implicit-TLS or required-STARTTLS mode; no opportunistic downgrade. Local plaintext SMTP is allowed only with an explicit development setting and a loopback destination.
-- Retry :: Initial attempt plus at most five retries. After successive temporary failures, schedule 1, 2, 4, 8 and 16 minutes plus uniform jitter from 0 through 10% of that delay, persisted once with next_due. Permanent recipient rejection, authentication rejection and TLS policy/certificate failures become terminal immediately; temporary SMTP 4xx, connection failure and timeout/ambiguous acceptance are retryable. Persist attempt count and outcome. A process crash during an attempt consumes that started attempt; lease expiry schedules its bounded retry rather than resetting the counter. Tests inject jitter and inspect its persisted range/reuse.
-- Attempt boundary :: Commit the incremented attempt counter and in-flight state before SMTP. Sending happens outside transactions. A final ambiguous/crashed sixth attempt becomes terminal failed after lease expiry; it cannot cause an unlimited retry loop. Before each attempt, recheck the grant and invitation eligibility under the claim. Closing atomically cancels unsent invitation/replacement jobs; an SMTP attempt already in progress may still arrive, but the closed-poll eligibility check prevents voting.
+- Local mail :: Invoke the absolute =SENDMAIL_PATH= with =--from=, the sender derived as =stv-poll@${MAIL_DEFAULT_SENDER_DOMAIN}=, and 1 through 50 separate envelope-recipient arguments. Stream the complete RFC message on standard input with a 10-second overall attempt deadline. The envelope sender and =From= header match. Exodan owns its Postfix queue, SMTP provider credential and verified upstream transport.
+- Retry :: Initial attempt plus at most five retries. After successive temporary failures, schedule 1, 2, 4, 8 and 16 minutes plus uniform jitter from 0 through 10% of that delay, persisted once with next_due. Invalid application messages and adapter argument rejection are terminal. Queue unavailability, adapter execution failure, submission timeout and ambiguous acceptance are retryable. Persist attempt count and outcome. A process crash during an attempt consumes that started attempt; lease expiry schedules its bounded retry rather than resetting the counter. Tests inject jitter and inspect its persisted range/reuse.
+- Attempt boundary :: Commit the incremented attempt counter and in-flight state before local mail submission. Submission happens outside transactions. A final ambiguous/crashed sixth attempt becomes terminal failed after lease expiry; it cannot cause an unlimited retry loop. Before each attempt, recheck the grant and invitation eligibility under the claim. Closing atomically cancels unsent invitation/replacement jobs; an already-started submission may still arrive, but the closed-poll eligibility check prevents voting.
 - Eligibility at send :: Invitation/replacement attempts require an open poll and time strictly before its deadline; paused work is held, and elapsed/closed work is cancelled without another attempt. An already-started SMTP operation may finish after pause or close. Moderator login mail instead checks the currently configured moderator; result announcements require a committed result and the recorded checkbox setting.
 - Message construction :: Use text/template for the exact invitation body. Invitation subject is Vote: [thing]; moderator and participant replacement subjects are Sign in to STV Poll and Return to [thing]. Replacement bodies contain one short instruction and the recipient's link. Strip CR/LF from subject substitutions, encode non-ASCII headers with MIME encoded words, and use UTF-8 text/plain bodies. Each message has exactly one envelope/header recipient; no contact list or credential appears in logs.
-- Visibility :: Show safe delivery states per contact to the owner, distinguishing queued, SMTP-accepted, retrying, and failed. Do not call SMTP acceptance "delivered to inbox".
-- Logical uniqueness :: Initial invitations are unique per poll/contact; announcements per result/contact. A repeated HTTP action or worker does not create another logical operation. Physical SMTP duplicates remain possible after ambiguous acceptance.
+- Visibility :: Show safe delivery states per contact to the owner, distinguishing queued, local-queue accepted, retrying, and failed. Do not call local-queue acceptance "delivered to inbox".
+- Logical uniqueness :: Initial invitations are unique per poll/contact; announcements per result/contact. A repeated HTTP action or worker does not create another logical operation. Physical mail duplicates remain possible after ambiguous acceptance.
 - Failures :: A count error becomes visible and retains its snapshot/decisions; no automatic repeated count error loop is run. Infrastructure interruption reclaims unfinished work. Do not silently replace an existing successful result.
 
 *** Approved announcement copy
@@ -800,7 +811,7 @@ contact lists, or a public result link. Invitations remain *exactly as in VISION
 - Threat boundary :: Public form/authentication endpoints, email bearer links, moderator ownership, participant identity, and persisted votes.
 - Data and secrets :: The database retains personal contacts and ballot associations; *do not promise anonymity*. Consume Exodan's state-access boundary and disclose the approved retention/visibility policy in the UI; the application does not manage host ownership or permissions.
 - Access :: Deny cross-owner/cross-poll access; derive participant identity from the scoped session, never a submitted email or arbitrary participant ID.
-- Mitigation :: Atomic grant consumption, hashed sessions, explicit scope, CSRF, output escaping, bounded inputs, private pages, safe link origins, redacted logs, TLS mail, and dependency scanning.
+- Mitigation :: Atomic grant consumption, hashed sessions, explicit scope, CSRF, output escaping, bounded inputs, private pages, safe link origins, redacted logs, Exodan local-mail isolation, and dependency scanning.
 - Approval :: Privacy, retention and announcement policies were included in the operator's original specification approval. This refresh preserves them; any later material change requires explicit sign-off.
 
 *** Other relevant qualities
@@ -815,7 +826,7 @@ contact lists, or a public result link. Invitations remain *exactly as in VISION
 ** Test architecture
 
 Use standard Go =testing= and =httptest=, real temporary SQLite, injected time,
-and a local capture transport/server for the owned SMTP boundary. Do not add
+and a local fake process adapter for the Exodan mail boundary. Do not add
 browser automation, source-text regression tests, live email, or metered service
 calls to the persistent suite. UTs establish presentation and usability; OTs
 establish the bounded local integration/packaging evidence.
@@ -835,7 +846,7 @@ establish the bounded local integration/packaging evidence.
 
 *** First risk corrections
 
-- Decision :: Make SMTP acceptance and work completion one transaction, and terminally fail a reclaimed sixth attempt before any seventh send. Establish pre-authentication CSRF for the public moderator-login and participant-access forms before they can record rate-limit or delivery state.
+- Decision :: Make local-queue acceptance and work completion one transaction, and terminally fail a reclaimed sixth attempt before any seventh send. Establish pre-authentication CSRF for the public moderator-login and participant-access forms before they can record rate-limit or delivery state.
 - Evidence order :: Retain the observed focused RED results, then require focused GREEN, the full race suite, lint, security checks and the signed workflow validation before audit and handoff.
 
 ** 2026-09-08T10:06:00Z :hands-off:review:

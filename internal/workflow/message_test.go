@@ -3,6 +3,7 @@
 package workflow
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,20 @@ func TestInvitationMessageUsesApprovedCopyAndMultipleRecipients(t *testing.T) {
 	want := "Please vote for Favourite book by clicking the link below:\n\nhttps://poll.example/polls/one?grant=secret\n\nYou will be asked to vote by ranking your preferences 1, 2, 3 and so on.\nYou have what is called a *Single Transferable Vote*.\nEvery vote counts towards choosing the result.\nVoter preferences count.\n"
 	if message.Body != want {
 		t.Fatalf("body = %q", message.Body)
+	}
+}
+
+func TestMessagesMatchExodanRecipientBoundary(t *testing.T) {
+	recipients := make([]string, 50)
+	for index := range recipients {
+		recipients[index] = fmt.Sprintf("reader-%d@example.test", index)
+	}
+	if _, err := InvitationMessage(recipients, "Question", "https://poll.example/link"); err != nil {
+		t.Fatalf("50 recipients rejected: %v", err)
+	}
+	recipients = append(recipients, "excess@example.test")
+	if _, err := InvitationMessage(recipients, "Question", "https://poll.example/link"); err == nil {
+		t.Fatal("51 recipients accepted")
 	}
 }
 

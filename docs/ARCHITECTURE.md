@@ -31,7 +31,7 @@ specification refresh; the original approvals of 8 September 2026 remain recorde
 | Persistence | SQLite through `database/sql` and `modernc.org/sqlite`, following writeback's existing foundation. Transactions cover ballots, poll closure, and durable work without another server. |
 | Counting | A separate Go package implementing the application's specified PR-STV rules, guided by the Irish system. It receives a frozen input and produces a result and count record without HTTP, SQL, or email dependencies. |
 | Background work | Durable work records in SQLite, processed by a bounded command in the same binary. Exodan owns periodic invocation. |
-| Email | An application-owned mail interface with an SMTP adapter, adapted from the sibling projects. Invitations and authentication use this boundary. |
+| Email | Application-owned message construction behind a small sender interface. Production submits through Exodan's host-local Sendmail adapter; the application receives no SMTP endpoint or credential. |
 | Deployment | Exodan owns build/deployment orchestration and host services. The application consumes its runtime configuration, storage, and scheduling contract. |
 | Reuse | Adapt selected source into this repository first. Avoid making the first release depend on extracting a new shared framework. |
 
@@ -95,12 +95,13 @@ flowchart LR
         sweep --> services
         services --> db[(SQLite in STATE_DIRECTORY)]
         services --> count[PR-STV counting package]
-        services --> mail[SMTP adapter]
+        services --> mail[Exodan Sendmail process adapter]
         config[Runtime YAML configuration] --> serve
         config --> sweep
+        mailenv[Exodan local_mail runtime values] --> sweep
     end
-    mail --> smtp[Configured SMTP service]
-    smtp -->|Invitations and authentication links| browser
+    mail --> queue[Exodan-owned local mail queue]
+    queue -->|Invitations and authentication links| browser
 ```
 
 The application-services box represents code linked into both command modes,
@@ -125,7 +126,7 @@ that cannot reasonably be delivered by the Go server and native HTML.
 | `internal/store` | SQLite access, migrations, constraints, transaction support, snapshots, and durable work records. SQL stays inside this package. |
 | `internal/automation` | Finds due polls and pending work, claims bounded batches, and invokes the same closing, counting, and delivery services used by application actions. |
 | `internal/notify` | Builds invitation/authentication messages from approved copy and delivers through an injected mail interface. Owns transport outcomes, not ballot acceptance. |
-| `internal/config` | Loads and validates Exodan's YAML layers and runtime paths. Exposes typed configuration without making other packages read the environment directly. |
+| `internal/config` | Loads and validates Exodan's YAML layers. Exposes typed application configuration; the command entry point separately consumes Exodan's published mail runtime values. |
 
 Dependencies run from HTTP and CLI entry points into application services and
 then into persistence, counting, and delivery. The counting package has no
@@ -320,10 +321,11 @@ visible as pending or failed work; the service must not invent a result.
 One invitation delivery and its complete recipient list are recorded for every
 participant before delivery is attempted. A durable delivery queue, adapted
 from writeback's automation pattern, keeps email failures separate from poll
-and ballot transactions. SMTP runs outside write transactions with bounded
-transport time and a configured secure transport policy. The workflow
-specification defines bounded retries and owner-visible terminal failure. SMTP
-acceptance does not prove inbox delivery, and a crash after acceptance
+and ballot transactions. Local mail submission runs outside write transactions
+with bounded process time. Exodan owns the local queue, provider credential,
+and secure upstream transport. The workflow specification defines bounded
+retries and owner-visible terminal failure. Local-queue acceptance does not
+prove inbox delivery, and a crash after acceptance
 can cause a retry to send a duplicate message; no exactly-once delivery guarantee
 is implied.
 
@@ -380,7 +382,7 @@ deployment supplies its own host configuration and encrypted secrets.
 The application declares routine intent for `process-due-work`; Exodan creates
 and runs the host timer. The workflow selects a one-minute sweep interval, with
 one bounded pass per invocation. Count and announcement work may progress in
-the same pass; SMTP availability and pending work can delay the outcome. Voting
+the same pass; mail-queue availability and pending work can delay the outcome. Voting
 deadlines remain enforced independently of that interval.
 
 The `create-poll`, `close-poll`, `count-audit`, and `process-due-work` commands

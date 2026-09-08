@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"io"
-	"net"
 	"net/mail"
 	"os"
 	"regexp"
@@ -74,22 +73,12 @@ type Auth struct {
 	SigningKeyText string `yaml:"signing_key"`
 	SigningKey     []byte `yaml:"-"`
 }
-type SMTP struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	From     string `yaml:"from"`
-	TLSMode  string `yaml:"tls_mode"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-}
-
 type Config struct {
 	BaseURL    string      `yaml:"base_url"`
 	DataDirs   []string    `yaml:"data_dirs"`
 	HTTP       HTTP        `yaml:"http"`
 	Moderators []Moderator `yaml:"moderators"`
 	Auth       Auth        `yaml:"auth"`
-	SMTP       SMTP        `yaml:"smtp"`
 }
 
 func Load(defaultsPath, configPath, secretsPath string) (Config, error) {
@@ -181,22 +170,6 @@ func (cfg *Config) validateWorkflow() error {
 		return errors.New("configuration field auth.signing_key must decode to 32 bytes")
 	}
 	cfg.Auth.SigningKey = key
-	if cfg.SMTP.Host == "" || cfg.SMTP.Port < 1 || cfg.SMTP.Port > 65535 {
-		return errors.New("configuration field smtp host or port is invalid")
-	}
-	from, err := mail.ParseAddress(cfg.SMTP.From)
-	if err != nil || from.Name != "" || from.Address != cfg.SMTP.From {
-		return errors.New("configuration field smtp.from is invalid")
-	}
-	if cfg.SMTP.TLSMode != "starttls" && cfg.SMTP.TLSMode != "implicit" && cfg.SMTP.TLSMode != "development_plain" {
-		return errors.New("configuration field smtp.tls_mode is invalid")
-	}
-	if (cfg.SMTP.Username == "") != (cfg.SMTP.Password == "") {
-		return errors.New("configuration fields smtp.username and smtp.password must be supplied together")
-	}
-	if cfg.SMTP.TLSMode == "development_plain" && (net.ParseIP(cfg.SMTP.Host) == nil || !net.ParseIP(cfg.SMTP.Host).IsLoopback() || cfg.SMTP.Username != "") {
-		return errors.New("configuration field smtp.tls_mode development_plain requires loopback without authentication")
-	}
 	return nil
 }
 
