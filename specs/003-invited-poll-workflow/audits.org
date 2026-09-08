@@ -4,10 +4,84 @@
 
 * Definition gate
 
-- Execution :: No composite verdict has been issued for this draft.
+- Execution :: Effective definition PASS; operator sign-off pending.
 - Artefact :: [[file:spec.org][W003 - Invited poll workflow specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
+
+** Local review, round 1
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =a34eceeb3feebf53e2743df5f3d0fdf46c87a73d69995589c59788bce57d5ab5= at =cee50e3= (legislation-as-guidance documentation checkpoint).
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: FAIL.
+- [audit-design] [BLOCKING] Application configuration :: Moderator/SMTP/key types, defaults, local overrides and key-change behaviour are missing.
+- [audit-design] [BLOCKING] Recovery and privacy :: Worker retry/lease outcomes, old invitation handling, snapshot ordering and aggregate-only result projection need explicit semantics.
+- [audit-spec] [BLOCKING] HTTP boundary :: Conflicting unauthenticated/unknown responses, draft concurrency and request field handling are underspecified.
+- [audit-test-definitions] [BLOCKING] Security oracles :: Rate limiting, signing-key replacement, TLS failure and paused/deadline mail cases need observable expected outcomes.
+- Remediation :: Supply complete application configuration examples, scoped access/transport/recovery rules, and extend the corresponding traced test definitions. Exodan retains infrastructure ownership.
+
+** Local review, round 2
+:PROPERTIES:
+:ROUND: 2
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =939eee54af983519f9acbe66d479e564d7871393aa0fe355dae3781fad35a34d=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS.
+- Findings :: No remaining local blocking or conditional finding. The configuration schema/examples, credential/CSRF boundaries, transaction versions, snapshot/lot persistence, aggregate result projection, delivery eligibility, bounded attempts/claims and expiry semantics are explicit and traced to existing RTs.
+- Remediation receipt :: Reconciled private moderator/SMTP configuration with Exodan ownership; specified key rotation and technical-session bounds; corrected object-response ambiguity; added restart/TLS/header/rate/expiry and mail-crash oracles. Privacy, retention, timing and announcement choices remain conspicuous proposals for operator sign-off, not inferred approvals.
+- Limitation :: Independent audit and operator sign-off remain pending. No application code, actual email, deployment or implementation test evidence is claimed.
+
+** Retained independent review, round 1
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =939eee54af983519f9acbe66d479e564d7871393aa0fe355dae3781fad35a34d=.
+- Context :: Retained external =/root/workflow_definition_audit=, configured =gpt-5.6-luna=.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: FAIL.
+- [audit-design] [BLOCKING] Small-poll inference :: Aggregate results and turnout can reveal an individual's preferences or participation; make the privacy proposal and disclosure explicit.
+- [audit-test-definitions] [BLOCKING] CSRF oracle :: Specify the accepted Origin/Referer policy and observable outcomes.
+- [audit-design] [BLOCKING] Randomness failures :: Distinguish close-time shuffle rollback from a failed count after later lot-selection failure.
+- [audit-test-definitions] [BLOCKING] Worker summary :: Define and test JSON fields, counter meanings, output streams and failure semantics.
+- [audit-spec] [CONDITION] Configuration traceability :: Include base_url in the inherited configuration table without introducing URL/domain validation.
+- Remediation :: Clarify existing boundaries and tests; explicitly propose small-poll inference disclosure without a new group-size restriction. No new user feature or infrastructure responsibility is added.
+
+** Local review, round 3
+:PROPERTIES:
+:ROUND: 3
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =444bae86ec88c8094e29f58b876233b35a87170cc53527d0328789594ed8336d=.
+- Context :: Authoring context.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS.
+- Findings :: No remaining local blocking or conditional finding. RT003.11 defines worker summary outcomes; RT003.12 distinguishes the two randomness failure boundaries; RT003.13 covers one-person inference disclosure; RT003.17 defines session-token CSRF outcomes. The inherited base_url entry preserves Exodan ownership.
+- Policy boundary :: Small-poll inference disclosure clarifies the existing proposed aggregate-only views and absence of an anonymity promise. It remains a proposal for operator sign-off, not an approval or an implemented access change.
+- Verification :: Org parses with Pandoc, sanitize leaves the specification unchanged, and git diff --check passes. No implementation tests have run.
+
+** Retained independent review, round 2
+:PROPERTIES:
+:ROUND: 2
+:END:
+
+- Gate :: definition.
+- Revision :: SHA-256 =444bae86ec88c8094e29f58b876233b35a87170cc53527d0328789594ed8336d=, before lifecycle-only DEFINITION_GATE update.
+- Context :: Retained external =/root/workflow_definition_audit=, configured =gpt-5.6-luna=.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=; the retained auditor explicitly confirmed all three were reapplied together.
+- Verdict :: PASS.
+- Findings :: No remaining blocking, conditional or material advisory findings. The auditor accepted the proportionate small-poll disclosure proposal, session-token CSRF boundary, distinct randomness failures, exact worker summary and inherited base_url configuration.
+- Limitation :: Privacy and other product policies still require operator sign-off. No implementation or test execution is claimed.
 
 * Implementation gate
 

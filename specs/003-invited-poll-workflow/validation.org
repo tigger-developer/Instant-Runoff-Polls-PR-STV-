@@ -14,7 +14,7 @@
 :END:
 
 - Category :: Human user test.
-- Criterion :: [[file:spec.org::#ac-003-19][AC003.6 - Short invitation copy; AC003.19 - Help is available without JavaScript]].
+- Criterion :: [[file:spec.org::#ac-003-6][AC003.6 - Short invitation copy]]; [[file:spec.org::#ac-003-19][AC003.19 - Help is available without JavaScript]].
 - Definition :: [[file:spec.org::#ut-003-1][UT003.1 - Voting and help experience]].
 - Result :: PENDING.
 - Procedure and expected result :: Operator reads the captured invitation, submits and revises through two addresses, and checks both help articles without JavaScript at narrow width, 200% zoom, and by keyboard.
@@ -40,7 +40,7 @@
 :END:
 
 - Category :: Bounded one-off verification.
-- Criterion :: [[file:spec.org::#ac-003-22][AC003.22 - Deployment remains Exodan-owned; AC003.23 - Local end-to-end poll is usable]].
+- Criterion :: [[file:spec.org::#ac-003-22][AC003.22 - Deployment remains Exodan-owned]]; [[file:spec.org::#ac-003-23][AC003.23 - Local end-to-end poll is usable]].
 - Definition :: [[file:spec.org::#ot-003-1][OT003.1 - Local full-poll and packaging review]].
 - Result :: PENDING.
 - Procedure and expected result :: One local integration session with at most two polls and 20 synthetic addresses, local SMTP capture, packaged runtime paths, and one stopped-service backup/restore. No real email, deployment, production data, or metered API.

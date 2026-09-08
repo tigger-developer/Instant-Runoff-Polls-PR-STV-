@@ -48,7 +48,7 @@
 - Revision :: SHA-256 =37bfc2e787233dce7796c69275866593ff8ee0e447168e54d161354a4a09d632=.
 - Audits :: Requested composite =audit-spec=, =audit-design=, =audit-test-definitions= in one retained context.
 - Verdict :: FAIL.
-- [audit-spec] [BLOCKING] Historical fixture arithmetic :: RT002.7 incorrectly counted the C>B ballot as transferring onward to A. Only the two original B>A ballots transfer: A finishes with5 and one ballot exhausts, not A6.
+- [audit-spec] [BLOCKING] Historical fixture arithmetic :: RT002.7 incorrectly counted the C>B ballot as transferring onward to A. Only the two original B>A ballots transfer: A finishes with 5 and one ballot exhausts, not A6.
 - Remediation :: Corrected the expected total and explicitly required the exhausted-ballot/conservation record.
 
 ** Local review, round 3

@@ -6,9 +6,11 @@ application will count votes automatically using PR-STV guided by the Irish
 counting system. This is an online poll; conformity to election legislation is
 not a product requirement.
 
-**Project stage:** specification drafting. The product vision, application
-architecture, and three build specifications are recorded. The Go application
-has not been implemented; definition audits and operator sign-off remain pending.
+**Project stage:** specification review. The product vision, application
+architecture, and three build specifications are recorded. All three have passed
+the definition gate covering requirements, design, and test definitions, with
+local and retained independent audit evidence. Operator sign-off is pending;
+the Go application has not been implemented.
 
 ## Documentation
 
@@ -20,7 +22,7 @@ has not been implemented; definition audits and operator sign-off remain pending
 - [Architecture](docs/ARCHITECTURE.md): the Go application's components,
   dependencies, runtime flows, persistence, reuse plan, and Exodan integration.
 - This README: the product brief and requirements captured so far. These are
-  inputs to the forthcoming specifications, rather than acceptance criteria.
+  inputs to the linked specifications, which contain the acceptance criteria.
 
 ## How a poll works
 
@@ -172,8 +174,10 @@ Exodan. The exact runtime boundary is documented in the
 The [vision's decision list](docs/VISION.md#decisions-needed-to-develop-the-vision)
 preserves the outstanding questions about privacy, result visibility,
 announcements, moderator authority, participant corrections, ballot validation,
-and poll timing. Those decisions and the detailed counting procedure belong in
-the forthcoming specification work.
+and poll timing. The [poll workflow specification](specs/003-invited-poll-workflow/spec.org)
+now records explicit policy proposals for operator sign-off; they are not prior
+approvals. The [counting specification](specs/002-irish-pr-stv-counting/spec.org)
+defines the detailed counting procedure and worked cases.
 
 ## Documentation history
 

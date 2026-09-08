@@ -2,7 +2,7 @@
 #+SUBTITLE: Unified change specification
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
-#+DEFINITION_GATE: PENDING
+#+DEFINITION_GATE: PASS
 #+OPERATOR_SIGNOFF: PENDING
 
 * Deliver the invited poll workflow
@@ -63,7 +63,7 @@ Established behaviour is taken from README/VISION. The following are *proposed f
 | Area | Proposed policy |
 |------+-----------------|
 | Moderator authority | Each moderator administers only their own polls and copies only their own lists. An invited moderator may vote through a separate participant identity. |
-| Visibility | The owner sees aggregate turnout, count detail, winners, and contact/delivery administration. No interface exposes individual ballots or who has voted. A voter sees only their own current ballot. |
+| Visibility | The owner sees aggregate turnout, count detail, winners, and contact/delivery administration. No interface directly exposes another person's ballot or voting status. Small-poll results may permit inference; disclose this before voting, without a minimum-group-size restriction. A voter sees only their own current ballot. |
 | Open-poll editing | Opening freezes question, options, winner count, deadline, participant grouping, and announcement setting. Corrections use a new draft copied from the old poll; no existing vote is silently reassigned. |
 | Pause and deadline | Resume is available before the original deadline. The deadline closes both open and paused polls. Manual close is offered from paused state; closed polls never reopen. |
 | Acceptance time | Take the server's UTC time after obtaining the write transaction. Accept only while open and strictly before the stored deadline. |
@@ -73,7 +73,7 @@ Established behaviour is taken from README/VISION. The following are *proposed f
 | Announcement | Checkbox defaults off. If selected, send the short result email below to every invited address; no public result page is created. |
 | Zero turnout | Close with a no-votes outcome and no winners; announce that outcome only if selected. Do not call W002 with empty input. |
 | Returning access | Participant links are reusable for 24 hours; moderator links are one-use for 15 minutes. Sessions last 12 hours. Eligible users can request a fresh link. State/deadline checks always remain authoritative. |
-| Retention | Keep polls, grouped contacts, final ballots, count records, and delivery outcomes for reuse and review. No automatic deletion or anonymous-ballot promise is introduced. A deletion/retention policy change requires a subsequent definition. |
+| Retention | Keep polls, grouped contacts, final ballots, count records, and delivery outcomes for reuse and review. No automatic deletion of these poll records or anonymous-ballot promise is introduced. Expired technical sessions and rate-limit entries are cleaned up as specified below. |
 | Input bounds | At most 1000 participants, 8 addresses each, 50 options, and 8 MiB per form body; text bounds are defined below. |
 | Delivery timing | Declare a one-minute sweep interval. Announcement work is eligible when the result commits; normal processing attempts it in the same sweep if within the execution bound. |
 
@@ -246,7 +246,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 :CUSTOM_ID: ac-003-20
 :END:
 
-- Criterion :: A voter sees *only their own ballot*. Moderators see their own polls, aggregate turnout, results, and delivery status, *not individual ballots or person-level voting status*.
+- Criterion :: A voter sees *only their own ballot*. Moderators see their own polls, aggregate turnout, results, and delivery status, *without an individual-ballot or person-level voting-status interface*. Disclose possible inference from small-poll results before voting; do not promise anonymity.
 - Proven by :: [[#rt-003-1][RT003.1 - Moderator authentication and ownership]]; [[#rt-003-6][RT003.6 - Participant grant and session boundaries]]; [[#rt-003-13][RT003.13 - Result visibility and zero turnout]].
 
 ** AC003.21 - Forms protect state changes
@@ -287,6 +287,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: Two configured moderators, one unconfigured address, and a poll owned by each; no external mail service.
 - Action :: Request login links, verify/consume a moderator grant, repeat its consumption concurrently, remove a moderator from active configuration, and request another owner's poll/list/results through GET and POST.
 - Expected :: Generic login-request responses; only configured identities receive usable grants; one-use consumption is atomic; removed identities lose authority; cross-owner reads and mutations are denied. An invited moderator may use a separate participant session without gaining ballot access through the moderator role.
+- Configuration cases :: Restart with changed moderator configuration to apply a removal or email change. Duplicate IDs/emails, invalid credentials or missing required secret values fail startup before serving or processing mail. Inspect diagnostics for field names and absence of synthetic secret values.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.2 - Draft creation and validation
@@ -298,6 +299,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: A moderator session and valid, minimum, maximum, missing, malformed, and over-limit poll fields.
 - Action :: Create and edit drafts; attempt fewer than two options, invalid winner counts, past deadlines, ambiguous local times, and edits after opening.
 - Expected :: Valid drafts retain their unique poll URL and fields. Invalid input preserves the previous draft and echoes safe field errors. Opening freezes the specified fields; later edits fail without changing them.
+- Concurrency :: Two moderator tabs edit the same poll version; only one update commits, the other receives 409. An incomplete draft may save; opening that draft reports the missing fields and creates no invitation. Copying or participant edits increment the same poll version.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.3 - Address grouping and entitlement
@@ -331,6 +333,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: A valid draft with three participants and five distinct addresses; local mail capture; injected failure before opening commit and interruption after it. Configure a synthetic HTTPS =base_url= through the host YAML while the server listens on a distinct loopback =ADDR=; include requests with attacker-controlled Host and forwarded-host headers.
 - Action :: Open, repeat the action, and process/retry invitation work.
 - Expected :: Either draft state and no invitations remain, or open state and exactly five logical delivery records commit together. Each captured message has one recipient and the exact VISION body with its own link. Every invitation uses the configured public URL, never the listener address or request headers. No email is sent before commit. Recovery sends pending messages without generating another logical invitation.
+- Delayed delivery :: Pause before the first attempt, then close before another pending invitation is sent. Paused polls retain pending invitations without consuming attempts; closed polls cancel unsent invitation/replacement deliveries. Already delivered links cannot extend voting eligibility.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.6 - Participant grant and session boundaries
@@ -342,6 +345,8 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: Two polls and participant groups; valid, expired, tampered, wrong-purpose, wrong-poll, and inactive grant/session cases.
 - Action :: Visit the verification page, submit its exchange form, use an alternate grouped address, try another participant's IDs, and request a replacement link for known/unknown addresses.
 - Expected :: GET alone consumes no grant; successful POST establishes the correct scoped session and redirects to a clean URL. Invalid access reveals no ballot. Known/unknown request responses match; only eligible contacts receive links. Session cookies, no-store responses, and referrer policy protect credentials.
+- Recovery and abuse cases :: Exercise repeated requests up to and beyond both identity limits and the global bound below, then advance the injected clock. Known and unknown identities have identical response bodies/statuses. Rotate the configured signing key/key ID and restart; old grants fail, pending deliveries receive replacement grants, and existing opaque sessions retain their independent expiry. A disabled development-cookie setting never follows request headers.
+- Technical-session bound :: Reach the 1000 active pre-authentication-session limit; the next form request receives 503 without another record. Expire entries and verify capacity returns. Authenticating rotates/replaces the presented session, and expired technical-session cleanup never removes poll or ballot records.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.7 - Ballot validation and feedback
@@ -397,6 +402,8 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: Executable and database containing overdue open/paused polls, a future poll, pending deliveries, and interrupted claims; real W002 engine for a fixed simple fixture.
 - Action :: Run process-due-work, restart it, run overlapping invocations, and exercise cancellation at its execution bound.
 - Expected :: Due polls close, future polls remain open, recorded work progresses in dependency order, and each logical operation is claimed safely. The command exits within its bound, returns non-zero on operational failure, and releases or expires claims for later recovery.
+- Work outcomes :: No-work and a healthy bounded batch exit 0; transient/permanent attempt failures and execution-deadline cancellation exit 1 after preserving progress. A full 100-item batch with remaining work is successful, not a failure. Reclaim a claim whose token is still present but whose lease has expired; the stale holder cannot commit even if no replacement holder has yet run.
+- Summary oracle :: For one overdue poll with two participants, one contact each, two A-first ballots, one winner, announcement checked and invitations already accepted, require exactly ={"version":1,"closed":1,"counted":1,"no_votes":0,"smtp_accepted":2,"retrying":0,"failed":0,"cancelled":0}= on stdout (JSON member order is immaterial). No-work produces the same fields with zero counters. A temporary mail failure increments failed and retrying, exits 1 and reports its safe diagnostic only on stderr. Startup failure produces failed=1 with other counters zero; failures after progress preserve the counters already earned. Check exactly these fields and non-negative integer values.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.12 - Count interruption and replay
@@ -408,6 +415,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: A frozen tie fixture from W002 and failures after snapshot creation, after a decision commits, and after result commit but before work acknowledgement.
 - Action :: Terminate/restart processing and replay the stored input and decisions.
 - Expected :: A committed decision is never redrawn. Exactly one result and at most one logical announcement set exist; totals/winners match replay. Expired claim holders cannot commit after another worker obtains the claim. A count error preserves evidence and exposes failure rather than publishing partial winners.
+- Randomness failures :: Inject a shuffle failure during closing: manual close returns 503, the close transaction rolls back without a snapshot/job, and a later close can retry; scheduled close exits 1 and can retry on a later sweep. Separately fail lot selection after a snapshot exists: retain that snapshot and earlier decisions, mark counting failed, and write no new answer or result.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.13 - Result visibility and zero turnout
@@ -419,6 +427,8 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: Count-pending, failed, successful, and zero-turnout closed polls, with owning/other moderators and participant sessions.
 - Action :: Request dashboards, results, ballot URLs, and delivery status.
 - Expected :: Only the owner receives aggregate turnout, winners and count breakdown. Participants receive only their own ballot/status. No person-level voted flag or other ballot is rendered. Zero turnout produces a no-votes outcome with no invented winner; checked-announcement handling follows AC003.17.
+- Projection :: Check that count snapshots, per-ballot IDs/preferences, parcel membership and decision fingerprints are absent from moderator/public HTML and error responses; aggregate per-count totals and option-level events remain visible to the owner.
+- Small poll :: Include a one-participant poll. Its aggregate result remains available under the proposed policy, the pre-vote notice explains possible inference, and no separate person-level voting-status or ballot view is introduced. This proposal requires operator sign-off.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.14 - Announcement choice and isolation
@@ -441,6 +451,8 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Setup :: Local transport cases for success, temporary rejection, permanent rejection, timeout, unavailable service, and ambiguous acceptance followed by connection loss.
 - Action :: Process a delivery through its attempts using an injected clock and force its final retry to fail.
 - Expected :: Retry count and next due time follow the bounded policy; permanent errors stop immediately; terminal failure is visible to the owner. No raw tokens, SMTP credentials, or other recipient addresses appear in logs/messages. An ambiguous acceptance may cause duplicate physical delivery, but never a duplicate voting entitlement or result.
+- Transport :: Exercise required STARTTLS absence, certificate rejection, authentication failure and header-injection text through a local protocol-faithful SMTP server. The sender fails without plaintext downgrade; rendered headers remain single fields. Verify failures affect delivery state, not the count or ballot.
+- Interrupted attempts :: Crash after the attempt counter commits, reclaim after lease expiry, and repeat through the sixth attempt. Counters never reset and a sixth ambiguous failure becomes terminal. Inject boundary jitter values, verify next_due lies within the declared range and remains unchanged on restart, and ensure a stale claimant cannot acknowledge an expired lease.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.16 - Rendered help and no-script forms
@@ -460,9 +472,10 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 :END:
 
 - Covers :: [[#ac-003-21][AC003.21 - Forms protect state changes]].
-- Setup :: Authenticated and unauthenticated requests, foreign-origin requests, missing/mismatched CSRF tokens, tampered IDs, over-size bodies, and database failures inside each multi-record mutation.
+- Setup :: Authenticated and unauthenticated requests, missing/wrong-session CSRF tokens, valid tokens with absent or arbitrary Origin/Referer headers, tampered IDs, over-size bodies, and database failures inside each multi-record mutation.
 - Action :: Attempt creation, opening, participant edits, ballot replacement, pause/resume, close, and auth exchange.
 - Expected :: Invalid requests receive the defined 4xx response without partial writes, leaked data, or external email. HTML reflects user text through contextual escaping. Transitions and ownership are rechecked inside the persistence boundary; rollback preserves prior committed state.
+- CSRF oracle :: Missing or wrong-session tokens return 403 regardless of Origin/Referer headers. A valid session, matching token and otherwise valid action succeed whether those headers are absent or arbitrary. Headers alone never authorize a mutation; token verification supplies this boundary.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** UT003.1 - Voting and help experience
@@ -543,24 +556,90 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 | /help/voting, /help/counting | GET public plain-English help from VISION, without poll data. |
 | /logout | POST invalidates the current session and redirects. |
 
-Successful mutations use POST/redirect/GET. Invalid fields return 422, stale
+Successful mutations use POST/303 redirect/GET. Invalid fields return 422, stale
 versions/invalid transitions 409, over-limit bodies 413, CSRF failures 403, and
 unavailable storage 503. Unknown or unauthorized poll resources return the same
-404 response. Unauthenticated browser requests are directed to the appropriate
-access form without exposing the protected content.
+404 response, containing an ordinary link to the applicable access form.
+GET /moderator/polls without a session redirects to /moderator/login; object
+routes do not redirect differently according to whether the object exists.
+Unknown routes return 404 and unsupported methods 405.
 
-*** Configuration and access
+- Form decoding :: Accept application/x-www-form-urlencoded POST bodies, with normal charset parameters, bounded before parsing. Reject other media types with 415, unknown fields and duplicated scalar fields with 422. Explicit participant and rank collections may repeat only their declared indexed fields; reject duplicate option or participant identifiers. Escape all echoed input. RT003.17 includes media-type, multiplicity and unknown-field cases.
+- Versions :: Draft updates, participant edits, open, pause and resume carry the poll version from the rendered form. Check it after obtaining the write transaction and increment it on mutation. A repeat of an already-applied open or close returns its current status without new work; other stale requests return 409. Ballots use their independent version, with version 0 representing no accepted ballot.
 
-- Extend YAML with =moderators= entries containing stable ID and email; =auth.signing_key=; and =smtp.host=, =port=, =from=, =username=, =password=, =tls_mode=. Signing and SMTP credentials come through decrypted secrets.
+*** Application configuration
+
+Use W001's defaults, host and decrypted-secrets loader for *both serve and
+process-due-work*. Exodan decrypts =secrets/<host>.yaml.age= and supplies
+=SECRETS_PATH=; the application never opens an age file or rewrites deployment
+configuration. Values are loaded at process start. Moderator/key changes require
+restarting serve; each scheduled invocation loads the current files.
+
+| YAML key | Required / default | Meaning |
+|----------+--------------------+---------|
+| base_url | Inherited required non-empty string from W001 | Public link base, consumed as configured; no application URL/domain validation. |
+| moderators | Required sequence, may be empty | Entries have id and email; only these identities may moderate. |
+| moderators[].id | Required string, 1..64 ASCII letters/digits/_/- | Stable owner identity; IDs are never reassigned to another person. |
+| moderators[].email | Required bare mailbox | One email per moderator; case-insensitive comparison. Duplicate normalized emails or IDs fail startup. |
+| auth.key_id | Required string, same ID alphabet | Explicit signing-key version; change it when rotating the key. |
+| auth.signing_key | Required standard-base64 string decoding to 32 random bytes | HMAC-SHA-256 key, supplied through decrypted secrets. |
+| http.secure_cookies | true | Explicit false permits local HTTP development; never infer from URL, Host or forwarded headers. |
+| smtp.host | Required non-empty string | SMTP service endpoint, consumed by the transport. |
+| smtp.port | Required integer 1..65535 | SMTP connection port. |
+| smtp.from | Required bare mailbox | Envelope and message sender. |
+| smtp.tls_mode | starttls | starttls requires STARTTLS; implicit uses TLS from connection start; development_plain is an explicit local-development override. |
+| smtp.username / smtp.password | Both absent, or both non-empty | Optional SMTP authentication pair; credentials belong in decrypted secrets. |
+
+- Validation scope :: Validate application settings, durations, enums, identity uniqueness and key encoding. Errors name keys without printing supplied values. Consume base_url/ADDR under W001's contract; no application URL/domain validation, DNS provisioning, routing or public TLS administration.
+- Private configuration :: Keep moderators, auth key ID/key and SMTP credentials in encrypted secrets for deployment. Non-secret SMTP settings belong in defaults or host YAML. Empty moderators disables administration but does not prevent existing poll processing; missing moderators is a configuration error.
+- Secret example :: This illustrates the decrypted YAML structure, not a usable credential. The signing-key placeholder must be replaced through the operator's secret-management workflow; specification drafting creates no live secret.
+
+#+begin_src yaml
+moderators:
+  - id: moderator-1
+    email: moderator@example.com
+auth:
+  key_id: key-1
+  signing_key: REPLACE_WITH_BASE64_OF_32_RANDOM_BYTES
+smtp:
+  username: poll-mail-user
+  password: REPLACE_WITH_SMTP_PASSWORD
+#+end_src
+
+- Non-secret example :: Overlay the chosen public base_url and these SMTP values through config/<host>.yaml. The addresses below are placeholders. Templates/static remain declared in W001's data_dirs.
+
+#+begin_src yaml
+base_url: https://polls.example.com
+http:
+  secure_cookies: true
+smtp:
+  host: smtp.example.com
+  port: 587
+  from: polls@example.com
+  tls_mode: starttls
+timers:
+  - name: process-due-work
+    interval: 1min
+    args: [process-due-work]
+#+end_src
+
+- Local example :: Document config/localhost.yaml.example with base_url=http://127.0.0.1:8080, http.secure_cookies=false, and a local SMTP capture at host=127.0.0.1, port=1025, tls_mode=development_plain. This explicit SMTP mode requires a loopback IP endpoint and disables SMTP authentication. Synthetic local moderator/key values are supplied through ignored secrets/localhost.yaml; no production data is used.
+
+*** Access and credentials
+
+- Configuration history :: The former terse moderator/signing/SMTP key list is superseded by the complete schema and examples above.
 - Construct all absolute poll, moderator login, participant invitation, and replacement links from the supplied =base_url= loaded through W001's configuration boundary. Neither =ADDR=, request Host, nor forwarded headers may select a link destination. URL/domain validation and deployment policy belong to Exodan; this application consumes the configuration without duplicating those checks.
-- Use separate moderator and participant session purposes. Each session is an opaque, cryptographically random identifier whose hash and expiry are stored; cookies are host-only, HttpOnly, Secure in deployment, SameSite=Lax, and path=/.
-- Magic-link claims contain version, purpose, principal, poll/address scope where applicable, issuance/expiry, and a cryptographic nonce. Sign with standard-library HMAC and store the token hash plus claims. Session tokens are not interchangeable with grants.
-- Reconstruct an outbound grant from persisted claims and the signing key when retrying delivery; *do not store a raw bearer URL in delivery rows*. If the grant expires before delivery, create a new grant explicitly and record that replacement.
+- Sessions :: Use separate stv_moderator and stv_participant cookies; the latter holds one active poll scope per browser. Each value is 32 random bytes encoded base64url without padding; store only its SHA-256 hash, purpose, scope and 12-hour absolute expiry. Cookies are host-only, HttpOnly, SameSite=Lax, path=/, with Secure controlled only by http.secure_cookies. Logout revokes both current sessions. Session cookies are never accepted as grants.
+- Grants :: Token format is base64url(payload) + dot + base64url(HMAC-SHA-256(payload)), without padding. Payload is versioned JSON containing v=1, key_id, purpose (moderator or participant), principal ID, poll/contact IDs when participant-scoped, issued_at/expires_at UTC Unix seconds and a 32-byte random nonce encoded base64url. Reject malformed, over-4096-byte, unknown-version, inactive-key and invalid-signature tokens before granting access. Compare MAC/hash in constant time and require the matching stored grant record to remain eligible. Moderator expiry is 15 minutes, participant expiry 24 hours; expiry equality is invalid.
+- Grant recovery :: Persist claims and token hash so the sender can reconstruct the same signed grant without storing a raw bearer URL. Before an attempt, a grant with less than five minutes remaining or a different active key ID is atomically superseded by a fresh grant under the same logical delivery. The old grant is revoked; no second logical invitation is created. Normal separately requested participant links may coexist until their expiry.
+- Key rotation :: Change auth.key_id with auth.signing_key and restart serve. Earlier-key grants cease to authenticate; pending mail gets fresh grants as above. Opaque existing sessions retain their own expiry and continue to check configured authority. Removing a moderator or changing their configured email invalidates grants/sessions tied to the previous configuration after restart; ownership records retain the stable ID.
 - One-use moderator consumption and session creation occur in one transaction. Participant grants remain reusable within their lifetime. Every use checks the current configured moderator or poll participant.
 - Grant/session lifetime is independent of voting eligibility. A valid session may display a closed poll's own-ballot status but cannot submit after closure.
 - All authentication responses and ballot pages use no-store caching and a no-referrer policy. Logs exclude query tokens, cookies, SMTP credentials, ballot content, and unnecessary personal data.
-- Link requests are throttled to one queued request per normalized identity/purpose/poll per minute, and five per 15 minutes. Apply an additional bounded source-address limit without trusting arbitrary forwarded headers; Caddy integration determines any trusted proxy handling.
-- Every mutation, including auth exchange and link requests, uses a server-issued CSRF token bound to a pre-authentication or authenticated session. GET does not consume a grant or open a poll.
+- Link requests :: Accept replacements for configured moderators and contacts in open polls strictly before deadline. Paused/closed/nonexistent polls and unknown addresses receive the same 303 confirmation but queue nothing. Invitation work is held while paused and cancelled if still unsent at closing; announcements are independent of invitation cancellation.
+- Throttling :: Permit one accepted link request per normalized identity/purpose/poll per minute and five in a rolling 15 minutes. Also permit at most 1000 link-request submissions globally in a rolling 15 minutes, counting known and unknown identities before queueing. Above either limit, return the same generic confirmation and queue nothing. Store hashed request keys/timestamps, purge entries older than 15 minutes, and cap stored rate records at 1000. No request-IP or forwarded-header interpretation is required; the earlier undefined source-address limit is withdrawn in favour of these application/mail limits.
+- CSRF :: Every mutation requires a random 32-byte CSRF token bound to its session and verified against the stored hash. Public login/access forms use a distinct 15-minute pre-authentication session with host-only HttpOnly SameSite=Lax cookie and the configured Secure flag. Successful grant exchange rotates into the appropriate authenticated session. GET may establish this technical session but never consumes a grant or mutates poll/ballot state. No URL-supplied return destination is accepted; redirects use fixed application routes. Origin/Referer headers are neither authorization nor a separate filter: the session-bound token supplies CSRF protection, with SameSite as an additional browser control. No URL validation is added.
+- Technical-session lifecycle :: Remove expired session records during authentication and each sweep; never remove poll/ballot records in this cleanup. Reuse a valid presented pre-authentication session. Permit at most 1000 live pre-authentication sessions, enforced transactionally; a form request requiring another session receives 503 when full. A successful exchange revokes its pre-authentication session and replaces the presented same-purpose authenticated session. This bounds abandoned-form state without interpreting proxy or client-IP headers.
 
 *** Poll state and input
 
@@ -580,11 +659,12 @@ access form without exposing the protected content.
 | Option | Poll ID, stable option ID, label, and display order; references cannot cross polls. |
 | Poll participant | Poll ID and stable participant ID; identity is local to the poll. |
 | Contact | Participant and poll association, delivery spelling and normalized email; normalized email is unique within a poll. |
-| Grant and session | Purpose, principal/scope, hashed token, validity and consumption/revocation data; secret signing material stays outside SQLite. |
+| Grant and session | Purpose, principal/scope, hashed token, claims/key ID for grants, validity and consumption/revocation data; moderator records capture their configured normalized email for later authority comparison. Secret signing material stays outside SQLite. |
 | Ballot | Unique poll/participant key, current version, ordered option IDs, and accepted timestamp. Keep only the effective revision in the first release. |
 | Count snapshot | Unique closed-poll input, explicit ballot order, opaque count-only ballot IDs, options, place count, schema/rule version, and input fingerprint. |
 | Count decisions/result | Unique sequence per snapshot and one authoritative result per snapshot; retain W002's structured record. |
-| Work and delivery | Unique logical operation key, type, due time, bounded claim, attempts, status, and safe failure classification. Recipient scope is explicit. |
+| Work and delivery | Unique logical operation key, type, due time, bounded claim/token, attempts, status, and safe failure classification. Recipient scope and associated grant ID are explicit; superseding a grant preserves the delivery ID. |
+| Link-request limits | Hashed identity/purpose/poll key and submission time; at most 1000 entries within a 15-minute window, with expired entries removed on request processing. No raw unknown email is retained. |
 
 Each ballot mutation begins a write transaction, rechecks authority/state,
 samples UTC time after obtaining the write boundary, checks version, and commits
@@ -592,20 +672,41 @@ the replacement. Closing uses that same serialization boundary to freeze the
 input and insert count work. Database constraints remain the final protection
 against two effective ballots, cross-poll references, and duplicate results.
 
-The snapshot removes participant/contact identifiers and records a one-time
-initial ballot ordering. The workflow supplies any external selections requested
-by W002 using cryptographic random selection over the exact eligible set. Each
-decision is *committed with its request fingerprint before the engine consumes
-it*. A retry reuses it. This is reproducibility, not a promise of ballot anonymity.
+The close transaction assigns fresh count-only ballot IDs, removes
+participant/contact identifiers from the snapshot, and applies one uniform
+Fisher-Yates shuffle using cryptographic randomness. It persists that exact order
+with W002's schema=1 and rule=irish-guided-stv-v1 before any count runs. A failed
+close, including shuffle failure, rolls back the entire close transaction and
+leaves no snapshot or job. Manual close returns 503 for a safe retry; a scheduled
+close records an operational failure and may retry on the next sweep. After the
+deadline, the page says "Voting ended; results pending" even if the close has
+not committed. A committed snapshot is never reshuffled.
+
+W002's unresolved candidate lots are answered by uniform cryptographic selection
+from its eligible list. Persist each request and answer, including its
+fingerprint and sequence, under the current work claim before replaying the
+engine. A unique snapshot/sequence constraint prevents competing answers; a retry
+uses the already committed answer. Lot-selection RNG failure after a snapshot
+exists produces a visible failed count, retaining that snapshot and earlier
+decisions without a new answer or result. This is reproducibility, not ballot
+anonymity.
+
+- Result projection :: The engine's full record remains internal. Moderator HTML shows quota, aggregate turnout, per-option totals by count, elections/exclusions, aggregate transfers/exhaustion and option-level lot outcomes. It never returns snapshot JSON, ballot IDs/preferences, parcel membership or request fingerprints. Participant pages show only that participant's own current ballot and poll state.
+- Privacy presentation :: Before voting, explain that one current ballot is stored per participant, moderators see aggregate results, and records are retained for review/list reuse. Include: "In a small poll, the results or turnout may allow someone to infer how a person voted or whether they took part." Do not promise anonymity: operators controlling storage can access the underlying associations. No individual-vote history or export route is introduced. Permitting aggregate results without a group-size threshold is an explicit proposal for operator sign-off.
 
 *** Due work and delivery
 
 - Command :: =stv-poll process-due-work= uses the same configuration and database as serve. It reconciles due polls, advances counts, then dispatches due messages; it performs one bounded pass and exits.
-- Bounds :: Maximum 60 seconds per invocation and 100 claimed work items. A claim lasts 120 seconds; every acknowledgement verifies its claim token. No stale worker may commit after losing its claim. Cancellation leaves durable work reclaimable.
+- Bounds :: Maximum 60 seconds per invocation and 100 work items, including each close, count or delivery operation. Query in due-time/ID order, processing closing, counting and then delivery within the shared bound. A claim lasts 120 seconds; every mutation/acknowledgement checks its token, pending state and unexpired lease inside the transaction. Cancellation leaves unfinished work reclaimable; successful earlier operations remain committed.
+- Command outcomes :: Help/version and invocation errors follow W001. No work or a healthy bounded batch exits 0; any attempted dependency/count/mail failure or execution-deadline cancellation exits 1 with a safe diagnostic. Existing terminal failures are not retried by each invocation and do not independently fail otherwise healthy sweeps. A full batch with remaining work exits 0; the next timer invocation resumes it. Emit one JSON stdout summary with version=1 and counts for closed, counted, no_votes, smtp_accepted, retrying, failed and cancelled; diagnostics go to stderr.
+- Summary meanings :: Emit exactly those eight fields, all non-negative integers, for this invocation only. closed counts committed closes (including zero turnout); counted counts committed engine results; no_votes counts committed zero-turnout outcomes; smtp_accepted counts successful SMTP attempts; retrying counts attempts scheduled for retry; cancelled counts unsent deliveries cancelled by closing or expiry; failed counts failed attempted operations, including retryable failures, plus one for startup or execution-deadline failure. A retryable failure increments both failed and retrying. Startup failure emits failed=1 and all other counters zero. Invocation errors follow W001's exit 2/usage contract without a worker summary. Output contains no personal or secret values.
 - Scheduler :: Declare a one-minute interval and this argument vector through Exodan's timer intent. The application creates no timer/cron/service definition.
 - Result commit :: Store result, mark count work successful, and insert the logical announcement deliveries in one transaction. Never send before commit.
 - SMTP :: Connect using the configured host/port and a 10-second overall attempt deadline. Require verified TLS through explicit implicit-TLS or required-STARTTLS mode; no opportunistic downgrade. Local plaintext SMTP is allowed only with an explicit development setting and a loopback destination.
-- Retry :: Initial attempt plus at most five retries, due after 1, 2, 4, 8, and 16 minutes following successive temporary failures. Permanent recipient/protocol rejection becomes terminal immediately; timeout/ambiguous acceptance is a temporary outcome. Persist attempts and due times.
+- Retry :: Initial attempt plus at most five retries. After successive temporary failures, schedule 1, 2, 4, 8 and 16 minutes plus uniform jitter from 0 through 10% of that delay, persisted once with next_due. Permanent recipient rejection, authentication rejection and TLS policy/certificate failures become terminal immediately; temporary SMTP 4xx, connection failure and timeout/ambiguous acceptance are retryable. Persist attempt count and outcome. A process crash during an attempt consumes that started attempt; lease expiry schedules its bounded retry rather than resetting the counter. Tests inject jitter and inspect its persisted range/reuse.
+- Attempt boundary :: Commit the incremented attempt counter and in-flight state before SMTP. Sending happens outside transactions. A final ambiguous/crashed sixth attempt becomes terminal failed after lease expiry; it cannot cause an unlimited retry loop. Before each attempt, recheck the grant and invitation eligibility under the claim. Closing atomically cancels unsent invitation/replacement jobs; an SMTP attempt already in progress may still arrive, but the closed-poll eligibility check prevents voting.
+- Eligibility at send :: Invitation/replacement attempts require an open poll and time strictly before its deadline; paused work is held, and elapsed/closed work is cancelled without another attempt. An already-started SMTP operation may finish after pause or close. Moderator login mail instead checks the currently configured moderator; result announcements require a committed result and the recorded checkbox setting.
+- Message construction :: Use text/template for the exact invitation body. Invitation subject is Vote: [thing]; moderator and participant replacement subjects are Sign in to STV Poll and Return to [thing]. Replacement bodies contain one short instruction and the recipient's link. Strip CR/LF from subject substitutions, encode non-ASCII headers with MIME encoded words, and use UTF-8 text/plain bodies. Each message has exactly one envelope/header recipient; no contact list or credential appears in logs.
 - Visibility :: Show safe delivery states per contact to the owner, distinguishing queued, SMTP-accepted, retrying, and failed. Do not call SMTP acceptance "delivered to inbox".
 - Logical uniqueness :: Initial invitations are unique per poll/contact; announcements per result/contact. A repeated HTTP action or worker does not create another logical operation. Physical SMTP duplicates remain possible after ambiguous acceptance.
 - Failures :: A count error becomes visible and retains its snapshot/decisions; no automatic repeated count error loop is run. Infrastructure interruption reclaims unfinished work. Do not silently replace an existing successful result.
@@ -636,7 +737,7 @@ contact lists, or a public result link. Invitations remain *exactly as in VISION
 *** Security impact
 
 - Threat boundary :: Public form/authentication endpoints, email bearer links, moderator ownership, participant identity, and persisted votes.
-- Data and secrets :: The database retains personal contacts and ballot associations; *do not promise anonymity*. Restrict state access to the application identity and disclose the proposed retention/visibility policy in the UI.
+- Data and secrets :: The database retains personal contacts and ballot associations; *do not promise anonymity*. Consume Exodan's state-access boundary and disclose the proposed retention/visibility policy in the UI; the application does not manage host ownership or permissions.
 - Access :: Deny cross-owner/cross-poll access; derive participant identity from the scoped session, never a submitted email or arbitrary participant ID.
 - Mitigation :: Atomic grant consumption, hashed sessions, explicit scope, CSRF, output escaping, bounded inputs, private pages, safe link origins, redacted logs, TLS mail, and dependency scanning.
 - Gate :: Privacy, retention, and announcement proposals require explicit operator sign-off before implementation creates this capability.

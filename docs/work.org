@@ -104,7 +104,7 @@ classification; it is provenance, not current state.
 - Definition :: Definition gate PASS after explicit application rules, worked cases and retained independent audit; operator sign-off pending. The operator withdrew legislative conformity and source-edition verification on 8 September 2026; legislation remains guidance.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]].
 
-** TODO W003 - Deliver the invited poll workflow :feature:
+** REVIEW W003 - Deliver the invited poll workflow :feature:
 :PROPERTIES:
 :CUSTOM_ID: w-003
 :PRIORITY: P1
@@ -114,7 +114,7 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/003-invited-poll-workflow/spec.org][W003 - Deliver the invited poll workflow]].
 - Scope :: Moderator and participant access, grouped email addresses, list reuse, invitations, ballot revisions, pause/close, counting, results, announcements, and help.
-- Definition :: Draft written; definition gate and operator sign-off are pending. Proposed policies are labelled for operator review, rather than recorded as prior decisions.
+- Definition :: Definition gate PASS after local review and retained independent audit; operator sign-off pending. Proposed policies are labelled for operator review, rather than recorded as prior decisions.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]] and [[#w-002][W002 - Implement reproducible Irish PR-STV counting]].
 
 * Migration record
