@@ -59,6 +59,14 @@ func TestRunTransfersOriginalSurplusUsingWholeBallots(t *testing.T) {
 		t.Fatalf("counts = %#v, want A surplus movements", outcome.Result.Counts)
 	}
 	if !recordContains(outcome.Result.Counts, func(record CountRecord) bool {
+		return record.SurplusOptionID == "A" && reflect.DeepEqual(record.Apportionments, []Apportionment{
+			{DestinationOptionID: "B", ParcelBallots: 4, Quotient: 1, Remainder: 2, SelectedBallotIDs: []string{"b1"}},
+			{DestinationOptionID: "C", ParcelBallots: 2, Quotient: 0, Remainder: 4, SelectedBallotIDs: []string{"b5"}},
+		})
+	}) {
+		t.Fatalf("counts = %#v, want exact surplus apportionment", outcome.Result.Counts)
+	}
+	if !recordContains(outcome.Result.Counts, func(record CountRecord) bool {
 		return len(record.ExcludedOptionIDs) > 0 && record.ExcludedOptionIDs[0] == "D"
 	}) {
 		t.Fatalf("counts = %#v, want D exclusion event", outcome.Result.Counts)
@@ -266,6 +274,22 @@ func TestRunUsesHistoricalHighForRemainderTie(t *testing.T) {
 	}
 }
 
+func TestRunRequestsSequentialLotsAcrossRemainderBoundary(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C", "D"}, Places: 3, Ballots: expandBallots([]ballotGroup{
+		{2, []string{"A", "B"}}, {2, []string{"A", "C"}}, {2, []string{"A", "D"}}, {2, []string{"A"}},
+		{4, []string{"B"}}, {4, []string{"C"}}, {4, []string{"D"}},
+	})}
+	first, err := Run(context.Background(), input, nil)
+	if err != nil || first.DecisionRequest == nil || first.DecisionRequest.Kind != "remainder_lot" || !reflect.DeepEqual(first.DecisionRequest.EligibleOptionIDs, []string{"B", "C", "D"}) {
+		t.Fatalf("first outcome = %#v, error = %v", first, err)
+	}
+	decision := Decision{Sequence: first.DecisionRequest.Sequence, Kind: first.DecisionRequest.Kind, RequestFingerprint: first.DecisionRequest.RequestFingerprint, SelectedOptionIDs: []string{"B"}}
+	second, err := Run(context.Background(), input, []Decision{decision})
+	if err != nil || second.DecisionRequest == nil || second.DecisionRequest.Sequence != 2 || !reflect.DeepEqual(second.DecisionRequest.EligibleOptionIDs, []string{"C", "D"}) {
+		t.Fatalf("second outcome = %#v, error = %v", second, err)
+	}
+}
+
 func TestRunSurplusTransferBoundaries(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -314,10 +338,24 @@ func TestRunRejectsInvalidBoundariesWithoutMutatingInput(t *testing.T) {
 		input Input
 	}{
 		{name: "unsupported schema", input: func() Input { value := valid; value.SchemaVersion = 2; return value }()},
+		{name: "unsupported rule", input: func() Input { value := valid; value.Rule = "other"; return value }()},
+		{name: "zero places", input: func() Input { value := valid; value.Places = 0; return value }()},
+		{name: "too many places", input: func() Input { value := valid; value.Places = 3; return value }()},
+		{name: "zero ballots", input: func() Input { value := valid; value.Ballots = nil; return value }()},
 		{name: "invalid option identifier", input: func() Input { value := valid; value.Options = []string{"A space", "B"}; return value }()},
 		{name: "invalid ballot identifier", input: func() Input {
 			value := valid
 			value.Ballots = []Ballot{{ID: "", Preferences: []string{"A"}}}
+			return value
+		}()},
+		{name: "duplicate ballot identifier", input: func() Input {
+			value := valid
+			value.Ballots = []Ballot{{ID: "b1", Preferences: []string{"A"}}, {ID: "b1", Preferences: []string{"B"}}}
+			return value
+		}()},
+		{name: "empty ballot", input: func() Input {
+			value := valid
+			value.Ballots = []Ballot{{ID: "b1"}}
 			return value
 		}()},
 		{name: "unknown preference", input: func() Input {
@@ -435,8 +473,12 @@ func recordContains(records []CountRecord, predicate func(CountRecord) bool) boo
 
 func cloneInput(input Input) Input {
 	cloned := input
-	cloned.Options = append([]string(nil), input.Options...)
-	cloned.Ballots = make([]Ballot, len(input.Ballots))
+	if input.Options != nil {
+		cloned.Options = append([]string(nil), input.Options...)
+	}
+	if input.Ballots != nil {
+		cloned.Ballots = make([]Ballot, len(input.Ballots))
+	}
 	for index, ballot := range input.Ballots {
 		cloned.Ballots[index] = Ballot{ID: ballot.ID, Preferences: append([]string(nil), ballot.Preferences...)}
 	}
@@ -474,7 +516,7 @@ func runChoosing(t *testing.T, input Input, firstChoice string) Outcome {
 			t.Fatalf("outcome = %#v", outcome)
 		}
 		choice := request.EligibleOptionIDs[0]
-		if len(decisions) == 0 {
+		if len(decisions) == 0 && contains(request.EligibleOptionIDs, firstChoice) {
 			choice = firstChoice
 		}
 		decisions = append(decisions, Decision{Sequence: request.Sequence, Kind: request.Kind, RequestFingerprint: request.RequestFingerprint, SelectedOptionIDs: []string{choice}})

@@ -45,18 +45,34 @@ type OptionTotal struct {
 	Votes    int    `json:"votes"`
 }
 type CountRecord struct {
-	Index             int           `json:"index"`
-	Totals            []OptionTotal `json:"totals"`
-	Exhausted         int           `json:"exhausted"`
-	ElectedOptionIDs  []string      `json:"elected_option_ids"`
-	ExcludedOptionIDs []string      `json:"excluded_option_ids"`
-	SurplusOptionID   string        `json:"surplus_option_id,omitempty"`
-	Transfers         []Transfer    `json:"transfers"`
+	Index                 int                   `json:"index"`
+	Totals                []OptionTotal         `json:"totals"`
+	Exhausted             int                   `json:"exhausted"`
+	NonTransferableChange int                   `json:"non_transferable_change"`
+	ElectedOptionIDs      []string              `json:"elected_option_ids"`
+	ExcludedOptionIDs     []string              `json:"excluded_option_ids"`
+	SurplusOptionID       string                `json:"surplus_option_id,omitempty"`
+	Transfers             []Transfer            `json:"transfers"`
+	Apportionments        []Apportionment       `json:"apportionments"`
+	Selections            []SelectionProvenance `json:"selections"`
 }
 type Transfer struct {
 	BallotID     string `json:"ballot_id"`
 	FromOptionID string `json:"from_option_id"`
 	ToOptionID   string `json:"to_option_id,omitempty"`
+}
+type Apportionment struct {
+	DestinationOptionID string   `json:"destination_option_id"`
+	ParcelBallots       int      `json:"parcel_ballots"`
+	Quotient            int      `json:"quotient"`
+	Remainder           int      `json:"remainder"`
+	SelectedBallotIDs   []string `json:"selected_ballot_ids"`
+}
+type SelectionProvenance struct {
+	Kind              string   `json:"kind"`
+	Method            string   `json:"method"`
+	SelectedOptionIDs []string `json:"selected_option_ids"`
+	DecisionSequence  int      `json:"decision_sequence,omitempty"`
 }
 type Decision struct {
 	Sequence           int      `json:"sequence"`
@@ -82,192 +98,338 @@ type allocation struct {
 	parcel int
 }
 
+type surplusTransferResult struct {
+	transfers      []Transfer
+	apportionments []Apportionment
+}
+
+type remainderPlan struct {
+	selected []string
+	tied     []string
+	slots    int
+}
+
 func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error) {
 	if err := ctx.Err(); err != nil {
 		return Outcome{}, err
 	}
-	if err := validate(input); err != nil {
+	if err := validate(ctx, input); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return Outcome{}, err
+		}
 		return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
-	quota := len(input.Ballots)/(input.Places+1) + 1
 	inputFingerprint, err := fingerprintInput(input)
 	if err != nil {
 		return Outcome{}, fmt.Errorf("fingerprinting count input: %w", err)
 	}
-	allocations := make([]allocation, len(input.Ballots))
+	engine := &countEngine{
+		input: input, decisions: decisions, quota: len(input.Ballots)/(input.Places+1) + 1,
+		inputFingerprint: inputFingerprint, allocations: make([]allocation, len(input.Ballots)),
+		continuing: make(map[string]bool, len(input.Options)), processed: map[string]bool{},
+		electionParcel: map[string]int{},
+	}
 	for index, ballot := range input.Ballots {
-		allocations[index] = allocation{ballot: ballot, option: ballot.Preferences[0]}
+		engine.allocations[index] = allocation{ballot: ballot, option: ballot.Preferences[0]}
 	}
-	continuing := make(map[string]bool, len(input.Options))
 	for _, option := range input.Options {
-		continuing[option] = true
+		engine.continuing[option] = true
 	}
-	winners := []string{}
-	processed := map[string]bool{}
-	electionParcel := map[string]int{}
-	decisionIndex := 0
-	operation := 0
-	countRecords := []CountRecord{}
-	pendingExcluded := []string(nil)
-	pendingSurplus := ""
-	pendingTransfers := []Transfer(nil)
+	return engine.run(ctx)
+}
+
+type countEngine struct {
+	input                 Input
+	decisions             []Decision
+	quota                 int
+	inputFingerprint      string
+	allocations           []allocation
+	continuing            map[string]bool
+	winners               []string
+	processed             map[string]bool
+	electionParcel        map[string]int
+	decisionIndex         int
+	operation             int
+	countRecords          []CountRecord
+	pendingExcluded       []string
+	pendingSurplus        string
+	pendingTransfers      []Transfer
+	pendingApportionments []Apportionment
+	pendingSelections     []SelectionProvenance
+	previousExhausted     int
+}
+
+func (engine *countEngine) run(ctx context.Context) (Outcome, error) {
 	for steps := 0; steps < 100; steps++ {
 		if err := ctx.Err(); err != nil {
 			return Outcome{}, err
 		}
-		tallies := tally(input.Options, allocations)
-		record := recordTotals(operation+1, input.Options, tallies, allocations)
-		record.ExcludedOptionIDs = pendingExcluded
-		record.SurplusOptionID = pendingSurplus
-		record.Transfers = pendingTransfers
-		countRecords = append(countRecords, record)
-		pendingExcluded = nil
-		pendingSurplus = ""
-		pendingTransfers = nil
-		for _, option := range input.Options {
-			if continuing[option] && tallies[option] >= quota {
-				continuing[option] = false
-				winners = append(winners, option)
-				countRecords[len(countRecords)-1].ElectedOptionIDs = append(countRecords[len(countRecords)-1].ElectedOptionIDs, option)
-				electionParcel[option] = operation
-				if len(winners) == input.Places {
-					if decisionIndex != len(decisions) {
-						return Outcome{}, fmt.Errorf("%w: unused decision", ErrInvalidDecision)
-					}
-					return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: orderByOptions(input.Options, winners), Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
-				}
-			}
+		tallies := tally(engine.input.Options, engine.allocations)
+		if err := engine.recordCurrent(tallies); err != nil {
+			return Outcome{}, err
 		}
-		if continuingCount(continuing) == input.Places-len(winners) {
-			for _, option := range input.Options {
-				if continuing[option] {
-					winners = append(winners, option)
-					countRecords[len(countRecords)-1].ElectedOptionIDs = append(countRecords[len(countRecords)-1].ElectedOptionIDs, option)
-				}
-			}
-			if decisionIndex != len(decisions) {
-				return Outcome{}, fmt.Errorf("%w: unused decision", ErrInvalidDecision)
-			}
-			return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: orderByOptions(input.Options, winners), Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
+		if result, err := engine.recognizeWinners(tallies); result != nil || err != nil {
+			return Outcome{Result: result}, err
 		}
-		selected := ""
-		pendingSurpluses := []string{}
-		largestSurplus := 0
-		for _, winner := range winners {
-			if !processed[winner] && tallies[winner] > quota {
-				surplus := tallies[winner] - quota
-				if surplus > largestSurplus {
-					largestSurplus = surplus
-					pendingSurpluses = []string{winner}
-				} else if surplus == largestSurplus {
-					pendingSurpluses = append(pendingSurpluses, winner)
-				}
-			}
+		processed, outcome, err := engine.processSurplus(ctx, tallies)
+		if err != nil || outcome.DecisionRequest != nil {
+			return outcome, err
 		}
-		if len(pendingSurpluses) == 1 {
-			selected = pendingSurpluses[0]
-		} else if len(pendingSurpluses) > 1 {
-			pendingSurpluses = historicalCandidates(pendingSurpluses, countRecords[:len(countRecords)-1], true)
-			if len(pendingSurpluses) == 1 {
-				selected = pendingSurpluses[0]
-			} else {
-				request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "surplus_order_lot", operation+1, orderByOptions(input.Options, pendingSurpluses))
-				if err != nil {
-					return Outcome{}, fmt.Errorf("fingerprinting surplus decision request: %w", err)
-				}
-				if decisionIndex == len(decisions) {
-					return Outcome{DecisionRequest: &request}, nil
-				}
-				decision := decisions[decisionIndex]
-				if err := validateDecision(decision, request); err != nil {
-					return Outcome{}, err
-				}
-				selected = decision.SelectedOptionIDs[0]
-				decisionIndex++
-			}
-		}
-		if selected != "" {
-			eligible, choice := surplusRemainderTie(input.Options, selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected], countRecords[:len(countRecords)-1])
-			if len(eligible) > 0 {
-				request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "remainder_lot", operation+1, eligible)
-				if err != nil {
-					return Outcome{}, fmt.Errorf("fingerprinting remainder decision request: %w", err)
-				}
-				if decisionIndex == len(decisions) {
-					return Outcome{DecisionRequest: &request}, nil
-				}
-				decision := decisions[decisionIndex]
-				if err := validateDecision(decision, request); err != nil {
-					return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
-				}
-				choice = decision.SelectedOptionIDs[0]
-				decisionIndex++
-			}
-			operation++
-			pendingSurplus = selected
-			pendingTransfers = transferSurplus(selected, tallies[selected]-quota, allocations, continuing, electionParcel[selected], operation, choice)
-			processed[selected] = true
+		if processed {
 			continue
 		}
-		lowest := ""
-		lowestOptions := []string{}
-		for _, option := range input.Options {
-			if !continuing[option] {
-				continue
-			}
-			if lowest == "" || tallies[option] < tallies[lowest] {
-				lowest = option
-				lowestOptions = []string{option}
-				continue
-			}
-			if tallies[option] == tallies[lowest] {
-				lowestOptions = append(lowestOptions, option)
-			}
-		}
-		if lowest == "" {
-			return Outcome{}, errors.New("count made no progress")
-		}
-		if len(lowestOptions) > 1 {
-			lowestOptions = historicalCandidates(lowestOptions, countRecords[:len(countRecords)-1], false)
-			if len(lowestOptions) == 1 {
-				lowest = lowestOptions[0]
-			}
-		}
-		exclusionSet := bulkExclusionSet(input.Options, continuing, tallies, input.Places-len(winners))
-		if len(exclusionSet) == 0 && len(lowestOptions) > 1 {
-			request, err := newDecisionRequest(inputFingerprint, decisionIndex+1, "exclusion_lot", operation+1, lowestOptions)
-			if err != nil {
-				return Outcome{}, fmt.Errorf("fingerprinting exclusion decision request: %w", err)
-			}
-			if decisionIndex == len(decisions) {
-				return Outcome{DecisionRequest: &request}, nil
-			}
-			decision := decisions[decisionIndex]
-			if err := validateDecision(decision, request); err != nil {
-				return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
-			}
-			lowest = decision.SelectedOptionIDs[0]
-			decisionIndex++
-		}
-		if len(exclusionSet) == 0 {
-			exclusionSet = []string{lowest}
-		}
-		for _, option := range exclusionSet {
-			continuing[option] = false
-		}
-		operation++
-		pendingExcluded = append([]string(nil), exclusionSet...)
-		for index := range allocations {
-			if contains(exclusionSet, allocations[index].option) {
-				from := allocations[index].option
-				to := nextPreference(allocations[index].ballot, continuing)
-				allocations[index].option = to
-				allocations[index].parcel = operation
-				pendingTransfers = append(pendingTransfers, Transfer{BallotID: allocations[index].ballot.ID, FromOptionID: from, ToOptionID: to})
-			}
+		outcome, err = engine.processExclusion(ctx, tallies)
+		if err != nil || outcome.DecisionRequest != nil {
+			return outcome, err
 		}
 	}
 	return Outcome{}, errors.New("count exceeded progress bound")
+}
+
+func (engine *countEngine) recordCurrent(tallies map[string]int) error {
+	if !conservesBallots(tallies, engine.allocations) {
+		return errors.New("count ballot conservation failed")
+	}
+	record := recordTotals(engine.operation+1, engine.input.Options, tallies, engine.allocations)
+	record.ExcludedOptionIDs = engine.pendingExcluded
+	record.SurplusOptionID = engine.pendingSurplus
+	record.Transfers = engine.pendingTransfers
+	record.Apportionments = engine.pendingApportionments
+	record.NonTransferableChange = record.Exhausted - engine.previousExhausted
+	record.Selections = engine.pendingSelections
+	engine.previousExhausted = record.Exhausted
+	engine.countRecords = append(engine.countRecords, record)
+	engine.pendingExcluded = nil
+	engine.pendingSurplus = ""
+	engine.pendingTransfers = nil
+	engine.pendingApportionments = nil
+	engine.pendingSelections = nil
+	return nil
+}
+
+func (engine *countEngine) recognizeWinners(tallies map[string]int) (*Result, error) {
+	for _, option := range engine.input.Options {
+		if engine.continuing[option] && tallies[option] >= engine.quota {
+			engine.elect(option)
+			if len(engine.winners) == engine.input.Places {
+				return engine.result()
+			}
+		}
+	}
+	if continuingCount(engine.continuing) != engine.input.Places-len(engine.winners) {
+		return nil, nil
+	}
+	for _, option := range engine.input.Options {
+		if engine.continuing[option] {
+			engine.elect(option)
+		}
+	}
+	return engine.result()
+}
+
+func (engine *countEngine) elect(option string) {
+	engine.continuing[option] = false
+	engine.winners = append(engine.winners, option)
+	last := len(engine.countRecords) - 1
+	engine.countRecords[last].ElectedOptionIDs = append(engine.countRecords[last].ElectedOptionIDs, option)
+	engine.electionParcel[option] = engine.operation
+}
+
+func (engine *countEngine) result() (*Result, error) {
+	if engine.decisionIndex != len(engine.decisions) {
+		return nil, fmt.Errorf("%w: unused decision", ErrInvalidDecision)
+	}
+	return &Result{SchemaVersion: 1, Rule: engine.input.Rule, InputFingerprint: engine.inputFingerprint, Quota: engine.quota, Winners: orderByOptions(engine.input.Options, engine.winners), Counts: engine.countRecords, UsedDecisions: append([]Decision(nil), engine.decisions...)}, nil
+}
+
+func (engine *countEngine) processSurplus(ctx context.Context, tallies map[string]int) (bool, Outcome, error) {
+	selected, outcome, err := engine.selectSurplus(tallies)
+	if err != nil || outcome.DecisionRequest != nil || selected == "" {
+		return false, outcome, err
+	}
+	plan, err := buildRemainderPlan(ctx, engine.input.Options, selected, tallies[selected]-engine.quota, engine.allocations, engine.continuing, engine.electionParcel[selected])
+	if err != nil {
+		return false, Outcome{}, err
+	}
+	for plan.slots > 0 {
+		if plan.slots == len(plan.tied) {
+			plan.selected = append(plan.selected, plan.tied...)
+			break
+		}
+		eligible := historicalCandidates(plan.tied, engine.countRecords[:len(engine.countRecords)-1], true)
+		choice := ""
+		if len(eligible) == 1 {
+			choice = eligible[0]
+			engine.pendingSelections = append(engine.pendingSelections, SelectionProvenance{Kind: "remainder_lot", Method: "historical_high", SelectedOptionIDs: []string{choice}})
+		} else {
+			request, err := newDecisionRequest(engine.inputFingerprint, engine.decisionIndex+1, "remainder_lot", engine.operation+1, orderByOptions(engine.input.Options, eligible))
+			if err != nil {
+				return false, Outcome{}, fmt.Errorf("fingerprinting remainder decision request: %w", err)
+			}
+			decision, available, err := engine.consumeDecision(request)
+			if err != nil {
+				return false, Outcome{}, err
+			}
+			if !available {
+				return false, Outcome{DecisionRequest: &request}, nil
+			}
+			choice = decision.SelectedOptionIDs[0]
+			engine.pendingSelections = append(engine.pendingSelections, decisionProvenance(decision))
+		}
+		plan.selected = append(plan.selected, choice)
+		plan.tied = withoutOption(plan.tied, choice)
+		plan.slots--
+	}
+	engine.operation++
+	engine.pendingSurplus = selected
+	transferResult, err := transferSurplus(ctx, selected, tallies[selected]-engine.quota, engine.allocations, engine.continuing, engine.electionParcel[selected], engine.operation, plan.selected)
+	if err != nil {
+		return false, Outcome{}, err
+	}
+	engine.pendingTransfers = transferResult.transfers
+	engine.pendingApportionments = transferResult.apportionments
+	engine.processed[selected] = true
+	return true, Outcome{}, nil
+}
+
+func (engine *countEngine) selectSurplus(tallies map[string]int) (string, Outcome, error) {
+	pending := largestPendingSurpluses(engine.winners, engine.processed, tallies, engine.quota)
+	if len(pending) == 0 {
+		return "", Outcome{}, nil
+	}
+	if len(pending) == 1 {
+		return pending[0], Outcome{}, nil
+	}
+	pending = historicalCandidates(pending, engine.countRecords[:len(engine.countRecords)-1], true)
+	if len(pending) == 1 {
+		engine.pendingSelections = append(engine.pendingSelections, SelectionProvenance{Kind: "surplus_order", Method: "historical_high", SelectedOptionIDs: []string{pending[0]}})
+		return pending[0], Outcome{}, nil
+	}
+	request, err := newDecisionRequest(engine.inputFingerprint, engine.decisionIndex+1, "surplus_order_lot", engine.operation+1, orderByOptions(engine.input.Options, pending))
+	if err != nil {
+		return "", Outcome{}, fmt.Errorf("fingerprinting surplus decision request: %w", err)
+	}
+	decision, available, err := engine.consumeDecision(request)
+	if err != nil {
+		return "", Outcome{}, err
+	}
+	if !available {
+		return "", Outcome{DecisionRequest: &request}, nil
+	}
+	engine.pendingSelections = append(engine.pendingSelections, decisionProvenance(decision))
+	return decision.SelectedOptionIDs[0], Outcome{}, nil
+}
+
+func (engine *countEngine) processExclusion(ctx context.Context, tallies map[string]int) (Outcome, error) {
+	lowest, candidates := lowestCandidates(engine.input.Options, engine.continuing, tallies)
+	if lowest == "" {
+		return Outcome{}, errors.New("count made no progress")
+	}
+	if len(candidates) > 1 {
+		candidates = historicalCandidates(candidates, engine.countRecords[:len(engine.countRecords)-1], false)
+		if len(candidates) == 1 {
+			lowest = candidates[0]
+			engine.pendingSelections = append(engine.pendingSelections, SelectionProvenance{Kind: "exclusion", Method: "historical_low", SelectedOptionIDs: []string{lowest}})
+		}
+	}
+	exclusionSet := bulkExclusionSet(engine.input.Options, engine.continuing, tallies, engine.input.Places-len(engine.winners))
+	if len(exclusionSet) == 0 && len(candidates) > 1 {
+		request, err := newDecisionRequest(engine.inputFingerprint, engine.decisionIndex+1, "exclusion_lot", engine.operation+1, candidates)
+		if err != nil {
+			return Outcome{}, fmt.Errorf("fingerprinting exclusion decision request: %w", err)
+		}
+		decision, available, err := engine.consumeDecision(request)
+		if err != nil {
+			return Outcome{}, err
+		}
+		if !available {
+			return Outcome{DecisionRequest: &request}, nil
+		}
+		lowest = decision.SelectedOptionIDs[0]
+		engine.pendingSelections = append(engine.pendingSelections, decisionProvenance(decision))
+	}
+	if len(exclusionSet) == 0 {
+		exclusionSet = []string{lowest}
+	} else {
+		engine.pendingSelections = append(engine.pendingSelections, SelectionProvenance{Kind: "exclusion", Method: "bulk_rule", SelectedOptionIDs: append([]string(nil), exclusionSet...)})
+	}
+	return Outcome{}, engine.applyExclusion(ctx, exclusionSet)
+}
+
+func (engine *countEngine) consumeDecision(request DecisionRequest) (Decision, bool, error) {
+	if engine.decisionIndex == len(engine.decisions) {
+		return Decision{}, false, nil
+	}
+	decision := engine.decisions[engine.decisionIndex]
+	if err := validateDecision(decision, request); err != nil {
+		return Decision{}, false, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
+	}
+	engine.decisionIndex++
+	return decision, true, nil
+}
+
+func (engine *countEngine) applyExclusion(ctx context.Context, exclusionSet []string) error {
+	for _, option := range exclusionSet {
+		engine.continuing[option] = false
+	}
+	engine.operation++
+	engine.pendingExcluded = append([]string(nil), exclusionSet...)
+	for index := range engine.allocations {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !contains(exclusionSet, engine.allocations[index].option) {
+			continue
+		}
+		from := engine.allocations[index].option
+		to, err := nextPreference(ctx, engine.allocations[index].ballot, engine.continuing)
+		if err != nil {
+			return err
+		}
+		engine.allocations[index].option = to
+		engine.allocations[index].parcel = engine.operation
+		engine.pendingTransfers = append(engine.pendingTransfers, Transfer{BallotID: engine.allocations[index].ballot.ID, FromOptionID: from, ToOptionID: to})
+	}
+	return nil
+}
+
+func largestPendingSurpluses(winners []string, processed map[string]bool, tallies map[string]int, quota int) []string {
+	pending := []string{}
+	largest := 0
+	for _, winner := range winners {
+		if processed[winner] || tallies[winner] <= quota {
+			continue
+		}
+		surplus := tallies[winner] - quota
+		if surplus > largest {
+			largest = surplus
+			pending = []string{winner}
+		} else if surplus == largest {
+			pending = append(pending, winner)
+		}
+	}
+	return pending
+}
+
+func lowestCandidates(options []string, continuing map[string]bool, tallies map[string]int) (string, []string) {
+	lowest := ""
+	candidates := []string{}
+	for _, option := range options {
+		if !continuing[option] {
+			continue
+		}
+		if lowest == "" || tallies[option] < tallies[lowest] {
+			lowest = option
+			candidates = []string{option}
+		} else if tallies[option] == tallies[lowest] {
+			candidates = append(candidates, option)
+		}
+	}
+	return lowest, candidates
+}
+
+func decisionProvenance(decision Decision) SelectionProvenance {
+	return SelectionProvenance{Kind: decision.Kind, Method: "external_lot", SelectedOptionIDs: append([]string(nil), decision.SelectedOptionIDs...), DecisionSequence: decision.Sequence}
 }
 func tally(options []string, allocations []allocation) map[string]int {
 	totals := map[string]int{}
@@ -291,20 +453,29 @@ func continuingCount(continuing map[string]bool) int {
 	}
 	return count
 }
-func nextPreference(ballot Ballot, continuing map[string]bool) string {
+func nextPreference(ctx context.Context, ballot Ballot, continuing map[string]bool) (string, error) {
 	for _, p := range ballot.Preferences {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		if continuing[p] {
-			return p
+			return p, nil
 		}
 	}
-	return ""
+	return "", nil
 }
-func transferSurplus(winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel, destinationParcel int, remainderChoice string) []Transfer {
+func transferSurplus(ctx context.Context, winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel, destinationParcel int, remainderChoices []string) (surplusTransferResult, error) {
 	groups := map[string][]int{}
 	order := []string{}
 	for i, a := range allocations {
+		if err := ctx.Err(); err != nil {
+			return surplusTransferResult{}, err
+		}
 		if a.option == winner && a.parcel == sourceParcel {
-			d := nextPreference(a.ballot, continuing)
+			d, err := nextPreference(ctx, a.ballot, continuing)
+			if err != nil {
+				return surplusTransferResult{}, err
+			}
 			if d != "" {
 				if _, ok := groups[d]; !ok {
 					order = append(order, d)
@@ -318,89 +489,94 @@ func transferSurplus(winner string, surplus int, allocations []allocation, conti
 		total += len(ids)
 	}
 	if total == 0 {
-		return nil
+		return surplusTransferResult{}, nil
 	}
-	transfers := []Transfer{}
+	result := surplusTransferResult{}
 	moveCounts := map[string]int{}
 	if total <= surplus {
 		for destination, indexes := range groups {
 			moveCounts[destination] = len(indexes)
 		}
 	} else {
-		remaining := surplus
 		for _, destination := range order {
 			moveCounts[destination] = surplus * len(groups[destination]) / total
-			remaining -= moveCounts[destination]
 		}
-		remainderOrder := append([]string(nil), order...)
-		sort.SliceStable(remainderOrder, func(i, j int) bool {
-			left := surplus * len(groups[remainderOrder[i]]) % total
-			right := surplus * len(groups[remainderOrder[j]]) % total
-			if left == right && remainderChoice != "" {
-				return remainderOrder[i] == remainderChoice
-			}
-			return left > right
-		})
-		for _, destination := range remainderOrder[:remaining] {
+		for _, destination := range remainderChoices {
 			moveCounts[destination]++
 		}
 	}
 	for _, destination := range order {
+		apportionment := Apportionment{
+			DestinationOptionID: destination,
+			ParcelBallots:       len(groups[destination]),
+			Quotient:            surplus * len(groups[destination]) / total,
+			Remainder:           surplus * len(groups[destination]) % total,
+		}
 		for _, index := range groups[destination][:moveCounts[destination]] {
+			if err := ctx.Err(); err != nil {
+				return surplusTransferResult{}, err
+			}
 			allocations[index].option = destination
 			allocations[index].parcel = destinationParcel
-			transfers = append(transfers, Transfer{BallotID: allocations[index].ballot.ID, FromOptionID: winner, ToOptionID: destination})
+			result.transfers = append(result.transfers, Transfer{BallotID: allocations[index].ballot.ID, FromOptionID: winner, ToOptionID: destination})
+			apportionment.SelectedBallotIDs = append(apportionment.SelectedBallotIDs, allocations[index].ballot.ID)
 		}
+		result.apportionments = append(result.apportionments, apportionment)
 	}
-	return transfers
+	return result, nil
 }
 
-func surplusRemainderTie(options []string, winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel int, history []CountRecord) ([]string, string) {
+func buildRemainderPlan(ctx context.Context, options []string, winner string, surplus int, allocations []allocation, continuing map[string]bool, sourceParcel int) (remainderPlan, error) {
 	counts := map[string]int{}
 	total := 0
 	for _, allocation := range allocations {
+		if err := ctx.Err(); err != nil {
+			return remainderPlan{}, err
+		}
 		if allocation.option != winner || allocation.parcel != sourceParcel {
 			continue
 		}
-		destination := nextPreference(allocation.ballot, continuing)
+		destination, err := nextPreference(ctx, allocation.ballot, continuing)
+		if err != nil {
+			return remainderPlan{}, err
+		}
 		if destination != "" {
 			counts[destination]++
 			total++
 		}
 	}
 	if total == 0 || total <= surplus {
-		return nil, ""
+		return remainderPlan{}, nil
 	}
 	allocated := 0
 	for _, count := range counts {
 		allocated += surplus * count / total
 	}
-	if surplus-allocated != 1 {
-		return nil, ""
+	remaining := surplus - allocated
+	if remaining == 0 {
+		return remainderPlan{}, nil
 	}
-	maxRemainder := -1
-	eligible := []string{}
+	ordered := make([]string, 0, len(counts))
 	for _, option := range options {
-		count, ok := counts[option]
-		if !ok {
-			continue
-		}
-		remainder := surplus * count % total
-		if remainder > maxRemainder {
-			maxRemainder = remainder
-			eligible = []string{option}
-		} else if remainder == maxRemainder {
-			eligible = append(eligible, option)
+		if _, ok := counts[option]; ok {
+			ordered = append(ordered, option)
 		}
 	}
-	if len(eligible) < 2 {
-		return nil, ""
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return surplus*counts[ordered[i]]%total > surplus*counts[ordered[j]]%total
+	})
+	cutoff := surplus * counts[ordered[remaining-1]] % total
+	plan := remainderPlan{}
+	for _, option := range ordered {
+		remainder := surplus * counts[option] % total
+		if remainder > cutoff {
+			plan.selected = append(plan.selected, option)
+		} else if remainder == cutoff {
+			plan.tied = append(plan.tied, option)
+		}
 	}
-	eligible = historicalCandidates(eligible, history, true)
-	if len(eligible) == 1 {
-		return nil, eligible[0]
-	}
-	return eligible, ""
+	plan.slots = remaining - len(plan.selected)
+	return plan, nil
 }
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -412,6 +588,16 @@ func contains(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func withoutOption(options []string, removed string) []string {
+	result := make([]string, 0, len(options)-1)
+	for _, option := range options {
+		if option != removed {
+			result = append(result, option)
+		}
+	}
+	return result
 }
 
 func historicalCandidates(candidates []string, history []CountRecord, high bool) []string {
@@ -477,7 +663,7 @@ func bulkExclusionSet(options []string, continuing map[string]bool, tallies map[
 	}
 	return best
 }
-func validate(input Input) error {
+func validate(ctx context.Context, input Input) error {
 	if input.SchemaVersion != 1 || input.Rule != RuleIrishGuidedSTV {
 		return errors.New("unsupported count schema or rule")
 	}
@@ -489,6 +675,9 @@ func validate(input Input) error {
 	}
 	options := map[string]bool{}
 	for _, o := range input.Options {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !validID.MatchString(o) || options[o] {
 			return errors.New("duplicate or empty option identifier")
 		}
@@ -496,12 +685,18 @@ func validate(input Input) error {
 	}
 	ballots := map[string]bool{}
 	for _, b := range input.Ballots {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !validID.MatchString(b.ID) || ballots[b.ID] || len(b.Preferences) == 0 || len(b.Preferences) > len(input.Options) {
 			return errors.New("invalid ballot identifier or preferences")
 		}
 		ballots[b.ID] = true
 		seen := map[string]bool{}
 		for _, p := range b.Preferences {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if !options[p] || seen[p] {
 				return fmt.Errorf("invalid ballot preference")
 			}
@@ -509,6 +704,19 @@ func validate(input Input) error {
 		}
 	}
 	return nil
+}
+
+func conservesBallots(tallies map[string]int, allocations []allocation) bool {
+	total := 0
+	for _, votes := range tallies {
+		total += votes
+	}
+	for _, allocation := range allocations {
+		if allocation.option == "" {
+			total++
+		}
+	}
+	return total == len(allocations)
 }
 
 func fingerprintInput(input Input) (string, error) {

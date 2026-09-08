@@ -128,4 +128,38 @@
 
 * Implementation gate
 
-- Execution :: Not started; this batch defines specifications only.
+- Execution :: Active-off delivery resumed on 2026-09-08. Audit counts restart for this invoking session; earlier implementation evidence remains historical.
+
+** Local implementation review, resumed-session round 1
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: implementation.
+- Revision :: =8f909bd=.
+- Context :: Delivery context.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: FAIL.
+- [audit-test-code] [BLOCKING] RT002.3, RT002.4 and RT002.10 - Detailed count-record evidence :: Fixed fixtures do not yet assert quotient/remainder calculations, selected ballot identifiers, per-operation non-transferable change, or selection provenance.
+- [audit-code] [BLOCKING] AC002.12 - Cancellation granularity :: The engine checks cancellation between count operations but not within ballot validation and transfer scans as required by the signed-off progress boundary.
+- [audit-code] [BLOCKING] AC002.10 and AC002.12 - Runtime invariants :: The engine records cumulative totals but does not fail closed on an internal ballot-conservation violation.
+- [audit-code] [BLOCKING] Counting transition maintainability :: =Run= coordinates validation, election, surplus choice, exclusion choice, transfer and result projection in one oversized function, obscuring the invariants that the unusual counting rules require.
+- Remediation :: Add fixed detailed-record assertions; carry cancellation through ballot scans; enforce conservation before emitting each record; and extract cohesive transition helpers without changing the signed-off rule behaviour. Re-run all affected tests and the full composite local review only after every finding is addressed.
+
+** Local implementation review, resumed-session round 2
+:PROPERTIES:
+:ROUND: 2
+:END:
+
+- Gate :: implementation.
+- Revision :: =8f909bd= plus the remediated working tree.
+- Context :: Delivery context.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: FAIL.
+- Remediation receipt :: The engine now records exact surplus apportionments and ordered selection provenance, checks cancellation throughout ballot scans, enforces runtime conservation, and decomposes =Run= into a 49-line coordinator with cohesive transition methods. =make test=, =make lint=, =make vulncheck= and focused count coverage at 91.9% pass on the remediated candidate.
+- [audit-test-code] [BLOCKING] RT002.1 and RT002.2 - Input and quota fixtures :: Duplicate ballot IDs, empty ballots, winner-count limits, unsupported rules, and the two-place/three-place quota expectations remain unasserted.
+- [audit-test-code] [BLOCKING] RT002.3 through RT002.5 - Transfer branch fixtures :: Largest-surplus priority, the alternate last-parcel lot outcome, and transfers skipping excluded or elected options need exact retained assertions.
+- [audit-test-code] [BLOCKING] RT002.7 - Invalid decisions :: Wrong sequence, kind, fingerprint, selection cardinality and ineligible choices are not each shown to fail closed.
+- [audit-test-code] [BLOCKING] RT002.8 - Generated replay :: Fixed fixtures establish conservation and JSON replay, but the specified bounded seeded generated supplement is absent.
+- [audit-test-code] [BLOCKING] RT002.9 - Declared bounds :: The 50-option/1000-ballot maximum and ballot overflow are covered; option overflow remains unasserted.
+- Remediation :: Add the complete missing fixture matrix with independent expected outcomes and deterministic generation, then rerun the full suite, lint, vulnerability check and composite review.
