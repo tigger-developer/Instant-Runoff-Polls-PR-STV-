@@ -5,6 +5,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +16,87 @@ import (
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
 )
+
+func TestAdminCLIProcessesPollLifecycleThroughConfiguredBoundary(t *testing.T) {
+	state := t.TempDir()
+	overlay := filepath.Join(t.TempDir(), "host.yaml")
+	configuration := "base_url: https://poll.example\nmoderators:\n  - id: owner\n    email: owner@example.test\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+	if err := os.WriteFile(overlay, []byte(configuration), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DEFAULT_CONFIG_PATH", filepath.Join(projectRoot(t), "config", "defaults.yaml"))
+	t.Setenv("CONFIG_PATH", overlay)
+	t.Setenv("SECRETS_PATH", "")
+	t.Setenv("STATE_DIRECTORY", state)
+
+	definition := `id: cli-poll
+owner_id: owner
+question: Where shall we eat?
+options: [Cafe, Pizza]
+places: 1
+deadline: "2099-01-01T18:00:00Z"
+participants:
+  - name: Alex
+    emails: [one@example.test, alias@example.test]
+`
+	var createdOutput, commandError bytes.Buffer
+	if code := run([]string{"create-poll"}, strings.NewReader(definition), &createdOutput, &commandError); code != 0 {
+		t.Fatalf("create code=%d stdout=%s stderr=%s", code, createdOutput.String(), commandError.String())
+	}
+	if !strings.Contains(createdOutput.String(), `"invitations":1`) {
+		t.Fatalf("create output=%s", createdOutput.String())
+	}
+
+	ctx := context.Background()
+	st, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var participantID, optionID string
+	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM participants WHERE poll_id='cli-poll'").Scan(&participantID); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM options WHERE poll_id='cli-poll' ORDER BY display_order LIMIT 1").Scan(&optionID); err != nil {
+		t.Fatal(err)
+	}
+	preferences, err := json.Marshal([]string{optionID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ReplaceBallot(ctx, "cli-poll", participantID, 0, preferences, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "UPDATE deliveries SET status='smtp_accepted',smtp_outcome='accepted' WHERE message_kind='invitation'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "UPDATE work_items SET status='succeeded' WHERE kind='delivery'"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var closedOutput bytes.Buffer
+	commandError.Reset()
+	if code := run([]string{"close-poll", "cli-poll"}, strings.NewReader(""), &closedOutput, &commandError); code != 0 || !strings.Contains(closedOutput.String(), `"counting_status":"pending"`) {
+		t.Fatalf("close code=%d stdout=%s stderr=%s", code, closedOutput.String(), commandError.String())
+	}
+	var workerOutput bytes.Buffer
+	commandError.Reset()
+	if code := run([]string{"process-due-work"}, strings.NewReader(""), &workerOutput, &commandError); code != 0 || !strings.Contains(workerOutput.String(), `"counted":1`) {
+		t.Fatalf("worker code=%d stdout=%s stderr=%s", code, workerOutput.String(), commandError.String())
+	}
+	var auditOutput bytes.Buffer
+	commandError.Reset()
+	if code := run([]string{"count-audit", "cli-poll"}, strings.NewReader(""), &auditOutput, &commandError); code != 0 {
+		t.Fatalf("audit code=%d stdout=%s stderr=%s", code, auditOutput.String(), commandError.String())
+	}
+	for _, evidence := range []string{`"poll_id":"cli-poll"`, `"winners":["` + optionID + `"]`, `"input_fingerprint"`} {
+		if !strings.Contains(auditOutput.String(), evidence) {
+			t.Fatalf("audit missing %s: %s", evidence, auditOutput.String())
+		}
+	}
+}
 
 func TestManualCloseFreezesBallotsAndQueuesCount(t *testing.T) {
 	ctx := context.Background()
