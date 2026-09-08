@@ -161,7 +161,10 @@ func (s *Store) ReplaceBallot(ctx context.Context, pollID, participantID string,
 	return nil
 }
 
-func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVersion int, invitations []InvitationWork, now time.Time) (bool, error) {
+func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVersion int, closeWorkID string, invitations []InvitationWork, now time.Time) (bool, error) {
+	if closeWorkID == "" {
+		return false, ErrConflict
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("begin poll opening: %w", err)
@@ -204,6 +207,9 @@ func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVe
 		if _, err := tx.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?,?,'pending',?)", invitation.DeliveryID, invitation.WorkID, invitation.ContactID, recipient, "invitation", now.Unix()); err != nil {
 			return false, fmt.Errorf("insert invitation delivery: %w", err)
 		}
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?, 'close', ?,?,'pending')", closeWorkID, pollID, "close:"+pollID, deadline); err != nil {
+		return false, fmt.Errorf("insert close work: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='open',version=version+1 WHERE id=? AND version=?", pollID, expectedVersion); err != nil {
 		return false, err

@@ -81,10 +81,10 @@ func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
 		t.Fatal(err)
 	}
 	invitations := []InvitationWork{{WorkID: "work-1", DeliveryID: "delivery-1", ContactID: "contact-1"}, {WorkID: "work-2", DeliveryID: "delivery-2", ContactID: "contact-2"}}
-	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 1, invitations, time.Unix(100, 0)); err != nil || !changed {
+	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 1, "close-work", invitations, time.Unix(100, 0)); err != nil || !changed {
 		t.Fatalf("open changed=%v error=%v", changed, err)
 	}
-	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 2, invitations, time.Unix(100, 0)); err != nil || changed {
+	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 2, "close-work", invitations, time.Unix(100, 0)); err != nil || changed {
 		t.Fatalf("repeat open changed=%v error=%v", changed, err)
 	}
 	var state string
@@ -97,6 +97,10 @@ func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
 	}
 	if state != "open" || workCount != 2 {
 		t.Fatalf("state=%s work=%d", state, workCount)
+	}
+	var closeDue int64
+	if err := st.DB.QueryRowContext(ctx, "SELECT due_at FROM work_items WHERE id='close-work' AND kind='close' AND status='pending'").Scan(&closeDue); err != nil || closeDue != 9999999999 {
+		t.Fatalf("close due=%d error=%v", closeDue, err)
 	}
 }
 
