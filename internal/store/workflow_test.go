@@ -49,13 +49,13 @@ func TestReplaceBallotEnforcesDeadlineAndIndependentVersion(t *testing.T) {
 	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state = 'open', deadline = 200 WHERE id = 'poll-1'"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 0, []byte(`["a"]`), time.Unix(199, 0)); err != nil {
+	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 0, []byte(`["a"]`), func() time.Time { return time.Unix(199, 0) }); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 0, []byte(`["b"]`), time.Unix(199, 0)); !errors.Is(err, ErrConflict) {
+	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 0, []byte(`["b"]`), func() time.Time { return time.Unix(199, 0) }); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale ballot error = %v", err)
 	}
-	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 1, []byte(`["b"]`), time.Unix(200, 0)); !errors.Is(err, ErrConflict) {
+	if err := st.ReplaceBallot(ctx, "poll-1", "person-1", 1, []byte(`["b"]`), func() time.Time { return time.Unix(200, 0) }); !errors.Is(err, ErrConflict) {
 		t.Fatalf("deadline ballot error = %v", err)
 	}
 	var version int
@@ -65,6 +65,30 @@ func TestReplaceBallotEnforcesDeadlineAndIndependentVersion(t *testing.T) {
 	}
 	if version != 1 || preferences != `["a"]` {
 		t.Fatalf("ballot version=%d preferences=%s", version, preferences)
+	}
+}
+
+func TestReplaceBallotSamplesAcceptanceTimeInsideWriteBoundary(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id, poll_id) VALUES ('person-1','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='open', deadline=200 WHERE id='poll-1'"); err != nil {
+		t.Fatal(err)
+	}
+	clockCalls := 0
+	err := st.ReplaceBallot(ctx, "poll-1", "person-1", 0, []byte(`["a"]`), func() time.Time {
+		clockCalls++
+		return time.Unix(200, 0)
+	})
+	if !errors.Is(err, ErrConflict) || clockCalls != 1 {
+		t.Fatalf("error=%v clock calls=%d", err, clockCalls)
+	}
+	var ballots int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM ballots WHERE poll_id='poll-1'").Scan(&ballots); err != nil || ballots != 0 {
+		t.Fatalf("ballots=%d error=%v", ballots, err)
 	}
 }
 
@@ -259,7 +283,7 @@ func TestBallotAndCloseRaceSerializesIntoSnapshot(t *testing.T) {
 	seenBallots := 0
 	go func() {
 		<-start
-		ballotResult <- st.ReplaceBallot(ctx, "poll-1", "person", 0, []byte(`["a"]`), time.Unix(99, 0))
+		ballotResult <- st.ReplaceBallot(ctx, "poll-1", "person", 0, []byte(`["a"]`), func() time.Time { return time.Unix(99, 0) })
 	}()
 	go func() {
 		<-start
@@ -716,6 +740,29 @@ func TestWorkOutcomePersistenceCoversAcceptedFailedAndCloseReads(t *testing.T) {
 	}
 	if err := st.FailWork(ctx, "close", "close-token", time.Unix(100, 0), "close failed"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type failingRows struct {
+	err    error
+	closed bool
+}
+
+func (rows *failingRows) Err() error {
+	return rows.err
+}
+
+func (rows *failingRows) Close() error {
+	rows.closed = true
+	return nil
+}
+
+func TestFinishRowsRejectsIterationFailureBeforeDurableConstruction(t *testing.T) {
+	want := errors.New("persistence interrupted")
+	rows := &failingRows{err: want}
+	err := finishRows(rows, "close options")
+	if !errors.Is(err, want) || !rows.closed {
+		t.Fatalf("error=%v closed=%v", err, rows.closed)
 	}
 }
 

@@ -167,8 +167,8 @@ func (s *Store) ReplaceElectorate(ctx context.Context, ownerID, pollID string, e
 	return nil
 }
 
-func (s *Store) ReplaceBallot(ctx context.Context, pollID, participantID string, expectedVersion int, preferencesJSON []byte, acceptedAt time.Time) error {
-	if s == nil || s.DB == nil || pollID == "" || participantID == "" || expectedVersion < 0 || !json.Valid(preferencesJSON) {
+func (s *Store) ReplaceBallot(ctx context.Context, pollID, participantID string, expectedVersion int, preferencesJSON []byte, now func() time.Time) error {
+	if s == nil || s.DB == nil || pollID == "" || participantID == "" || expectedVersion < 0 || !json.Valid(preferencesJSON) || now == nil {
 		return ErrConflict
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -176,6 +176,15 @@ func (s *Store) ReplaceBallot(ctx context.Context, pollID, participantID string,
 		return fmt.Errorf("begin ballot replacement: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	locked, err := tx.ExecContext(ctx, "UPDATE polls SET version=version WHERE id=?", pollID)
+	if err != nil {
+		return fmt.Errorf("lock poll for ballot replacement: %w", err)
+	}
+	changed, err := locked.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	acceptedAt := now()
 	var state string
 	var deadline int64
 	if err := tx.QueryRowContext(ctx, "SELECT state, deadline FROM polls WHERE id = ?", pollID).Scan(&state, &deadline); err != nil || state != "open" || acceptedAt.Unix() >= deadline {
@@ -528,8 +537,8 @@ func (s *Store) LoadCloseWork(ctx context.Context, workID, claimToken string, no
 		}
 		work.Options = append(work.Options, option)
 	}
-	if err := optionRows.Close(); err != nil {
-		return CloseWork{}, fmt.Errorf("close option rows: %w", err)
+	if err := finishRows(optionRows, "close options"); err != nil {
+		return CloseWork{}, err
 	}
 	participantRows, err := s.DB.QueryContext(ctx, "SELECT id FROM participants WHERE poll_id=? ORDER BY id", work.PollID)
 	if err != nil {
@@ -543,8 +552,8 @@ func (s *Store) LoadCloseWork(ctx context.Context, workID, claimToken string, no
 		}
 		work.Participants = append(work.Participants, participant)
 	}
-	if err := participantRows.Close(); err != nil {
-		return CloseWork{}, fmt.Errorf("close participant rows: %w", err)
+	if err := finishRows(participantRows, "close participants"); err != nil {
+		return CloseWork{}, err
 	}
 	ballotRows, err := s.DB.QueryContext(ctx, "SELECT participant_id,preferences_json,version,accepted_at FROM ballots WHERE poll_id=? ORDER BY participant_id", work.PollID)
 	if err != nil {
@@ -559,8 +568,8 @@ func (s *Store) LoadCloseWork(ctx context.Context, workID, claimToken string, no
 		}
 		work.Ballots = append(work.Ballots, ballot)
 	}
-	if err := ballotRows.Close(); err != nil {
-		return CloseWork{}, fmt.Errorf("close ballot rows: %w", err)
+	if err := finishRows(ballotRows, "close ballots"); err != nil {
+		return CloseWork{}, err
 	}
 	return work, nil
 }
@@ -978,8 +987,8 @@ func insertAnnouncementWork(ctx context.Context, tx *sql.Tx, pollID, resultKey s
 		}
 		recipients = append(recipients, struct{ contactID, email string }{contactID: contactID, email: recipient})
 	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("close announcement contacts: %w", err)
+	if err := finishRows(rows, "announcement contacts"); err != nil {
+		return err
 	}
 	for _, recipient := range recipients {
 		workID := "announcement-work:" + resultKey + ":" + recipient.contactID
@@ -990,6 +999,22 @@ func insertAnnouncementWork(ctx context.Context, tx *sql.Tx, pollID, resultKey s
 		if _, err := tx.ExecContext(ctx, "INSERT OR IGNORE INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?, 'announcement','pending',?)", deliveryID, workID, recipient.contactID, recipient.email, now.Unix()); err != nil {
 			return fmt.Errorf("insert announcement delivery: %w", err)
 		}
+	}
+	return nil
+}
+
+type rowResult interface {
+	Err() error
+	Close() error
+}
+
+func finishRows(rows rowResult, label string) error {
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return fmt.Errorf("iterate %s: %w", label, err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", label, err)
 	}
 	return nil
 }

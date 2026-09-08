@@ -143,3 +143,32 @@ func TestCountHandlerReportsFailurePersistenceError(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestCountHandlerMarksVisibleFailureWhenEvidenceCannotLoad(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for _, statement := range []string{
+		"INSERT INTO moderators(id,normalized_email) VALUES ('owner','owner@example.test')",
+		"INSERT INTO polls(id,owner_id,question,deadline,places,state,counting_status,version) VALUES ('poll','owner','Question',50,1,'closed','pending',1)",
+		"INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('work','poll','count','count:poll',10,'claimed','token',200)",
+	} {
+		if _, err := st.DB.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	handler := NewCountHandler(st, bytes.NewReader(nil), func() time.Time { return time.Unix(100, 0) })
+	if _, err := handler(ctx, &store.ClaimedWork{ID: "work", PollID: "poll", Kind: "count", ClaimToken: "token"}); err == nil {
+		t.Fatal("missing evidence unexpectedly loaded")
+	}
+	var status string
+	if err := st.DB.QueryRowContext(ctx, "SELECT counting_status FROM polls WHERE id='poll'").Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" {
+		t.Fatalf("counting status=%s", status)
+	}
+}

@@ -3,22 +3,23 @@ audits:
     - work_item: 003-invited-poll-workflow
       gate: implementation
       session_id: 01a080db-7b67-78f0-8c1b-8ad95858b5a4
-      external_round: 2
+      external_round: 3
       status: active
-      updated: "2026-09-08T12:17:12Z"
-      revision: 8596eda
+      updated: "2026-09-08T12:38:04Z"
+      revision: 11a24ca
       verdict: FAIL
       response: |-
         GATE: implementation
-        REVISION: 8596eda
+        REVISION: 11a24ca
         VERDICT: FAIL
 
         FINDINGS:
-        1. Scheduled close failures are terminalized as `failed`, but the specification requires retry on the next sweep after snapshot/randomness failure. Remediate retryable close transitions, preserve rollback, and add a persistent failure-then-reclaim regression.
-
-        2. `count_handler.go` discards `MarkCountFailed` errors, so failure-state persistence can silently fail while the original error proceeds through worker handling. Remediate error propagation or transactional failure persistence, with failure-injection coverage.
-
-        3. Test evidence does not establish the required new-code coverage floor or complete high-risk behavioural coverage. Missing evidence includes candidate-specific new-line coverage and boundary tests for concurrent one-use grants, close/deadline races, auth scope/CSRF failures, worker restart/recovery, and SMTP transport policy. Add traceable RT/AC-to-test evidence and the required persistent/concurrent tests.
+        1. Ballot acceptance time is sampled before the write transaction, violating the deadline race contract. Remediation: sample/inject server time after acquiring the write boundary and add a delayed-transaction deadline test.
+        2. Delivery-handler errors after marking delivery `in_flight` cause only the work item to fail, leaving delivery state unrecoverable. Remediation: atomically reconcile delivery and work state, with real-store failure-path tests.
+        3. Count evidence-load failures leave poll status `pending` while the work item is failed. Remediation: persist visible count failure on load failure and test the resulting state.
+        4. Changed executable-line coverage is 64.0%, below the project’s 80% new-code floor. Remediation: raise changed-code coverage to at least 80% with behavioural tests for uncovered security and durable-state branches.
+        5. Current validation evidence identifies revision `cefc57ad…`, not audited revision `11a24ca`, and contains no candidate-specific RED/GREEN evidence. Remediation: rerun and record all validation and focused RED/GREEN evidence against `11a24ca`; keep audit status, revision, round, and session data only in `audits.yaml`.
+        6. Close-work and announcement-work row iteration ignores `rows.Err()`, allowing incomplete durable data to proceed. Remediation: check iteration errors before constructing or committing snapshots/announcements, with an appropriate persistence-error regression.
       history:
         - round: 1
           revision: cc2d73d
@@ -53,6 +54,22 @@ audits:
 
             3. Test evidence does not establish the required new-code coverage floor or complete high-risk behavioural coverage. Missing evidence includes candidate-specific new-line coverage and boundary tests for concurrent one-use grants, close/deadline races, auth scope/CSRF failures, worker restart/recovery, and SMTP transport policy. Add traceable RT/AC-to-test evidence and the required persistent/concurrent tests.
           updated: "2026-09-08T12:17:12Z"
+        - round: 3
+          revision: 11a24ca
+          verdict: FAIL
+          response: |-
+            GATE: implementation
+            REVISION: 11a24ca
+            VERDICT: FAIL
+
+            FINDINGS:
+            1. Ballot acceptance time is sampled before the write transaction, violating the deadline race contract. Remediation: sample/inject server time after acquiring the write boundary and add a delayed-transaction deadline test.
+            2. Delivery-handler errors after marking delivery `in_flight` cause only the work item to fail, leaving delivery state unrecoverable. Remediation: atomically reconcile delivery and work state, with real-store failure-path tests.
+            3. Count evidence-load failures leave poll status `pending` while the work item is failed. Remediation: persist visible count failure on load failure and test the resulting state.
+            4. Changed executable-line coverage is 64.0%, below the project’s 80% new-code floor. Remediation: raise changed-code coverage to at least 80% with behavioural tests for uncovered security and durable-state branches.
+            5. Current validation evidence identifies revision `cefc57ad…`, not audited revision `11a24ca`, and contains no candidate-specific RED/GREEN evidence. Remediation: rerun and record all validation and focused RED/GREEN evidence against `11a24ca`; keep audit status, revision, round, and session data only in `audits.yaml`.
+            6. Close-work and announcement-work row iteration ignores `rows.Err()`, allowing incomplete durable data to proceed. Remediation: check iteration errors before constructing or committing snapshots/announcements, with an appropriate persistence-error regression.
+          updated: "2026-09-08T12:38:04Z"
 legacy:
     - path: audits.org
       content: |

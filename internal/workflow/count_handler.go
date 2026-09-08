@@ -19,13 +19,6 @@ func NewCountHandler(repository *store.Store, randomness io.Reader, now func() t
 		if repository == nil || randomness == nil || now == nil || item == nil || item.Kind != "count" {
 			return Summary{}, errors.New("count handler dependencies are invalid")
 		}
-		work, err := repository.LoadCountWork(ctx, item.ID, item.ClaimToken, now())
-		if err != nil {
-			return Summary{}, fmt.Errorf("load count evidence: %w", err)
-		}
-		if len(work.ExistingResult) != 0 {
-			return Summary{}, nil
-		}
 		defer func() {
 			if returnErr != nil && !errors.Is(returnErr, ErrWorkHandled) {
 				if persistErr := repository.MarkCountFailed(ctx, item.ID, item.ClaimToken, now()); persistErr != nil {
@@ -33,6 +26,13 @@ func NewCountHandler(repository *store.Store, randomness io.Reader, now func() t
 				}
 			}
 		}()
+		work, err := repository.LoadCountWork(ctx, item.ID, item.ClaimToken, now())
+		if err != nil {
+			return Summary{}, fmt.Errorf("load count evidence: %w", err)
+		}
+		if len(work.ExistingResult) != 0 {
+			return Summary{}, nil
+		}
 		var input count.Input
 		if err := json.Unmarshal(work.InputJSON, &input); err != nil {
 			return Summary{}, fmt.Errorf("decode count input: %w", err)

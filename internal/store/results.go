@@ -44,8 +44,8 @@ func loadCloseWork(ctx context.Context, query closeWorkQuery, ownerID, pollID st
 		}
 		work.Options = append(work.Options, option)
 	}
-	if err := optionRows.Close(); err != nil {
-		return CloseWork{}, fmt.Errorf("close option rows: %w", err)
+	if err := finishRows(optionRows, "close options"); err != nil {
+		return CloseWork{}, err
 	}
 	participantRows, err := query.QueryContext(ctx, "SELECT id FROM participants WHERE poll_id=? ORDER BY id", pollID)
 	if err != nil {
@@ -59,8 +59,8 @@ func loadCloseWork(ctx context.Context, query closeWorkQuery, ownerID, pollID st
 		}
 		work.Participants = append(work.Participants, participant)
 	}
-	if err := participantRows.Close(); err != nil {
-		return CloseWork{}, fmt.Errorf("close participant rows: %w", err)
+	if err := finishRows(participantRows, "close participants"); err != nil {
+		return CloseWork{}, err
 	}
 	ballotRows, err := query.QueryContext(ctx, "SELECT participant_id,preferences_json,version,accepted_at FROM ballots WHERE poll_id=? ORDER BY participant_id", pollID)
 	if err != nil {
@@ -75,8 +75,8 @@ func loadCloseWork(ctx context.Context, query closeWorkQuery, ownerID, pollID st
 		}
 		work.Ballots = append(work.Ballots, ballot)
 	}
-	if err := ballotRows.Close(); err != nil {
-		return CloseWork{}, fmt.Errorf("close ballot rows: %w", err)
+	if err := finishRows(ballotRows, "close ballots"); err != nil {
+		return CloseWork{}, err
 	}
 	return work, nil
 }
@@ -98,7 +98,6 @@ func (s *Store) ResultForOwner(ctx context.Context, ownerID, pollID string) (Own
 	if err != nil {
 		return OwnedResult{}, fmt.Errorf("read delivery status: %w", err)
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var status string
 		var count int
@@ -107,5 +106,8 @@ func (s *Store) ResultForOwner(ctx context.Context, ownerID, pollID string) (Own
 		}
 		result.Deliveries[status] = count
 	}
-	return result, rows.Err()
+	if err := finishRows(rows, "delivery status"); err != nil {
+		return OwnedResult{}, err
+	}
+	return result, nil
 }

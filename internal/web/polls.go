@@ -472,7 +472,7 @@ func (app *authApplication) postBallot(response http.ResponseWriter, request *ht
 		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	if err := app.store.ReplaceBallot(request.Context(), session.PollID, session.PrincipalID, version, encodedPreferences, app.now()); err != nil {
+	if err := app.store.ReplaceBallot(request.Context(), session.PollID, session.PrincipalID, version, encodedPreferences, app.now); err != nil {
 		http.Error(response, "Conflict", http.StatusConflict)
 		return
 	}

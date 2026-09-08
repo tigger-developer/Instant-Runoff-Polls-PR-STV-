@@ -84,6 +84,30 @@ func TestDeliveryHandlerSixthTemporaryFailureIsTerminal(t *testing.T) {
 	}
 }
 
+func TestDeliveryHandlerFinalizesStateWhenRetrySchedulingFails(t *testing.T) {
+	st := deliveryHandlerStore(t)
+	defer st.Close()
+	handler := NewDeliveryHandler(st, senderFunc(func(context.Context, Message) error {
+		return &net.DNSError{IsTimeout: true}
+	}), func(context.Context, *store.ClaimedWork, store.DeliveryAttempt) (Message, error) {
+		return Message{To: "reader@example.test", Subject: "Vote", Body: "Body"}, nil
+	}, func() (float64, error) { return 0, errors.New("randomness unavailable") }, func() time.Time { return time.Unix(100, 0) })
+	_, err := handler(context.Background(), &store.ClaimedWork{ID: "mail", Kind: "delivery", ClaimToken: "token"})
+	if !errors.Is(err, ErrWorkFinalized) {
+		t.Fatalf("error=%v", err)
+	}
+	var deliveryStatus, workStatus, failureClass string
+	if err := st.DB.QueryRow("SELECT status,smtp_outcome FROM deliveries WHERE work_id='mail'").Scan(&deliveryStatus, &failureClass); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRow("SELECT status FROM work_items WHERE id='mail'").Scan(&workStatus); err != nil {
+		t.Fatal(err)
+	}
+	if deliveryStatus != "failed" || workStatus != "failed" || failureClass != "delivery retry scheduling failure" {
+		t.Fatalf("delivery=%s work=%s failure=%s", deliveryStatus, workStatus, failureClass)
+	}
+}
+
 func deliveryHandlerStore(t *testing.T) *store.Store {
 	t.Helper()
 	ctx := context.Background()

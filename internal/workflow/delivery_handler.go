@@ -44,7 +44,7 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 		}
 		if err == nil {
 			if err := repository.AcceptDelivery(ctx, item.ID, item.ClaimToken, now()); err != nil {
-				return Summary{}, fmt.Errorf("record SMTP acceptance: %w", err)
+				return finalizeDeliveryError(ctx, repository, item, now(), "SMTP acceptance persistence failure", fmt.Errorf("record SMTP acceptance: %w", err))
 			}
 			return Summary{SMTPAccepted: 1}, ErrWorkHandled
 		}
@@ -57,17 +57,24 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 		}
 		jitterFraction, jitterErr := jitter()
 		if jitterErr != nil {
-			return Summary{}, fmt.Errorf("generate delivery jitter: %w", jitterErr)
+			return finalizeDeliveryError(ctx, repository, item, now(), "delivery retry scheduling failure", fmt.Errorf("generate delivery jitter: %w", jitterErr))
 		}
 		delivery := Delivery{Status: DeliveryInFlight, Attempts: attempt.Attempts}
 		if transitionErr := delivery.TemporaryFailure(at, jitterFraction); transitionErr != nil {
-			return Summary{}, fmt.Errorf("schedule delivery retry: %w", transitionErr)
+			return finalizeDeliveryError(ctx, repository, item, now(), "delivery retry scheduling failure", fmt.Errorf("schedule delivery retry: %w", transitionErr))
 		}
 		if persistErr := repository.RetryDelivery(ctx, item.ID, item.ClaimToken, now(), delivery.NextDue, failureClass); persistErr != nil {
-			return Summary{}, fmt.Errorf("record delivery retry: %w", persistErr)
+			return finalizeDeliveryError(ctx, repository, item, now(), "delivery retry persistence failure", fmt.Errorf("record delivery retry: %w", persistErr))
 		}
 		return Summary{Retrying: 1}, fmt.Errorf("%w: %s", ErrWorkRescheduled, failureClass)
 	}
+}
+
+func finalizeDeliveryError(ctx context.Context, repository *store.Store, item *store.ClaimedWork, now time.Time, failureClass string, cause error) (Summary, error) {
+	if err := repository.FailDelivery(ctx, item.ID, item.ClaimToken, now, failureClass); err != nil {
+		return Summary{}, fmt.Errorf("%v; reconcile delivery failure: %w", cause, err)
+	}
+	return Summary{}, fmt.Errorf("%w: %s", ErrWorkFinalized, failureClass)
 }
 
 func classifyDeliveryFailure(err error) (string, bool) {
