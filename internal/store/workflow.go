@@ -3,6 +3,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -49,6 +50,13 @@ type ClaimedWork struct {
 	Attempts       int
 	ClaimToken     string
 	ClaimExpiresAt int64
+}
+
+type CountWork struct {
+	SnapshotID     string
+	InputJSON      []byte
+	DecisionsJSON  [][]byte
+	ExistingResult []byte
 }
 
 func (s *Store) ReplaceElectorate(ctx context.Context, ownerID, pollID string, expectedVersion int, participants []ElectorateParticipant) error {
@@ -390,4 +398,106 @@ func (s *Store) FailWork(ctx context.Context, workID, claimToken string, now tim
 		return ErrConflict
 	}
 	return nil
+}
+
+func (s *Store) LoadCountWork(ctx context.Context, workID, claimToken string, now time.Time) (CountWork, error) {
+	var work CountWork
+	err := s.DB.QueryRowContext(ctx, `SELECT snapshots.id,snapshots.input_json,COALESCE(results.result_json,'') FROM work_items AS work JOIN count_snapshots AS snapshots ON snapshots.poll_id=work.poll_id LEFT JOIN count_results AS results ON results.snapshot_id=snapshots.id WHERE work.id=? AND work.kind='count' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&work.SnapshotID, &work.InputJSON, &work.ExistingResult)
+	if err != nil {
+		return CountWork{}, ErrConflict
+	}
+	rows, err := s.DB.QueryContext(ctx, "SELECT decision_json FROM count_decisions WHERE snapshot_id=? ORDER BY sequence", work.SnapshotID)
+	if err != nil {
+		return CountWork{}, fmt.Errorf("read count decisions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var decision []byte
+		if err := rows.Scan(&decision); err != nil {
+			return CountWork{}, fmt.Errorf("scan count decision: %w", err)
+		}
+		work.DecisionsJSON = append(work.DecisionsJSON, append([]byte(nil), decision...))
+	}
+	if err := rows.Err(); err != nil {
+		return CountWork{}, fmt.Errorf("iterate count decisions: %w", err)
+	}
+	return work, nil
+}
+
+func (s *Store) CommitCountDecision(ctx context.Context, workID, claimToken string, now time.Time, sequence int, requestFingerprint string, decisionJSON []byte) (bool, error) {
+	if sequence < 1 || requestFingerprint == "" || !json.Valid(decisionJSON) {
+		return false, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin count decision: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	snapshotID, err := claimedSnapshotID(ctx, tx, workID, claimToken, now)
+	if err != nil {
+		return false, err
+	}
+	var existingFingerprint string
+	var existingJSON []byte
+	err = tx.QueryRowContext(ctx, "SELECT request_fingerprint,decision_json FROM count_decisions WHERE snapshot_id=? AND sequence=?", snapshotID, sequence).Scan(&existingFingerprint, &existingJSON)
+	if err == nil {
+		if existingFingerprint != requestFingerprint || !bytes.Equal(existingJSON, decisionJSON) {
+			return false, ErrConflict
+		}
+		return false, tx.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("read existing count decision: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO count_decisions(snapshot_id,sequence,request_fingerprint,decision_json) VALUES (?,?,?,?)", snapshotID, sequence, requestFingerprint, decisionJSON); err != nil {
+		return false, fmt.Errorf("insert count decision: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit count decision: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Store) CommitCountResult(ctx context.Context, workID, claimToken string, now time.Time, resultJSON []byte) (bool, error) {
+	if !json.Valid(resultJSON) {
+		return false, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin count result: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	snapshotID, err := claimedSnapshotID(ctx, tx, workID, claimToken, now)
+	if err != nil {
+		return false, err
+	}
+	var existing []byte
+	err = tx.QueryRowContext(ctx, "SELECT result_json FROM count_results WHERE snapshot_id=?", snapshotID).Scan(&existing)
+	if err == nil {
+		if !bytes.Equal(existing, resultJSON) {
+			return false, ErrConflict
+		}
+		return false, tx.Commit()
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("read existing count result: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO count_results(snapshot_id,result_json,committed_at) VALUES (?,?,?)", snapshotID, resultJSON, now.Unix()); err != nil {
+		return false, fmt.Errorf("insert count result: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE polls SET counting_status='succeeded' WHERE id=(SELECT poll_id FROM count_snapshots WHERE id=?)", snapshotID); err != nil {
+		return false, fmt.Errorf("mark count succeeded: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit count result: %w", err)
+	}
+	return true, nil
+}
+
+func claimedSnapshotID(ctx context.Context, tx *sql.Tx, workID, claimToken string, now time.Time) (string, error) {
+	var snapshotID string
+	if err := tx.QueryRowContext(ctx, `SELECT snapshots.id FROM work_items AS work JOIN count_snapshots AS snapshots ON snapshots.poll_id=work.poll_id WHERE work.id=? AND work.kind='count' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&snapshotID); err != nil {
+		return "", ErrConflict
+	}
+	return snapshotID, nil
 }

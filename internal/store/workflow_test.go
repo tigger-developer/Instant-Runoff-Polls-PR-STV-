@@ -267,6 +267,49 @@ func TestClaimDueWorkReclaimsExpiredLeaseAndRejectsLiveLease(t *testing.T) {
 	}
 }
 
+func TestCountEvidenceIsClaimBoundUniqueAndReplayable(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO count_snapshots(id,poll_id,schema_version,rule,input_fingerprint,input_json,created_at) VALUES ('snapshot-1','poll-1',1,'irish-guided-stv-v1','fingerprint',?,10)", []byte(`{"input":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('count-1','poll-1','count','count:poll-1',10,'claimed','token',200)"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := st.LoadCountWork(ctx, "count-1", "token", time.Unix(100, 0))
+	if err != nil || loaded.SnapshotID != "snapshot-1" || string(loaded.InputJSON) != `{"input":1}` {
+		t.Fatalf("loaded=%#v error=%v", loaded, err)
+	}
+	decision := []byte(`{"sequence":1,"selected_option_ids":["a"]}`)
+	created, err := st.CommitCountDecision(ctx, "count-1", "token", time.Unix(100, 0), 1, "request-one", decision)
+	if err != nil || !created {
+		t.Fatalf("decision created=%v error=%v", created, err)
+	}
+	created, err = st.CommitCountDecision(ctx, "count-1", "token", time.Unix(100, 0), 1, "request-one", decision)
+	if err != nil || created {
+		t.Fatalf("repeat decision created=%v error=%v", created, err)
+	}
+	if _, err := st.CommitCountDecision(ctx, "count-1", "token", time.Unix(100, 0), 1, "different", []byte(`{}`)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("changed decision error=%v", err)
+	}
+	loaded, err = st.LoadCountWork(ctx, "count-1", "token", time.Unix(100, 0))
+	if err != nil || len(loaded.DecisionsJSON) != 1 || string(loaded.DecisionsJSON[0]) != string(decision) {
+		t.Fatalf("replay load=%#v error=%v", loaded, err)
+	}
+	created, err = st.CommitCountResult(ctx, "count-1", "token", time.Unix(100, 0), []byte(`{"winners":["a"]}`))
+	if err != nil || !created {
+		t.Fatalf("result created=%v error=%v", created, err)
+	}
+	created, err = st.CommitCountResult(ctx, "count-1", "token", time.Unix(100, 0), []byte(`{"winners":["a"]}`))
+	if err != nil || created {
+		t.Fatalf("repeat result created=%v error=%v", created, err)
+	}
+	if _, err := st.CommitCountResult(ctx, "count-1", "stale", time.Unix(100, 0), []byte(`{}`)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale result error=%v", err)
+	}
+}
+
 func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)
