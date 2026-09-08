@@ -21,10 +21,8 @@
     <input id="deadline" name="deadline" type="text" placeholder="2026-09-09T17:00:00+01:00" required>
     <label for="places">Winners</label>
     <input id="places" name="places" type="number" min="1" max="50" value="1" required>
-    <label for="option-1">Option 1</label>
-    <input id="option-1" name="option" maxlength="200" required>
-    <label for="option-2">Option 2</label>
-    <input id="option-2" name="option" maxlength="200" required>
+    <label for="options">Options, one per line</label>
+    <textarea id="options" name="options" rows="8" required></textarea>
     <label><input name="announce" type="checkbox"> Email the result</label>
     <button type="submit">Save draft</button>
   </form>

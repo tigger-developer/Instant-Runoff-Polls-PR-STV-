@@ -112,8 +112,11 @@ as history.
   Scheduled closure remains in the data model for later use. The bounded worker
   runs the count. =APP-admin count-audit POLL_ID= exports the option mapping,
   frozen anonymized input, fingerprint, recorded decisions, and result as JSON.
-- Further moderator-web-interface work is deferred. The earlier pending-provider
-  boundary is superseded by Exodan's =local_mail= application contract. The app
+- Further moderator-web-interface work was initially deferred. The operator
+  resumed a narrow part of it on 8 September 2026: variable-length option entry
+  and named participant entry, including preservation when copying an
+  electorate. The earlier pending-provider boundary is superseded by Exodan's
+  =local_mail= application contract. The app
   receives =SENDMAIL_PATH= and =MAIL_DEFAULT_SENDER_DOMAIN=, submits one complete
   RFC message with separate recipient arguments, and uses
   =stv-poll@<provided-domain>= as both envelope sender and =From= header. It
@@ -145,7 +148,7 @@ as history.
 :CUSTOM_ID: ac-003-2
 :END:
 
-- Criterion :: An authenticated moderator can *save and edit a draft poll* with question, options, winner count, participants, deadline, and announcement preference, and receives its unique URL.
+- Criterion :: An authenticated moderator can *save and edit a draft poll* with question, a variable-length option list, winner count, named participants, deadline, and announcement preference, and receives its unique URL.
 - Proven by :: [[#rt-003-2][RT003.2 - Draft creation and validation]].
 
 ** AC003.3 - Several addresses receive one participant grant
@@ -161,7 +164,7 @@ as history.
 :CUSTOM_ID: ac-003-4
 :END:
 
-- Criterion :: Copying an owned poll's participant list *preserves address groups and permits draft edits* while leaving the source electorate and ballots unchanged.
+- Criterion :: Copying an owned poll's participant list *preserves names and address groups and permits draft edits* while leaving the source electorate and ballots unchanged.
 - Proven by :: [[#rt-003-4][RT003.4 - Copy and edit an electorate]].
 
 ** AC003.5 - Invite every participant once logically
@@ -353,8 +356,8 @@ as history.
 
 - Covers :: [[#ac-003-2][AC003.2 - Create and prepare a poll]].
 - Setup :: A moderator session and valid, minimum, maximum, missing, malformed, and over-limit poll fields.
-- Action :: Create and edit drafts; attempt fewer than two options, invalid winner counts, past deadlines, ambiguous local times, and edits after opening.
-- Expected :: Valid drafts retain their unique poll URL and fields. Invalid input preserves the previous draft and echoes safe field errors. Opening freezes the specified fields; later edits fail without changing them.
+- Action :: Create and edit drafts using one option per line; attempt fewer than two options, invalid winner counts, past deadlines, ambiguous local times, and edits after opening.
+- Expected :: Valid drafts retain their unique poll URL and variable-length option list. Invalid input preserves the previous draft and echoes safe field errors. Opening freezes the specified fields; later edits fail without changing them.
 - Concurrency :: Two moderator tabs edit the same poll version; only one update commits, the other receives 409. An incomplete draft may save; opening that draft reports the missing fields and creates no invitation. Copying or participant edits increment the same poll version.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
@@ -364,9 +367,9 @@ as history.
 :END:
 
 - Covers :: [[#ac-003-3][AC003.3 - Several addresses receive one participant grant]].
-- Setup :: Participant P with comma-separated addresses and Q with colon-separated addresses; variants include whitespace, repeated addresses within a group, and a case-insensitive duplicate across two participant rows.
+- Setup :: Named participant P with comma-separated addresses and named participant Q with a different address; variants include a missing name, whitespace, repeated addresses within a group, and a case-insensitive duplicate across two participant rows.
 - Action :: Save the list and authenticate through each allowed address.
-- Expected :: Each group resolves to exactly one poll participant. Whitespace is trimmed, within-group repeats produce one contact route, and ambiguous cross-participant duplicates are rejected before opening. Independently entered people are never merged by inferred identity.
+- Expected :: Each =Name: address, address= row resolves to exactly one poll participant whose stored display name is shown on the voting page. Missing names are rejected. Whitespace is trimmed, within-group repeats produce one contact route, and ambiguous cross-participant duplicates are rejected before opening. Independently entered people are never merged by inferred identity.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.4 - Copy and edit an electorate
@@ -377,7 +380,7 @@ as history.
 - Covers :: [[#ac-003-4][AC003.4 - Reuse a previous electorate]].
 - Setup :: An owned closed poll with grouped contacts and ballots, and a new draft; another moderator owns a separate source poll.
 - Action :: Copy the owned list, edit/add/remove entries in the target draft, reopen both records, and attempt copying the other owner's list.
-- Expected :: Grouping survives; new poll-participant IDs are created; source rows and ballots remain identical; no old ballot appears in the new poll. Cross-owner copying is denied.
+- Expected :: Names and address grouping survive; new poll-participant IDs are created; source rows and ballots remain identical; no old ballot appears in the new poll. Cross-owner copying is denied.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.5 - Opening and invitation recovery
@@ -835,6 +838,13 @@ establish the bounded local integration/packaging evidence.
 - Provisioning :: Reuse W001's pinned native tools and missing-tool/failure contract. No additional frontend runtime, package toolchain or production command dependency is introduced.
 
 * Hands-off mode decision log
+
+** 2026-09-08T18:17:06Z :hands-off:review:
+
+*** Narrow moderator setup correction
+
+- Decision :: Resume only variable-length option entry and named participant entry in the existing moderator interface. Accept one option per line and one =Name: address, address= participant per line; preserve names and address groups when copying.
+- Boundary :: Use ordinary server-rendered forms without JavaScript. Retain the existing asset locations and visual design. Automated evidence covers request validation, persistence, copying, and rendered content; aesthetic judgement remains a human user test.
 
 ** 2026-09-08T11:50:18Z :hands-off:review:
 

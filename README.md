@@ -120,13 +120,13 @@ A poll may select one winner or several winners.
 
 ### One participant, several email addresses
 
-A participant is one invited person with one voting entitlement in a poll. An
-email address is a way to invite and authenticate that participant. The moderator
-may enter several addresses for one participant, separated by **commas or
-colons**, for example:
+A participant is one invited person with one voting entitlement in a poll. The
+administrator supplies the participant's display name. Email addresses are ways
+to invite and authenticate that participant. In the moderator form, enter one
+participant per line as **name, colon, then comma-separated addresses**:
 
 ```text
-reader.personal@example.org, reader.group@example.org
+Alex Reader: reader.personal@example.org, reader.group@example.org
 ```
 
 Every listed address receives an invitation. A magic link from any of those
@@ -142,9 +142,9 @@ later corrections use a new draft.
 ### Reuse a participant list
 
 A moderator can start a new poll with the participant list from a previous poll.
-The grouping of each participant's email addresses is preserved. The moderator
-can add or remove participants and edit their addresses before sending the new
-invitations.
+Each participant's display name and grouped email addresses are preserved. The
+moderator can add or remove participants and edit their names or addresses before
+sending the new invitations.
 
 The new electorate belongs to the new poll. Editing it leaves the earlier poll's
 electorate and ballots unchanged. Previous votes are never carried forward; each

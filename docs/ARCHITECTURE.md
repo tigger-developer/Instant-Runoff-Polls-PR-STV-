@@ -175,6 +175,12 @@ participant, not the address used to receive it. The ballot is keyed by that
 participant identity, so changing the mailbox used to authenticate does not
 create another ballot.
 
+Both the administration command and moderator form persist the
+administrator-supplied participant display name. The moderator form accepts one
+poll option per line and one `Name: address, address` participant group per line.
+Copying an electorate creates new participant records while retaining each name
+and address group.
+
 The magic-link flow is:
 
 1. The invitation service creates an access grant for the poll participant.

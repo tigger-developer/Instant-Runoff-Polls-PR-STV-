@@ -284,7 +284,7 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := exec.Command(binary, "serve")
-	command.Dir = filepath.Join(projectRoot(t), "cmd", "stv-poll")
+	command.Dir = projectRoot(t)
 	command.Env = append(os.Environ(), "DEFAULT_CONFIG_PATH="+defaults, "CONFIG_PATH="+host, "STATE_DIRECTORY="+state, "ADDR="+address)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr

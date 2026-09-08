@@ -32,6 +32,17 @@ The command writes a JSON summary containing the poll URL and number of queued
 participant invitations. The YAML structure is demonstrated in
 `fixtures/poll.example.yaml`.
 
+## Prepare a poll in the moderator interface
+
+The moderator form accepts a variable-length option list with one option per
+line. Its participant form accepts one named participant per line:
+
+    Alex Reader: reader.personal@example.org, reader.group@example.org
+
+The name is supplied by the moderator and displayed to the voter. All addresses
+on the row belong to the same participant and receive the same participant-scoped
+magic link. Copying a participant list preserves both the name and address group.
+
 ## Process queued work
 
 `process-due-work` performs one bounded pass over pending close, count, and

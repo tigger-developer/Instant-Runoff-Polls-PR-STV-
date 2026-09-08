@@ -126,7 +126,7 @@ classification; it is provenance, not current state.
 - Scope :: Moderator and participant access, grouped email addresses, list reuse, invitations, ballot revisions, pause/close, counting, results, announcements, and help.
 - Definition authority :: Approved by Taḋg on 2026-09-08, including the labelled policy proposals; the original proposal history is retained in the specification.
 - Architecture basis :: Approved policies are retained. Native web-validation coverage and backup verification are reconciled with the architecture.
-- Emergency voter-first amendment :: On 2026-09-08 the operator invoked =BYPASS-GATE-7= and narrowed immediate delivery to YAML poll creation through the Exodan admin wrapper, named participants with one participant-scoped link sent in one message to all their recipients, the no-JavaScript polling card, revisable ballots, manual CLI closure, durable counting, and JSON count-audit export. Further moderator-interface work is deferred.
+- Emergency voter-first amendment :: On 2026-09-08 the operator invoked =BYPASS-GATE-7= and narrowed immediate delivery to YAML poll creation through the Exodan admin wrapper, named participants with one participant-scoped link sent in one message to all their recipients, the no-JavaScript polling card, revisable ballots, manual CLI closure, durable counting, and JSON count-audit export. Further moderator-interface work was initially deferred. The operator then resumed only variable-length option entry and named participant entry, including preservation when copying an electorate.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]] and [[#w-002][W002 - Implement reproducible Irish PR-STV counting]].
 
 * Migration record

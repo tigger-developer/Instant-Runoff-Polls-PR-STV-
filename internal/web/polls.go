@@ -87,7 +87,7 @@ func (app *authApplication) postModeratorPolls(response http.ResponseWriter, req
 	if !ok {
 		return
 	}
-	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "question", "deadline", "places", "announce"}, Repeated: []string{"option"}}, 8<<20)
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "question", "deadline", "places", "announce", "options"}}, 8<<20)
 	if problem != nil {
 		http.Error(response, problem.Error(), problem.Status)
 		return
@@ -95,7 +95,7 @@ func (app *authApplication) postModeratorPolls(response http.ResponseWriter, req
 	if !app.requireModeratorCSRF(response, request, access, values.Get("csrf")) {
 		return
 	}
-	draft, err := parseDraft(values["question"], values["deadline"], values["places"], values["announce"], values["option"], app.now(), app.randomness)
+	draft, err := parseDraft(values["question"], values["deadline"], values["places"], values["announce"], optionRows(values.Get("options")), app.now(), app.randomness)
 	if err != nil {
 		http.Error(response, err.Error(), http.StatusUnprocessableEntity)
 		return
@@ -123,7 +123,11 @@ func (app *authApplication) getModeratorPoll(response http.ResponseWriter, reque
 		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
 		return
 	}
-	app.render(response, "moderator_poll.html", map[string]any{"Poll": poll, "CSRF": access.CSRF})
+	labels := make([]string, 0, len(poll.Options))
+	for _, option := range poll.Options {
+		labels = append(labels, option.Label)
+	}
+	app.render(response, "moderator_poll.html", map[string]any{"Poll": poll, "Options": strings.Join(labels, "\n"), "CSRF": access.CSRF})
 }
 
 func (app *authApplication) postModeratorPoll(response http.ResponseWriter, request *http.Request) {
@@ -132,7 +136,7 @@ func (app *authApplication) postModeratorPoll(response http.ResponseWriter, requ
 	if !ok {
 		return
 	}
-	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version", "question", "deadline", "places", "announce"}, Repeated: []string{"option"}}, 8<<20)
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version", "question", "deadline", "places", "announce", "options"}}, 8<<20)
 	if problem != nil {
 		http.Error(response, problem.Error(), problem.Status)
 		return
@@ -140,7 +144,7 @@ func (app *authApplication) postModeratorPoll(response http.ResponseWriter, requ
 	if !app.requireModeratorCSRF(response, request, access, values.Get("csrf")) {
 		return
 	}
-	draft, err := parseDraft(values["question"], values["deadline"], values["places"], values["announce"], values["option"], app.now(), app.randomness)
+	draft, err := parseDraft(values["question"], values["deadline"], values["places"], values["announce"], optionRows(values.Get("options")), app.now(), app.randomness)
 	version, versionErr := strconv.Atoi(values.Get("version"))
 	if err != nil || versionErr != nil {
 		http.Error(response, "Invalid poll fields", http.StatusUnprocessableEntity)
@@ -213,6 +217,14 @@ func parseDraft(questionValues, deadlineValues, placesValues, announceValues, la
 	return draft, nil
 }
 
+func optionRows(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, "\n")
+}
+
 func randomID(randomness io.Reader) (string, error) {
 	value := make([]byte, 16)
 	if _, err := io.ReadFull(randomness, value); err != nil {
@@ -243,7 +255,7 @@ func (app *authApplication) getParticipants(response http.ResponseWriter, reques
 		for _, contact := range participant.Contacts {
 			addresses = append(addresses, contact.DeliveryEmail)
 		}
-		rows = append(rows, strings.Join(addresses, ", "))
+		rows = append(rows, participant.DisplayName+": "+strings.Join(addresses, ", "))
 	}
 	app.render(response, "participants.html", map[string]any{"Poll": poll, "Rows": strings.Join(rows, "\n"), "CSRF": access.CSRF})
 }
@@ -285,7 +297,7 @@ func (app *authApplication) postParticipants(response http.ResponseWriter, reque
 			http.Error(response, "Too many participants", http.StatusUnprocessableEntity)
 			return
 		}
-		parsed, err := workflow.ParseElectorate(rows)
+		parsed, err := parseNamedElectorate(rows)
 		if err != nil {
 			http.Error(response, err.Error(), http.StatusUnprocessableEntity)
 			return
@@ -303,14 +315,42 @@ func (app *authApplication) postParticipants(response http.ResponseWriter, reque
 	http.Redirect(response, request, request.URL.Path, http.StatusSeeOther)
 }
 
-func (app *authApplication) identifyElectorate(parsed []workflow.Participant) ([]store.ElectorateParticipant, error) {
+type namedParticipant struct {
+	Name      string
+	Addresses []workflow.Address
+}
+
+func parseNamedElectorate(rows []string) ([]namedParticipant, error) {
+	names := make([]string, 0, len(rows))
+	addressRows := make([]string, 0, len(rows))
+	for index, row := range rows {
+		name, addresses, found := strings.Cut(row, ":")
+		name = strings.TrimSpace(name)
+		if !found || len([]rune(name)) < 1 || len([]rune(name)) > 200 {
+			return nil, fmt.Errorf("participant row %d requires a name followed by a colon", index+1)
+		}
+		names = append(names, name)
+		addressRows = append(addressRows, addresses)
+	}
+	parsed, err := workflow.ParseElectorate(addressRows)
+	if err != nil {
+		return nil, err
+	}
+	participants := make([]namedParticipant, 0, len(parsed))
+	for index, participant := range parsed {
+		participants = append(participants, namedParticipant{Name: names[index], Addresses: participant.Addresses})
+	}
+	return participants, nil
+}
+
+func (app *authApplication) identifyElectorate(parsed []namedParticipant) ([]store.ElectorateParticipant, error) {
 	participants := make([]store.ElectorateParticipant, 0, len(parsed))
 	for _, parsedParticipant := range parsed {
 		participantID, err := randomID(app.randomness)
 		if err != nil {
 			return nil, err
 		}
-		participant := store.ElectorateParticipant{ID: participantID}
+		participant := store.ElectorateParticipant{ID: participantID, DisplayName: parsedParticipant.Name}
 		for _, address := range parsedParticipant.Addresses {
 			contactID, err := randomID(app.randomness)
 			if err != nil {
@@ -324,15 +364,23 @@ func (app *authApplication) identifyElectorate(parsed []workflow.Participant) ([
 }
 
 func (app *authApplication) reidentifyElectorate(source []store.ElectorateParticipant) ([]store.ElectorateParticipant, error) {
-	parsed := make([]workflow.Participant, 0, len(source))
+	participants := make([]store.ElectorateParticipant, 0, len(source))
 	for _, sourceParticipant := range source {
-		participant := workflow.Participant{}
-		for _, contact := range sourceParticipant.Contacts {
-			participant.Addresses = append(participant.Addresses, workflow.Address{Delivery: contact.DeliveryEmail, Normalized: contact.NormalizedEmail})
+		participantID, err := randomID(app.randomness)
+		if err != nil {
+			return nil, err
 		}
-		parsed = append(parsed, participant)
+		participant := store.ElectorateParticipant{ID: participantID, DisplayName: sourceParticipant.DisplayName}
+		for _, contact := range sourceParticipant.Contacts {
+			contactID, err := randomID(app.randomness)
+			if err != nil {
+				return nil, err
+			}
+			participant.Contacts = append(participant.Contacts, store.Contact{ID: contactID, DeliveryEmail: contact.DeliveryEmail, NormalizedEmail: contact.NormalizedEmail})
+		}
+		participants = append(participants, participant)
 	}
-	return app.identifyElectorate(parsed)
+	return participants, nil
 }
 
 func (app *authApplication) postOpenPoll(response http.ResponseWriter, request *http.Request) {

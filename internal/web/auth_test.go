@@ -268,7 +268,7 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if crossOwnerResponse.Code != http.StatusNotFound {
 		t.Fatalf("cross-owner response=%d body=%s", crossOwnerResponse.Code, crossOwnerResponse.Body.String())
 	}
-	form := url.Values{"csrf": {csrfToken}, "question": {"Choose"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
+	form := url.Values{"csrf": {csrfToken}, "question": {"Choose"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "options": {"Alice\nBob\nCara"}}
 	request := httptest.NewRequest(http.MethodPost, "/moderator/polls", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
@@ -290,11 +290,29 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if viewResponse.Code != http.StatusOK || !strings.Contains(viewResponse.Body.String(), "Choose") {
 		t.Fatalf("view response=%d body=%s", viewResponse.Code, viewResponse.Body.String())
 	}
-	editForm := url.Values{"csrf": {csrfToken}, "version": {"1"}, "question": {"Choose one"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
+	var optionCount int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM options WHERE poll_id=?", pollID).Scan(&optionCount); err != nil || optionCount != 3 {
+		t.Fatalf("option count=%d error=%v", optionCount, err)
+	}
+	editForm := url.Values{"csrf": {csrfToken}, "version": {"1"}, "question": {"Choose one"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "options": {"Alice\nBob\nCara"}}
 	if response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls/"+pollID, editForm, sessionToken, csrfToken); response.Code != http.StatusSeeOther {
 		t.Fatalf("edit response=%d body=%s", response.Code, response.Body.String())
 	}
-	participantsForm := url.Values{"csrf": {csrfToken}, "version": {"2"}, "participants": {"one@example.test, alt@example.test"}, "copy_poll_id": {""}}
+	unnamedParticipants := url.Values{"csrf": {csrfToken}, "version": {"2"}, "participants": {"one@example.test"}, "copy_poll_id": {""}}
+	if response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls/"+pollID+"/participants", unnamedParticipants, sessionToken, csrfToken); response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unnamed participants response=%d body=%s", response.Code, response.Body.String())
+	}
+	var participantCount, pollVersion int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM participants WHERE poll_id=?", pollID).Scan(&participantCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT version FROM polls WHERE id=?", pollID).Scan(&pollVersion); err != nil {
+		t.Fatal(err)
+	}
+	if participantCount != 0 || pollVersion != 2 {
+		t.Fatalf("invalid participant write count=%d poll version=%d", participantCount, pollVersion)
+	}
+	participantsForm := url.Values{"csrf": {csrfToken}, "version": {"2"}, "participants": {"Alex: one@example.test, alt@example.test"}, "copy_poll_id": {""}}
 	participantsRequest := httptest.NewRequest(http.MethodPost, "/moderator/polls/"+pollID+"/participants", strings.NewReader(participantsForm.Encode()))
 	participantsRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	participantsRequest.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
@@ -309,8 +327,12 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	participantsPage.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
 	participantsPageResponse := httptest.NewRecorder()
 	handler.ServeHTTP(participantsPageResponse, participantsPage)
-	if participantsPageResponse.Code != http.StatusOK || !strings.Contains(participantsPageResponse.Body.String(), "one@example.test") {
+	if participantsPageResponse.Code != http.StatusOK || !strings.Contains(participantsPageResponse.Body.String(), "Alex: one@example.test, alt@example.test") {
 		t.Fatalf("participants page=%d body=%s", participantsPageResponse.Code, participantsPageResponse.Body.String())
+	}
+	var participantName string
+	if err := st.DB.QueryRowContext(ctx, "SELECT display_name FROM participants WHERE poll_id=?", pollID).Scan(&participantName); err != nil || participantName != "Alex" {
+		t.Fatalf("participant name=%q error=%v", participantName, err)
 	}
 	openForm := url.Values{"csrf": {csrfToken}, "version": {"3"}}
 	openRequest := httptest.NewRequest(http.MethodPost, "/moderator/polls/"+pollID+"/open", strings.NewReader(openForm.Encode()))
@@ -348,7 +370,7 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	ballotPage.AddCookie(&http.Cookie{Name: "stv_participant_csrf", Value: participantCSRF})
 	ballotPageResponse := httptest.NewRecorder()
 	handler.ServeHTTP(ballotPageResponse, ballotPage)
-	if ballotPageResponse.Code != http.StatusOK || !strings.Contains(ballotPageResponse.Body.String(), "Alice") {
+	if ballotPageResponse.Code != http.StatusOK || !strings.Contains(ballotPageResponse.Body.String(), "Alex") {
 		t.Fatalf("ballot page=%d body=%s", ballotPageResponse.Code, ballotPageResponse.Body.String())
 	}
 	var firstOption string
@@ -402,7 +424,7 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if pollsPageResponse.Code != http.StatusOK || !strings.Contains(pollsPageResponse.Body.String(), "Choose one") {
 		t.Fatalf("poll list response=%d body=%s", pollsPageResponse.Code, pollsPageResponse.Body.String())
 	}
-	copyDraft := url.Values{"csrf": {csrfToken}, "question": {"Copied electorate"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
+	copyDraft := url.Values{"csrf": {csrfToken}, "question": {"Copied electorate"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "options": {"Alice\nBob"}}
 	if response := moderatorFormRequest(handler, http.MethodPost, "/moderator/polls", copyDraft, sessionToken, csrfToken); response.Code != http.StatusSeeOther {
 		t.Fatalf("copy draft response=%d body=%s", response.Code, response.Body.String())
 	}
@@ -424,6 +446,9 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if copiedParticipants != 1 || copiedContacts != 2 {
 		t.Fatalf("copied participants=%d contacts=%d", copiedParticipants, copiedContacts)
 	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT display_name FROM participants WHERE poll_id=?", copiedPollID).Scan(&participantName); err != nil || participantName != "Alex" {
+		t.Fatalf("copied participant name=%q error=%v", participantName, err)
+	}
 }
 
 func authTemplates(t *testing.T) *template.Template {
@@ -437,7 +462,7 @@ func authTemplates(t *testing.T) *template.Template {
 	template.Must(page.New("moderator_poll.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><p>{{.Poll.State}}</p></body></html>`))
 	template.Must(page.New("participants.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><textarea>{{.Rows}}</textarea></body></html>`))
 	template.Must(page.New("poll_access.html").Parse(`<html><body><h1>Access {{.PollID}}</h1><form><input name="csrf" type="hidden" value="{{.CSRF}}"></form></body></html>`))
-	template.Must(page.New("ballot.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{range .Available}}{{.Label}}{{end}}</body></html>`))
+	template.Must(page.New("ballot.html").Parse(`<html><body><h1>Hello {{.ParticipantName}}</h1>{{range .Available}}{{.Label}}{{end}}</body></html>`))
 	template.Must(page.New("results.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{.Poll.CountingStatus}}</body></html>`))
 	return page
 }
