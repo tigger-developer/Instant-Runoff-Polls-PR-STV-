@@ -32,7 +32,7 @@ var migrations = []Migration{
 		`CREATE TABLE count_results (snapshot_id TEXT PRIMARY KEY REFERENCES count_snapshots(id) ON DELETE CASCADE, result_json BLOB NOT NULL, committed_at INTEGER NOT NULL)`,
 		`CREATE TABLE work_items (id TEXT PRIMARY KEY, poll_id TEXT REFERENCES polls(id) ON DELETE CASCADE, kind TEXT NOT NULL, logical_key TEXT NOT NULL UNIQUE, due_at INTEGER NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, claim_token TEXT, claim_expires_at INTEGER, failure_class TEXT)`,
 		`CREATE TABLE deliveries (id TEXT PRIMARY KEY, work_id TEXT NOT NULL UNIQUE REFERENCES work_items(id) ON DELETE CASCADE, grant_id TEXT REFERENCES grants(id), contact_id TEXT REFERENCES contacts(id), recipient_email TEXT NOT NULL, message_kind TEXT NOT NULL, status TEXT NOT NULL, next_due INTEGER NOT NULL, smtp_outcome TEXT)`,
-		`CREATE TABLE link_requests (request_hash BLOB NOT NULL, purpose TEXT NOT NULL, poll_id TEXT, submitted_at INTEGER NOT NULL)`,
+		`CREATE TABLE link_requests (request_hash BLOB NOT NULL, purpose TEXT NOT NULL, poll_id TEXT, submitted_at INTEGER NOT NULL, accepted INTEGER NOT NULL CHECK (accepted IN (0,1)))`,
 		`CREATE INDEX link_requests_submitted_at ON link_requests(submitted_at)`,
 		`CREATE INDEX work_items_due ON work_items(status,due_at,id)`,
 	}},

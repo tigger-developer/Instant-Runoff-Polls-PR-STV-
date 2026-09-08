@@ -282,3 +282,40 @@ func (s *Store) CreatePreAuthSession(ctx context.Context, sessionHash, csrfHash 
 	}
 	return nil
 }
+
+func (s *Store) RecordLinkRequest(ctx context.Context, requestHash []byte, purpose, pollID string, now time.Time) (bool, error) {
+	if len(requestHash) != 32 || (purpose != "moderator" && purpose != "participant") || (purpose == "participant" && pollID == "") {
+		return false, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin link request: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	windowStart := now.Add(-15 * time.Minute).Unix()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM link_requests WHERE submitted_at<=?", windowStart); err != nil {
+		return false, fmt.Errorf("expire link requests: %w", err)
+	}
+	var globalCount int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM link_requests").Scan(&globalCount); err != nil {
+		return false, fmt.Errorf("count link requests: %w", err)
+	}
+	if globalCount >= 1000 {
+		return false, tx.Commit()
+	}
+	var recentMinute, acceptedWindow int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM link_requests WHERE request_hash=? AND purpose=? AND poll_id=? AND accepted=1 AND submitted_at>?", requestHash, purpose, pollID, now.Add(-time.Minute).Unix()).Scan(&recentMinute); err != nil {
+		return false, fmt.Errorf("count recent link requests: %w", err)
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM link_requests WHERE request_hash=? AND purpose=? AND poll_id=? AND accepted=1", requestHash, purpose, pollID).Scan(&acceptedWindow); err != nil {
+		return false, fmt.Errorf("count accepted link requests: %w", err)
+	}
+	allowed := recentMinute == 0 && acceptedWindow < 5
+	if _, err := tx.ExecContext(ctx, "INSERT INTO link_requests(request_hash,purpose,poll_id,submitted_at,accepted) VALUES (?,?,?,?,?)", requestHash, purpose, pollID, now.Unix(), allowed); err != nil {
+		return false, fmt.Errorf("record link request: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit link request: %w", err)
+	}
+	return allowed, nil
+}

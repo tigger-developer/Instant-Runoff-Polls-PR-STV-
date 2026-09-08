@@ -176,6 +176,52 @@ func TestCreatePreAuthSessionEnforcesCapacityAndCleansExpiry(t *testing.T) {
 	}
 }
 
+func TestRecordLinkRequestEnforcesIdentityAndGlobalBounds(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	now := time.Unix(1_000, 0)
+	identity := sha256.Sum256([]byte("known-or-unknown@example.test"))
+	allowed, err := st.RecordLinkRequest(ctx, identity[:], "participant", "poll-1", now)
+	if err != nil || !allowed {
+		t.Fatalf("first request allowed=%v error=%v", allowed, err)
+	}
+	allowed, err = st.RecordLinkRequest(ctx, identity[:], "participant", "poll-1", now.Add(59*time.Second))
+	if err != nil || allowed {
+		t.Fatalf("minute request allowed=%v error=%v", allowed, err)
+	}
+	for index := 1; index < 5; index++ {
+		allowed, err = st.RecordLinkRequest(ctx, identity[:], "participant", "poll-1", now.Add(time.Duration(index)*time.Minute))
+		if err != nil || !allowed {
+			t.Fatalf("request %d allowed=%v error=%v", index+1, allowed, err)
+		}
+	}
+	allowed, err = st.RecordLinkRequest(ctx, identity[:], "participant", "poll-1", now.Add(14*time.Minute))
+	if err != nil || allowed {
+		t.Fatalf("rolling-window request allowed=%v error=%v", allowed, err)
+	}
+
+	if _, err := st.DB.ExecContext(ctx, "DELETE FROM link_requests"); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 1000; index++ {
+		hash := sha256.Sum256([]byte(fmt.Sprintf("identity-%d", index)))
+		allowed, err = st.RecordLinkRequest(ctx, hash[:], "moderator", "", now)
+		if err != nil || !allowed {
+			t.Fatalf("global request %d allowed=%v error=%v", index+1, allowed, err)
+		}
+	}
+	overflow := sha256.Sum256([]byte("overflow-identity"))
+	allowed, err = st.RecordLinkRequest(ctx, overflow[:], "moderator", "", now)
+	if err != nil || allowed {
+		t.Fatalf("global overflow allowed=%v error=%v", allowed, err)
+	}
+	allowed, err = st.RecordLinkRequest(ctx, overflow[:], "moderator", "", now.Add(16*time.Minute))
+	if err != nil || !allowed {
+		t.Fatalf("expired-window request allowed=%v error=%v", allowed, err)
+	}
+}
+
 func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)
