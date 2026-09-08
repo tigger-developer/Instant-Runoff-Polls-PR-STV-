@@ -64,9 +64,13 @@ func WorkflowHandler(cfg config.Config, st *store.Store, page *template.Template
 
 func (app *authApplication) postParticipantAccess(response http.ResponseWriter, request *http.Request) {
 	securePrivateResponse(response)
-	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"email"}}, 8<<20)
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"email", "csrf"}}, 8<<20)
 	if problem != nil {
 		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if !app.acceptsPreAuthCSRF(request, values.Get("csrf")) {
+		http.Error(response, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
 	normalized, valid := normalizeAddress(values.Get("email"))
@@ -103,14 +107,22 @@ func (app *authApplication) queueParticipantReturn(ctx context.Context, contact 
 
 func (app *authApplication) getModeratorLogin(response http.ResponseWriter, request *http.Request) {
 	securePrivateResponse(response)
-	app.render(response, "moderator_login.html", map[string]any{"Sent": request.URL.Query().Get("sent") == "1"})
+	csrf, ok := app.ensurePreAuth(response, request)
+	if !ok {
+		return
+	}
+	app.render(response, "moderator_login.html", map[string]any{"Sent": request.URL.Query().Get("sent") == "1", "CSRF": csrf})
 }
 
 func (app *authApplication) postModeratorLogin(response http.ResponseWriter, request *http.Request) {
 	securePrivateResponse(response)
-	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"email"}}, 8<<20)
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"email", "csrf"}}, 8<<20)
 	if problem != nil {
 		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if !app.acceptsPreAuthCSRF(request, values.Get("csrf")) {
+		http.Error(response, "Invalid CSRF token", http.StatusForbidden)
 		return
 	}
 	normalized, valid := normalizeAddress(values.Get("email"))
@@ -150,13 +162,11 @@ func (app *authApplication) getVerify(response http.ResponseWriter, request *htt
 		http.Error(response, "Invalid or expired link", http.StatusForbidden)
 		return
 	}
-	issued, err := workflow.NewSession(workflow.PreAuthSession, "", "", app.now(), app.randomness)
-	if err != nil || app.store.CreatePreAuthSession(request.Context(), issued.Record.TokenHash[:], issued.Record.CSRFHash[:], issued.Record.ExpiresAt, app.now()) != nil {
-		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+	csrf, ok := app.ensurePreAuth(response, request)
+	if !ok {
 		return
 	}
-	http.SetCookie(response, workflow.SessionCookie(workflow.PreAuthSession, issued.Token, app.config.HTTP.SecureCookies))
-	app.render(response, "verify.html", map[string]any{"Grant": token, "CSRF": issued.CSRFToken})
+	app.render(response, "verify.html", map[string]any{"Grant": token, "CSRF": csrf})
 }
 
 func (app *authApplication) postVerify(response http.ResponseWriter, request *http.Request) {
@@ -206,6 +216,9 @@ func (app *authApplication) postVerify(response http.ResponseWriter, request *ht
 		return
 	}
 	_ = app.store.RevokeSession(request.Context(), preAuthHash[:], app.now())
+	for _, name := range []string{"stv_preauth", "stv_preauth_csrf"} {
+		http.SetCookie(response, expiredCookie(name, app.config.HTTP.SecureCookies))
+	}
 	http.SetCookie(response, workflow.SessionCookie(purpose, issued.Token, app.config.HTTP.SecureCookies))
 	http.SetCookie(response, csrfCookie(purpose, issued.CSRFToken, app.config.HTTP.SecureCookies))
 	destination := "/polls/" + claims.PollID
@@ -213,6 +226,41 @@ func (app *authApplication) postVerify(response http.ResponseWriter, request *ht
 		destination = "/moderator/polls"
 	}
 	http.Redirect(response, request, destination, http.StatusSeeOther)
+}
+
+func (app *authApplication) ensurePreAuth(response http.ResponseWriter, request *http.Request) (string, bool) {
+	if sessionCookie, sessionErr := request.Cookie("stv_preauth"); sessionErr == nil {
+		if csrfCookie, csrfErr := request.Cookie("stv_preauth_csrf"); csrfErr == nil {
+			sessionHash := sha256.Sum256([]byte(sessionCookie.Value))
+			csrfHash := sha256.Sum256([]byte(csrfCookie.Value))
+			session, err := app.store.SessionByHash(request.Context(), sessionHash[:], app.now())
+			if err == nil && session.Purpose == "preauth" && subtle.ConstantTimeCompare(session.CSRFHash, csrfHash[:]) == 1 {
+				return csrfCookie.Value, true
+			}
+		}
+	}
+	issued, err := workflow.NewSession(workflow.PreAuthSession, "", "", app.now(), app.randomness)
+	if err != nil || app.store.CreatePreAuthSession(request.Context(), issued.Record.TokenHash[:], issued.Record.CSRFHash[:], issued.Record.ExpiresAt, app.now()) != nil {
+		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+		return "", false
+	}
+	http.SetCookie(response, workflow.SessionCookie(workflow.PreAuthSession, issued.Token, app.config.HTTP.SecureCookies))
+	http.SetCookie(response, &http.Cookie{Name: "stv_preauth_csrf", Value: issued.CSRFToken, Path: "/", HttpOnly: true, Secure: app.config.HTTP.SecureCookies, SameSite: http.SameSiteLaxMode})
+	return issued.CSRFToken, true
+}
+
+func (app *authApplication) acceptsPreAuthCSRF(request *http.Request, submitted string) bool {
+	if submitted == "" {
+		return false
+	}
+	sessionCookie, err := request.Cookie("stv_preauth")
+	if err != nil {
+		return false
+	}
+	sessionHash := sha256.Sum256([]byte(sessionCookie.Value))
+	session, err := app.store.SessionByHash(request.Context(), sessionHash[:], app.now())
+	csrfHash := sha256.Sum256([]byte(submitted))
+	return err == nil && session.Purpose == "preauth" && subtle.ConstantTimeCompare(session.CSRFHash, csrfHash[:]) == 1
 }
 
 func (app *authApplication) authorizeGrant(ctx context.Context, token string) (workflow.GrantClaims, []byte, error) {
@@ -246,6 +294,10 @@ func csrfCookie(purpose workflow.SessionPurpose, token string, secure bool) *htt
 		name = "stv_moderator_csrf"
 	}
 	return &http.Cookie{Name: name, Value: token, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
+}
+
+func expiredCookie(name string, secure bool) *http.Cookie {
+	return &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
 }
 
 func (app *authApplication) render(response http.ResponseWriter, name string, data any) {

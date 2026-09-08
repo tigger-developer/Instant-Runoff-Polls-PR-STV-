@@ -32,6 +32,9 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 		if errors.Is(err, store.ErrDeliveryCancelled) {
 			return Summary{Cancelled: 1}, ErrWorkHandled
 		}
+		if errors.Is(err, store.ErrDeliveryExhausted) {
+			return Summary{}, fmt.Errorf("%w: SMTP attempt interrupted", ErrWorkFinalized)
+		}
 		if err != nil {
 			return Summary{}, fmt.Errorf("begin delivery attempt: %w", err)
 		}
@@ -43,7 +46,7 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 			if err := repository.AcceptDelivery(ctx, item.ID, item.ClaimToken, now()); err != nil {
 				return Summary{}, fmt.Errorf("record SMTP acceptance: %w", err)
 			}
-			return Summary{SMTPAccepted: 1}, nil
+			return Summary{SMTPAccepted: 1}, ErrWorkHandled
 		}
 		failureClass, temporary := classifyDeliveryFailure(err)
 		if !temporary || attempt.Attempts >= 6 {

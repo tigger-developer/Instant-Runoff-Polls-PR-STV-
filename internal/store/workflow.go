@@ -17,6 +17,7 @@ var (
 	ErrCapacity          = errors.New("workflow capacity reached")
 	ErrDeliveryHeld      = errors.New("delivery held")
 	ErrDeliveryCancelled = errors.New("delivery cancelled")
+	ErrDeliveryExhausted = errors.New("delivery attempts exhausted")
 )
 
 type Contact struct {
@@ -597,6 +598,23 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 			}
 		}
 	}
+	if attempt.Attempts >= 6 {
+		if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='failed',smtp_outcome='SMTP attempt interrupted' WHERE id=?", attempt.DeliveryID); err != nil {
+			return DeliveryAttempt{}, fmt.Errorf("finalize interrupted delivery: %w", err)
+		}
+		result, err := tx.ExecContext(ctx, "UPDATE work_items SET status='failed',failure_class='SMTP attempt interrupted',claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", workID, claimToken, now.Unix())
+		if err != nil {
+			return DeliveryAttempt{}, fmt.Errorf("finalize interrupted delivery work: %w", err)
+		}
+		changed, err := result.RowsAffected()
+		if err != nil || changed != 1 {
+			return DeliveryAttempt{}, ErrConflict
+		}
+		if err := tx.Commit(); err != nil {
+			return DeliveryAttempt{}, fmt.Errorf("commit interrupted delivery: %w", err)
+		}
+		return DeliveryAttempt{}, ErrDeliveryExhausted
+	}
 	attempt.Attempts++
 	result, err := tx.ExecContext(ctx, "UPDATE work_items SET attempts=? WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", attempt.Attempts, workID, claimToken, now.Unix())
 	if err != nil {
@@ -717,13 +735,29 @@ func (s *Store) RetryDelivery(ctx context.Context, workID, claimToken string, no
 }
 
 func (s *Store) AcceptDelivery(ctx context.Context, workID, claimToken string, now time.Time) error {
-	result, err := s.DB.ExecContext(ctx, `UPDATE deliveries SET status='smtp_accepted',smtp_outcome='accepted' WHERE work_id=? AND EXISTS (SELECT 1 FROM work_items WHERE id=? AND kind='delivery' AND status='claimed' AND claim_token=? AND claim_expires_at>?)`, workID, workID, claimToken, now.Unix())
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin accepted delivery: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE deliveries SET status='smtp_accepted',smtp_outcome='accepted' WHERE work_id=? AND EXISTS (SELECT 1 FROM work_items WHERE id=? AND kind='delivery' AND status='claimed' AND claim_token=? AND claim_expires_at>?)`, workID, workID, claimToken, now.Unix())
 	if err != nil {
 		return fmt.Errorf("accept delivery: %w", err)
 	}
 	changed, err := result.RowsAffected()
 	if err != nil || changed != 1 {
 		return ErrConflict
+	}
+	result, err = tx.ExecContext(ctx, `UPDATE work_items SET status='succeeded',claim_token=NULL,claim_expires_at=NULL WHERE id=? AND kind='delivery' AND status='claimed' AND claim_token=? AND claim_expires_at>?`, workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("complete accepted delivery work: %w", err)
+	}
+	changed, err = result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit accepted delivery: %w", err)
 	}
 	return nil
 }

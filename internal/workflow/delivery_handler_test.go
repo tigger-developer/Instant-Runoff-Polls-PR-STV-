@@ -19,14 +19,15 @@ func (send senderFunc) Send(ctx context.Context, message Message) error { return
 
 func TestDeliveryHandlerPersistsAcceptedTemporaryAndPermanentOutcomes(t *testing.T) {
 	for _, tc := range []struct {
-		name       string
-		sendErr    error
-		wantStatus string
-		wantRetry  int
-		wantAccept int
-		wantError  bool
+		name        string
+		sendErr     error
+		wantStatus  string
+		wantRetry   int
+		wantAccept  int
+		wantError   bool
+		wantHandled bool
 	}{
-		{name: "accepted", wantStatus: "smtp_accepted", wantAccept: 1},
+		{name: "accepted", wantStatus: "smtp_accepted", wantAccept: 1, wantError: true, wantHandled: true},
 		{name: "temporary", sendErr: &net.DNSError{IsTimeout: true}, wantStatus: "retrying", wantRetry: 1, wantError: true},
 		{name: "permanent", sendErr: &textproto.Error{Code: 550, Msg: "rejected"}, wantStatus: "failed", wantError: true},
 	} {
@@ -40,12 +41,21 @@ func TestDeliveryHandlerPersistsAcceptedTemporaryAndPermanentOutcomes(t *testing
 			if (err != nil) != tc.wantError || summary.Retrying != tc.wantRetry || summary.SMTPAccepted != tc.wantAccept {
 				t.Fatalf("summary=%#v error=%v", summary, err)
 			}
-			var status string
+			if tc.wantHandled && !errors.Is(err, ErrWorkHandled) {
+				t.Fatalf("error=%v", err)
+			}
+			var status, workStatus string
 			if err := st.DB.QueryRow("SELECT status FROM deliveries WHERE work_id='mail'").Scan(&status); err != nil {
+				t.Fatal(err)
+			}
+			if err := st.DB.QueryRow("SELECT status FROM work_items WHERE id='mail'").Scan(&workStatus); err != nil {
 				t.Fatal(err)
 			}
 			if status != tc.wantStatus {
 				t.Fatalf("status=%s", status)
+			}
+			if tc.name == "accepted" && workStatus != "succeeded" {
+				t.Fatalf("accepted work status=%s", workStatus)
 			}
 		})
 	}

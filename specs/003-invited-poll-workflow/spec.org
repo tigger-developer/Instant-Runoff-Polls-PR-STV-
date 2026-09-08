@@ -782,6 +782,19 @@ establish the bounded local integration/packaging evidence.
 
 * Hands-off mode decision log
 
+** 2026-09-08T11:50:18Z :hands-off:review:
+
+*** Streamlined delivery boundary
+
+- Authority :: Taḋg resumed =deliver-change= with a two-hour bound and directed that code adding no requirement value be trashed rather than retained as brittle complexity.
+- Decision :: Preserve the existing domain, HTTP and SQLite seams where they already express the signed workflow. Prefer small transaction and request-boundary corrections over a broad package rewrite. Delete code only when evidence shows it is redundant or unreachable.
+- Audit :: Use the installed implementation audit harness as the sole audit entry point. Do not run its constituent audit skills directly or reopen the signed definition gate.
+
+*** First risk corrections
+
+- Decision :: Make SMTP acceptance and work completion one transaction, and terminally fail a reclaimed sixth attempt before any seventh send. Establish pre-authentication CSRF for the public moderator-login and participant-access forms before they can record rate-limit or delivery state.
+- Evidence order :: Retain the observed focused RED results, then require focused GREEN, the full race suite, lint, security checks and the signed workflow validation before audit and handoff.
+
 ** 2026-09-08T10:06:00Z :hands-off:review:
 
 *** Dependency branch baseline

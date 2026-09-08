@@ -388,6 +388,42 @@ func TestDeliveryAttemptPersistsBeforeRetryAndReleasesClaim(t *testing.T) {
 	}
 }
 
+func TestDeliveryAttemptFinalizesExpiredSixthAttemptWithoutSendingAgain(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='open',deadline=500 WHERE id='poll-1'"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll-1','person','reader@example.test','reader@example.test')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,attempts,claim_token,claim_expires_at) VALUES ('mail','poll-1','delivery','invitation:poll-1:contact',10,'claimed',6,'token',300)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES ('delivery','mail','contact','reader@example.test','invitation','in_flight',10)"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := st.BeginDeliveryAttempt(ctx, "mail", "token", time.Unix(100, 0)); !errors.Is(err, ErrDeliveryExhausted) {
+		t.Fatalf("error=%v", err)
+	}
+	var attempts int
+	var workStatus, deliveryStatus string
+	if err := st.DB.QueryRowContext(ctx, "SELECT attempts,status FROM work_items WHERE id='mail'").Scan(&attempts, &workStatus); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT status FROM deliveries WHERE id='delivery'").Scan(&deliveryStatus); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 6 || workStatus != "failed" || deliveryStatus != "failed" {
+		t.Fatalf("attempts=%d work=%s delivery=%s", attempts, workStatus, deliveryStatus)
+	}
+}
+
 func TestDeliveryAttemptHoldsPausedAndCancelsIneligibleInvitations(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

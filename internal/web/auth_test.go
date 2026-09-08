@@ -36,8 +36,14 @@ func TestModeratorLoginQueuesGrantAndExchangesThroughPreAuthCSRF(t *testing.T) {
 	randomMaterial = append(randomMaterial, bytes.Repeat([]byte{7}, 64)...)
 	handler := WorkflowHandler(cfg, st, page, http.NotFoundHandler(), bytes.NewReader(randomMaterial), func() time.Time { return time.Unix(100, 0) })
 
-	login := httptest.NewRequest(http.MethodPost, "/moderator/login", strings.NewReader("email=owner%40example.test"))
+	loginPage := httptest.NewRecorder()
+	handler.ServeHTTP(loginPage, httptest.NewRequest(http.MethodGet, "/moderator/login", nil))
+	csrf := hiddenValue(t, loginPage.Body.String(), "csrf")
+	login := httptest.NewRequest(http.MethodPost, "/moderator/login", strings.NewReader(url.Values{"email": {"owner@example.test"}, "csrf": {csrf}}.Encode()))
 	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range loginPage.Result().Cookies() {
+		login.AddCookie(cookie)
+	}
 	loginResponse := httptest.NewRecorder()
 	handler.ServeHTTP(loginResponse, login)
 	if loginResponse.Code != http.StatusSeeOther || loginResponse.Header().Get("Location") != "/moderator/login?sent=1" {
@@ -57,8 +63,12 @@ func TestModeratorLoginQueuesGrantAndExchangesThroughPreAuthCSRF(t *testing.T) {
 	}
 
 	verifyResponse := httptest.NewRecorder()
-	handler.ServeHTTP(verifyResponse, httptest.NewRequest(http.MethodGet, "/auth/verify?grant="+url.QueryEscape(token), nil))
-	if verifyResponse.Code != http.StatusOK || len(verifyResponse.Result().Cookies()) != 1 {
+	verify := httptest.NewRequest(http.MethodGet, "/auth/verify?grant="+url.QueryEscape(token), nil)
+	for _, cookie := range loginPage.Result().Cookies() {
+		verify.AddCookie(cookie)
+	}
+	handler.ServeHTTP(verifyResponse, verify)
+	if verifyResponse.Code != http.StatusOK {
 		t.Fatalf("verify response=%d cookies=%v body=%s", verifyResponse.Code, verifyResponse.Result().Cookies(), verifyResponse.Body.String())
 	}
 	csrfMatch := regexp.MustCompile(`name="csrf" type="hidden" value="([^"]+)"`).FindStringSubmatch(verifyResponse.Body.String())
@@ -72,14 +82,25 @@ func TestModeratorLoginQueuesGrantAndExchangesThroughPreAuthCSRF(t *testing.T) {
 	form := url.Values{"grant": {grantMatch[1]}, "csrf": {csrfMatch[1]}}
 	exchange := httptest.NewRequest(http.MethodPost, "/auth/verify", strings.NewReader(form.Encode()))
 	exchange.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	exchange.AddCookie(verifyResponse.Result().Cookies()[0])
+	for _, cookie := range loginPage.Result().Cookies() {
+		exchange.AddCookie(cookie)
+	}
 	exchangeResponse := httptest.NewRecorder()
 	handler.ServeHTTP(exchangeResponse, exchange)
 	if exchangeResponse.Code != http.StatusSeeOther || exchangeResponse.Header().Get("Location") != "/moderator/polls" {
 		t.Fatalf("exchange response=%d location=%s body=%s", exchangeResponse.Code, exchangeResponse.Header().Get("Location"), exchangeResponse.Body.String())
 	}
 	cookies := exchangeResponse.Result().Cookies()
-	if len(cookies) != 2 || cookies[0].Name != "stv_moderator" || cookies[0].Value == token || cookies[1].Name != "stv_moderator_csrf" {
+	var sessionCookie, csrfCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "stv_moderator" {
+			sessionCookie = cookie
+		}
+		if cookie.Name == "stv_moderator_csrf" {
+			csrfCookie = cookie
+		}
+	}
+	if sessionCookie == nil || sessionCookie.Value == token || csrfCookie == nil {
 		t.Fatalf("session cookies=%v", cookies)
 	}
 }
@@ -92,8 +113,13 @@ func TestModeratorLoginUnknownAddressHasSameConfirmationWithoutDelivery(t *testi
 	defer st.Close()
 	cfg := config.Config{BaseURL: "https://poll.example", Moderators: []config.Moderator{}, Auth: config.Auth{KeyID: "key", SigningKey: bytes.Repeat([]byte{7}, 32)}}
 	handler := WorkflowHandler(cfg, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(make([]byte, 128)), func() time.Time { return time.Unix(100, 0) })
-	request := httptest.NewRequest(http.MethodPost, "/moderator/login", strings.NewReader("email=unknown%40example.test"))
+	loginPage := httptest.NewRecorder()
+	handler.ServeHTTP(loginPage, httptest.NewRequest(http.MethodGet, "/moderator/login", nil))
+	request := httptest.NewRequest(http.MethodPost, "/moderator/login", strings.NewReader(url.Values{"email": {"unknown@example.test"}, "csrf": {hiddenValue(t, loginPage.Body.String(), "csrf")}}.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range loginPage.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	var deliveries int
@@ -102,6 +128,29 @@ func TestModeratorLoginUnknownAddressHasSameConfirmationWithoutDelivery(t *testi
 	}
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/moderator/login?sent=1" || deliveries != 0 {
 		t.Fatalf("response=%d location=%s deliveries=%d", response.Code, response.Header().Get("Location"), deliveries)
+	}
+}
+
+func TestPublicAccessRequestsRejectMissingPreAuthCSRF(t *testing.T) {
+	st, err := store.Open(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	cfg := config.Config{BaseURL: "https://poll.example", Moderators: []config.Moderator{}, Auth: config.Auth{KeyID: "key", SigningKey: bytes.Repeat([]byte{7}, 32)}}
+	handler := WorkflowHandler(cfg, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(make([]byte, 128)), func() time.Time { return time.Unix(100, 0) })
+	for _, path := range []string{"/moderator/login", "/polls/poll/access"} {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader("email=person%40example.test"))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusForbidden {
+			t.Fatalf("%s response=%d body=%s", path, response.Code, response.Body.String())
+		}
+	}
+	var requests int
+	if err := st.DB.QueryRow("SELECT count(*) FROM link_requests").Scan(&requests); err != nil || requests != 0 {
+		t.Fatalf("link requests=%d error=%v", requests, err)
 	}
 }
 
@@ -186,13 +235,22 @@ func authTemplates(t *testing.T) *template.Template {
 	page := template.Must(template.New("index.html").Parse(`<html><body>Home</body></html>`))
 	template.Must(page.New("voting.html").Parse(`<html><body>Voting</body></html>`))
 	template.Must(page.New("counting.html").Parse(`<html><body>Counting</body></html>`))
-	template.Must(page.New("moderator_login.html").Parse(`<html><body>{{if .Sent}}Sent{{end}}<form method="post"><input name="email"></form></body></html>`))
+	template.Must(page.New("moderator_login.html").Parse(`<html><body>{{if .Sent}}Sent{{end}}<form method="post"><input name="csrf" type="hidden" value="{{.CSRF}}"><input name="email"></form></body></html>`))
 	template.Must(page.New("verify.html").Parse(`<html><body><form method="post"><input name="grant" type="hidden" value="{{.Grant}}"><input name="csrf" type="hidden" value="{{.CSRF}}"></form></body></html>`))
 	template.Must(page.New("moderator_polls.html").Parse(`<html><body>{{range .Polls}}{{.Question}}{{end}}<form><input name="csrf" value="{{.CSRF}}"></form></body></html>`))
 	template.Must(page.New("moderator_poll.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><p>{{.Poll.State}}</p></body></html>`))
 	template.Must(page.New("participants.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><textarea>{{.Rows}}</textarea></body></html>`))
-	template.Must(page.New("poll_access.html").Parse(`<html><body><h1>Access {{.PollID}}</h1></body></html>`))
+	template.Must(page.New("poll_access.html").Parse(`<html><body><h1>Access {{.PollID}}</h1><form><input name="csrf" type="hidden" value="{{.CSRF}}"></form></body></html>`))
 	template.Must(page.New("ballot.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{range .Options}}{{.Label}}{{end}}</body></html>`))
 	template.Must(page.New("results.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{.Poll.CountingStatus}}</body></html>`))
 	return page
+}
+
+func hiddenValue(t *testing.T, body, name string) string {
+	t.Helper()
+	match := regexp.MustCompile(`name="` + regexp.QuoteMeta(name) + `" type="hidden" value="([^"]+)"`).FindStringSubmatch(body)
+	if len(match) != 2 {
+		t.Fatalf("missing %s in %s", name, body)
+	}
+	return match[1]
 }

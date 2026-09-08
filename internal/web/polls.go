@@ -421,7 +421,11 @@ func (app *authApplication) getParticipantPoll(response http.ResponseWriter, req
 	securePrivateResponse(response)
 	session, csrf, ok := app.participantAccess(response, request)
 	if !ok {
-		app.render(response, "poll_access.html", map[string]any{"PollID": request.PathValue("id"), "Sent": request.URL.Query().Get("sent") == "1"})
+		preAuthCSRF, available := app.ensurePreAuth(response, request)
+		if !available {
+			return
+		}
+		app.render(response, "poll_access.html", map[string]any{"PollID": request.PathValue("id"), "Sent": request.URL.Query().Get("sent") == "1", "CSRF": preAuthCSRF})
 		return
 	}
 	view, err := app.store.PollForParticipant(request.Context(), session.PrincipalID, session.PollID)
