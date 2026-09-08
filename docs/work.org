@@ -124,8 +124,8 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/003-invited-poll-workflow/spec.org][W003 - Deliver the invited poll workflow]].
 - Scope :: Moderator and participant access, grouped email addresses, list reuse, invitations, ballot revisions, pause/close, counting, results, announcements, and help.
-- Definition :: Definition gate PASS after local review and retained independent audit; approved by Taḋg on 2026-09-08. Implementation is reserved for another session. Approval includes the labelled policy proposals; the original proposal history is retained in the specification.
-- Architecture refresh :: Approved policies are retained. Native web-validation coverage and backup verification are reconciled with the architecture. Local review passed; the operator accepts the minor refresh against the prior effective definition PASS. The runner incident remains history and requires no replacement review for this accepted scope.
+- Definition authority :: Approved by Taḋg on 2026-09-08, including the labelled policy proposals; the original proposal history is retained in the specification.
+- Architecture basis :: Approved policies are retained. Native web-validation coverage and backup verification are reconciled with the architecture.
 - Emergency voter-first amendment :: On 2026-09-08 the operator invoked =BYPASS-GATE-7= and narrowed immediate delivery to YAML poll creation through the Exodan admin wrapper, named participants with one participant-scoped link sent in one message to all their recipients, the no-JavaScript polling card, revisable ballots, manual CLI closure, durable counting, and JSON count-audit export. Further moderator-interface work is deferred.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]] and [[#w-002][W002 - Implement reproducible Irish PR-STV counting]].
 

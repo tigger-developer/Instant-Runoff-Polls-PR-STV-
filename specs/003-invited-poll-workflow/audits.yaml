@@ -96,6 +96,33 @@ audits:
             1. Repeat-open preservation is not regression-tested. The cited `TestOpenPollCommitsOneMultiRecipientInvitationPerParticipant` invokes `OpenPoll` only once. Remediation: invoke opening twice and assert preserved recipients plus exactly one logical invitation/work item.
             2. The integrated CLI test does not assert exact cardinality for two recipients and one grant link; it only checks their presence. Remediation: count SMTP recipients and grant-link occurrences exactly, then update the validation traceability.
           updated: "2026-09-08T16:13:05Z"
+    - work_item: 003-invited-poll-workflow-emergency-20260908
+      gate: implementation
+      session_id: 01a081cd-a70e-7133-972e-0bd76bfbef20
+      external_round: 1
+      status: active
+      updated: "2026-09-08T16:19:19Z"
+      revision: cf8e20fe94956fb4bd89262b49cae68b3d122f71
+      verdict: FAIL
+      response: |-
+        GATE: implementation
+        REVISION: cf8e20fe94956fb4bd89262b49cae68b3d122f71
+        VERDICT: FAIL
+
+        FINDINGS:
+        1. `docs/work.org` duplicates audit state outside `audits.yaml`, including definition-gate PASS, local-review PASS, prior effective definition PASS, and runner-incident history. Remove audit findings, statuses, revisions, rounds, and session references from implementation notes; retain audit state only in `audits.yaml`, then rerun the gate.
+      history:
+        - round: 1
+          revision: cf8e20fe94956fb4bd89262b49cae68b3d122f71
+          verdict: FAIL
+          response: |-
+            GATE: implementation
+            REVISION: cf8e20fe94956fb4bd89262b49cae68b3d122f71
+            VERDICT: FAIL
+
+            FINDINGS:
+            1. `docs/work.org` duplicates audit state outside `audits.yaml`, including definition-gate PASS, local-review PASS, prior effective definition PASS, and runner-incident history. Remove audit findings, statuses, revisions, rounds, and session references from implementation notes; retain audit state only in `audits.yaml`, then rerun the gate.
+          updated: "2026-09-08T16:19:19Z"
 legacy:
     - path: audits.org
       content: |
