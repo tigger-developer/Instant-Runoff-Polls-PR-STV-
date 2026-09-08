@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Effective definition PASS; operator sign-off recorded in spec.org on 2026-09-08.
+- Execution :: Architecture refresh locally reviewed; independent refreshed-definition review pending. Prior definition verdicts and operator approvals remain revision-specific history below.
 - Artefact :: [[file:spec.org][W003 - Invited poll workflow specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -89,6 +89,21 @@
 - Scope :: Approval of all three specifications, including their labelled proposals.
 - Revision :: Audited specification at =ec0bfd8= (three audited build specifications for review); only lifecycle/sign-off metadata changes accompany this receipt.
 - Delivery :: Reserved for another session by operator instruction. No code or implementation-test evidence is added.
+
+** Architecture refresh, local review round 1, 8 September 2026
+
+- Gate :: definition.
+- Artefact :: W003 - Invited poll workflow.
+- Revision :: SHA-256 =f6f90397834808dff2966156bd5b15c0113a3e59cba54ab994531bc9ed127a4f=.
+- Context :: Authoring context; all three combined criteria applied to this specification and its shared boundaries.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS (local only).
+- Authority :: Operator-approved current foundation and native web-linter selection, followed by the instruction to refresh the three existing specifications. No new work item or application implementation is introduced.
+- Scope and receipt :: Approved policy wording replaces stale proposals; inherited native web validation covers workflow responses; backup verification explicitly quiesces all writers. Roles, access/retention, limits, routes, counting integration and announcement copy are retained.
+- Review :: Checked summary/detail agreement, resolved versus historical decisions, requirement/test traceability, Go component boundaries, Exodan-owned configuration and operations, security/privacy and recovery, and proportionate test definitions. No required local correction remains.
+- Evidence :: Fourteen documentation files sanitize and parse through Pandoc; 214 local links/anchors resolve with unique heading identifiers. The counting procedure/fixtures/fingerprints and VISION copy are unchanged. Initial CLI/store tests and Makefile were read as implementation evidence, not executed or treated as authority. Concurrent implementation edits are preserved.
+- Approval :: Existing product/interface approvals are retained. The operator explicitly approved the web-tool selection before this refresh; that approval does not substitute for the refreshed audit. Any new material decision raised by review requires operator authority.
+- External continuation :: One retained external context will review this three-spec refresh, applying each combined gate separately and returning a verdict for each exact specification revision. No prior implementation audit is resumed or replaced by this definition review.
 
 * Implementation gate
 

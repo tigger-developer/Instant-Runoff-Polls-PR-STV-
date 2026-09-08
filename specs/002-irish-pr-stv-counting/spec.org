@@ -18,13 +18,13 @@ draft before this approval. Implementation is reserved for another session.
 :END:
 
 - Outcome :: A *Go counting engine* selects winning options and records an explainable, reproducible PR-STV count guided by the Irish system.
-- Before :: The system and reference material are documented; *no engine exists*.
+- Before :: The original definition established the counting rules and fixtures; initial Go-foundation implementation is now present. This refresh retains the *approved engine contract*.
 - After :: A validated frozen ballot input and recorded decisions produce winners and the full count record.
-- Changes :: Add the counting model, validation, quota, transfers, exclusions, last-vacancy handling, explicit decision requests, and independent fixtures.
+- Changes :: Add the counting model, validation, quota, transfers, exclusions, last-vacancy handling, explicit decision requests, and independent fixtures. This refresh updates *architecture traceability and approval wording* without changing those rules or expected counts.
 - Unchanged :: The engine has *no HTTP, database, email, participant identity, or scheduling ownership*. Irish PR-STV remains the guide; *legislative conformity is not required*.
 - Edge cases :: Single winner, surplus rounding, last parcels, exhausted preferences, historical and unresolved ties, last vacancies, malformed decisions, replay, cancellation, and input bounds.
 - Decisions :: Use *fixed Droop quota and whole-ballot transfers*, largest-remainder apportionment, recorded initial ballot order, and historical comparison followed by recorded lots. This specification defines the online-poll rules; legislation and Wikipedia provide guidance.
-- Next step :: Definition gate and operator sign-off. Delivery depends on W001's Go module and verification entry points.
+- Next step :: Review this architecture reconciliation and retain the recorded rule approval. Delivery depends on W001's Go module and current verification contract.
 
 -----
 
@@ -52,6 +52,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 - Project :: [[file:../../.sdlc/project.yaml][Project profile]].
 - Product :: [[file:../../docs/VISION.md][VISION: Why Irish PR-STV]] and [[file:../../README.md][README: Pause, close, and count]].
 - Architecture :: [[file:../../docs/ARCHITECTURE.md][ARCHITECTURE: Counting, work processing, and announcement]].
+- Refresh authority :: The architecture reconciled at =354aa6f= (foundation sufficiency review) and subsequently approved by the operator. It confirms a pure counting component; W003 owns snapshots, randomness, durable decisions, scheduling and presentation. The existing rule approval remains recorded in =audits.org=.
 - Working references :: Wikipedia's [[https://en.wikipedia.org/wiki/Single_transferable_vote][Single transferable vote]] and [[https://en.wikipedia.org/wiki/Counting_single_transferable_votes][Counting single transferable votes]] articles guide the online-poll algorithm. They describe variants; the selected application rules must be explicit here.
 - Background guidance :: Part XIX of the [[https://www.irishstatutebook.ie/eli/1992/act/23/enacted/en/html][Electoral Act 1992]] and [[https://www.electoralcommission.ie/irelands-voting-system/][the Electoral Commission's explanation]]. These are reference material, not mandatory compliance authorities.
 - Baseline :: Documentation commit =be75045= (accepted application architecture); the sibling reuse plan supplies application foundations, *not an established counting engine*.
@@ -61,18 +62,18 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 - Prerequisite :: [[file:../001-go-application-foundation/spec.org][W001 - Go application foundation]] supplies the module and test commands.
 - Consumer :: [[file:../003-invited-poll-workflow/spec.org][W003 - Invited poll workflow]] supplies final snapshots and persists decisions/results.
 - Separation :: The engine receives *opaque ballot and option identifiers only*. It cannot read a clock, database, network, or OS randomness.
-- Limits proposed for sign-off :: 1 through 50 options, 1 through 1000 non-empty ballots, and 1 through option-count winning places. W003 handles a poll with no submitted ballots before invoking this API.
+- Approved limits :: 1 through 50 options, 1 through 1000 non-empty ballots, and 1 through option-count winning places. W003 handles a poll with no submitted ballots before invoking this API.
 
 ** Decisions
 
 - Established :: Moderator-defined place count; Irish PR-STV; automatic counting; reproducibility through recorded selection inputs.
-- Design proposal :: Use a deterministic engine that returns an *explicit decision request* for unresolved candidate ties. The workflow obtains and durably records the lot before resuming. Surplus ballot selection uses the frozen ballot order, randomized once by W003 before the count.
-- Rule authority :: This specification, once approved, defines the required application behaviour. Reference material does not independently impose requirements, and changes to the chosen algorithm must be explicit.
+- Approved design :: Use a deterministic engine that returns an *explicit decision request* for unresolved candidate ties. The workflow obtains and durably records the lot before resuming. Surplus ballot selection uses the frozen ballot order, randomized once by W003 before the count.
+- Rule authority :: This *approved specification* defines the required application behaviour. Reference material does not independently impose requirements, and changes to the chosen algorithm must be explicit.
 - Operator clarification, 8 September 2026 :: This is an online poll. The earlier requirement for legislative conformity, applicable-amendment verification, and a statutory source edition is *withdrawn*. Legislation remains guidance, and election-administration or financial-threshold requirements do not apply.
 
 ** Unresolved blockers
 
-- None within the specified algorithm. The concrete rules below are proposals for operator sign-off, not a legislative-equivalence claim. The earlier deferred algorithm wording is superseded by the explicit online-poll rules in this revision.
+- None within the specified algorithm. The concrete rules below were approved on 8 September 2026; they are not a legislative-equivalence claim. The earlier deferred algorithm wording is superseded by these explicit online-poll rules.
 
 * Acceptance Criteria
 :PROPERTIES:
@@ -346,7 +347,7 @@ For the documented rule set, a fresh caller can *reproduce both winners and inte
 *** Online-poll counting rules
 
 These rules define *irish-guided-stv-v1*. They are the complete application
-procedure proposed for sign-off, using whole votes. Statutory administrative
+procedure approved on 8 September 2026, using whole votes. Statutory administrative
 rules and optional surplus-deferral thresholds are not part of this algorithm.
 
 1. *Allocate and set quota.* Assign every ballot to its first preference. Each ballot has value 1. With N ballots and S places, set Q=floor(N/(S+1))+1 once. Keep this quota even as ballots exhaust.
@@ -452,7 +453,8 @@ reproducible selections, without requiring legislative equivalence.
 :END:
 
 - Required reading :: This specification, project profile, VISION's counting direction, ARCHITECTURE's counting boundary, and W001's module/test contract. Wikipedia and legislation are guidance, not independent compliance gates.
-- Before implementation :: Obtain definition PASS and operator sign-off for the explicit online-poll rules and fixtures above. A statutory source edition or legislative conformity record is not required.
+- Before implementation :: Confirm the recorded definition PASS, operator approval and W001 prerequisite. The existing approved rules and fixtures are retained. A statutory source edition or legislative conformity record is not required.
+- Verification boundary :: Inherit W001's repository Go checks. This package owns no HTML, CSS or JavaScript, so it introduces no web-tool dependency. W001/W003 own native web validation; the engine remains standard Go computation.
 - First implementation step :: After sign-off, write [[#rt-002-2][RT002.2 - Quota and single-winner termination]] and observe RED.
 - Definition evidence :: [[file:audits.org][W002 - Counting definition audit]].
 - Validation evidence :: [[file:validation.org][W002 - Application counting validation]].

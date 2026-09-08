@@ -466,8 +466,8 @@ emerges; extracting one is not a prerequisite for the first application.
 Development tooling uses the Go checks, standalone Biome for CSS linting and
 formatting, and tidy-html5 for rendered HTML validation without rewriting it.
 Oxlint applies if project-owned JavaScript or TypeScript is introduced; none is
-required by this architecture. Node.js and npm are excluded from development tooling,
-by the operator's direction on 8 September 2026. The former npm-managed
+required by this architecture. Node.js is excluded from development tooling,
+by the operator's direction on 8 September 2026. The former package-managed
 Stylelint choice in the foundation specification is withdrawn. Native tool
 versions and integrity checks belong to the reproducible development setup;
 they introduce no production runtime or frontend build system.

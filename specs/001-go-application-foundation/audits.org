@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Tooling amendment pending definition re-audit. The earlier effective PASS and operator sign-off are preserved below for their reviewed revisions.
+- Execution :: Architecture refresh locally reviewed; independent refreshed-definition review pending. Prior definition verdicts and operator approvals remain revision-specific history below.
 - Artefact :: [[file:spec.org][W001 - Go application foundation specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -91,18 +91,33 @@
 - Revision :: Audited specification at =ec0bfd8= (three audited build specifications for review); only lifecycle/sign-off metadata changes accompany this receipt.
 - Delivery :: Reserved for another session by operator instruction. No code or implementation-test evidence is added.
 
-** Operator-directed removal of Node and npm, 8 September 2026
+** Operator-directed removal of Node-based tooling, 8 September 2026
 
-- Authority :: Taḋg: "remove node, there is no justification for it here" and "remove npm".
-- Change :: Withdraw npm-managed Stylelint and npm audit; specify standalone Biome for CSS checks and retain govulncheck for Go dependencies. Remove NODE from the project profile, the uncommitted npm audit commands from Makefile, and the untracked tools/package.json containing only Stylelint dependencies.
+- Authority :: Taḋg: "remove node, there is no justification for it here" and the subsequent instruction to remove its package manager.
+- Change :: Withdraw package-managed Stylelint and retired package-audit; specify standalone Biome for CSS checks and retain govulncheck for Go dependencies. Remove NODE from the project profile, the uncommitted retired package-audit commands from Makefile, and the untracked tools/package.json containing only Stylelint dependencies.
 - Gate impact :: This material specification amendment resets DEFINITION_GATE and OPERATOR_SIGNOFF to PENDING and moves the foundation work item to REVIEW. Earlier approvals remain historical; counting and workflow definitions are unchanged.
 - Scope :: No application implementation changes. The concurrent build session's other edits are preserved. Biome installation and execution have not been claimed.
 
 ** Operator clarification of native linters, 8 September 2026
 
 - Authority :: "use the standard sdlc recommended linters (oxlint , tidy-html5, biome)".
-- Definition :: Biome checks CSS; tidy-html5 checks rendered HTML without rewriting it; oxlint applies if JavaScript/TypeScript source is later approved. Go checks remain required. Tool provisioning is native and reproducible, with Node/npm excluded.
+- Definition :: Biome checks CSS; tidy-html5 checks rendered HTML without rewriting it; oxlint applies if JavaScript/TypeScript source is later approved. Go checks remain required. Tool provisioning is native and reproducible, with Node-based tooling excluded.
 - Evidence :: Specification and one-off validation wording reconciled. This is a documentation amendment, not evidence that the linters have run; the amended definition gate remains pending.
+
+** Architecture refresh, local review round 1, 8 September 2026
+
+- Gate :: definition.
+- Artefact :: W001 - Go application foundation.
+- Revision :: SHA-256 =697e572072617f5c4921a0a70b3b51e766d46bf1a68a0afcecc4b5ac8edd893b=.
+- Context :: Authoring context; all three combined criteria applied to this specification and its shared boundaries.
+- Audits :: =audit-spec=, =audit-design=, =audit-test-definitions=.
+- Verdict :: PASS (local only).
+- Authority :: Operator-approved current foundation and native web-linter selection, followed by the instruction to refresh the three existing specifications. No new work item or application implementation is introduced.
+- Scope and receipt :: Native CSS/rendered-HTML checks and bounded failure evidence, current implementation baseline, driver assessment, and previously approved web-tool selection. Existing CLI/configuration/storage criteria and limits are retained.
+- Review :: Checked summary/detail agreement, resolved versus historical decisions, requirement/test traceability, Go component boundaries, Exodan-owned configuration and operations, security/privacy and recovery, and proportionate test definitions. No required local correction remains.
+- Evidence :: Fourteen documentation files sanitize and parse through Pandoc; 214 local links/anchors resolve with unique heading identifiers. The counting procedure/fixtures/fingerprints and VISION copy are unchanged. Initial CLI/store tests and Makefile were read as implementation evidence, not executed or treated as authority. Concurrent implementation edits are preserved.
+- Approval :: Existing product/interface approvals are retained. The operator explicitly approved the web-tool selection before this refresh; that approval does not substitute for the refreshed audit. Any new material decision raised by review requires operator authority.
+- External continuation :: One retained external context will review this three-spec refresh, applying each combined gate separately and returning a verdict for each exact specification revision. No prior implementation audit is resumed or replaced by this definition review.
 
 * Implementation gate
 

@@ -3,7 +3,7 @@
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
 #+DEFINITION_GATE: PENDING
-#+OPERATOR_SIGNOFF: PENDING
+#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; native web tooling approved, refreshed definition gate pending
 
 #+begin_comment
 Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".
@@ -18,13 +18,13 @@ draft before this approval. Implementation is reserved for another session.
 :END:
 
 - Outcome :: A *runnable Go service* consumes Exodan configuration and provides persistent storage, server-rendered HTML, and truthful health.
-- Before :: The repository contains *documentation only*.
+- Before :: At original definition, the repository contained *documentation only*. An initial Go foundation now exists; this refresh reconciles its delivery contract with the approved architecture.
 - After :: The application can be built and run locally and packaged for Exodan; *polling behaviour follows in W003*.
-- Changes :: Add the Go module, executable, configuration loader, SQLite initialization, templates, health endpoint, and build/verification entry points.
+- Changes :: Establish the Go module, executable, configuration loader, SQLite initialization, templates, health endpoint, and build/verification entry points. The refresh records *native CSS/HTML tooling*, approved dependency rationale, and the existing implementation baseline.
 - Unchanged :: *Exodan retains deployment and host ownership*. This change adds no authentication, live email, ballots, counting, or scheduler.
 - Edge cases :: Invalid layers, unsupported schemas, migration failure, restart, missing assets, IPv4/IPv6 binding, request limits, and shutdown.
 - Decisions :: Follow the *accepted application architecture* and SDLC Go/Web standards; adapt the recorded upload/writeback foundations.
-- Next step :: Definition audit and *operator sign-off*, followed by TDD. Specifications remain on master; implementation branching starts at delivery.
+- Next step :: Refresh the *definition audit*, then resume delivery within the recorded approval. Keep this refresh on the operator-selected branch; no new implementation branch or code is created here.
 
 -----
 
@@ -35,7 +35,7 @@ draft before this approval. Implementation is reserved for another session.
 
 ** Problem
 
-The accepted architecture has *no executable foundation yet*. The first build needs the runtime and verification boundaries that the two subsequent specifications consume.
+At original definition the accepted architecture had *no executable foundation*. Initial implementation now exists, but the delivery contract still requires the runtime and verification boundaries consumed by the two subsequent specifications. Existing code is implementation evidence, not a replacement for these requirements.
 
 ** Outcome
 
@@ -54,6 +54,7 @@ An operator can *build and run the service locally* with synthetic configuration
 - Architecture :: [[file:../../docs/ARCHITECTURE.md][Application components, runtime contract, and reuse plan]]; accepted by the operator on 8 September 2026: "ok architecture looks good".
 - External contract :: Exodan's =deploy/docs/PROJECT-INTEGRATION.md=, version 1.8, as identified and summarized in ARCHITECTURE.
 - Baseline :: Documentation commit =be75045= (application architecture and consolidated requirements); no application or regression pack existed at definition start.
+- Refresh baseline :: Architecture and foundation review at =354aa6f= (foundation sufficiency review), followed by the operator's explicit approval. The current repository contains the Go module, CLI, config/store/web packages and initial tests; concurrent implementation edits are preserved. Their presence does not establish acceptance or current test results.
 - Reuse evidence :: The architecture records upload =3776f42e84d5= and writeback =8bd639af78e4= source snapshots and exact adaptation candidates. They are implementation examples, not requirement authorities.
 
 ** Constraints and dependencies
@@ -65,14 +66,15 @@ An operator can *build and run the service locally* with synthetic configuration
 
 ** Decisions
 
-- Operator direction :: Draft specifications *on master*. Create implementation branches when coding starts; this overrides global feature-branch timing for this definition batch.
-- Design proposal for sign-off :: The precise CLI, endpoint, configuration keys, and bounds below refine the accepted architecture. They are *new interface definitions*, not claims of existing behaviour.
+- Branch history :: The original instruction was to draft specifications on master and branch when coding started. This refresh remains on the *operator-selected existing branch*, following the current SDLC definition contract.
+- Approved interfaces :: The precise CLI, endpoint, configuration keys and bounds below were approved with the original specification. They define *required behaviour*, not claims of implementation conformance.
+- Tooling approval :: On 8 September 2026 the operator explicitly approved standalone Biome for CSS, tidy-html5 for rendered HTML, and conditional oxlint for later-approved JavaScript/TypeScript. These are *web linters*; the Go lint checks remain separate.
 - Operator clarification, 8 September 2026 :: *Strict separation of concerns*: the application consumes Exodan's supplied URL and listener configuration. URL/domain validation, DNS, routing, and public TLS belong to Exodan.
 - Withdrawn proposal :: The earlier application URL policy requiring an absolute URL, excluding userinfo/query/fragment, and requiring HTTPS with a loopback exception is removed from scope by that clarification. It is not an implementation or test requirement.
 
 ** Unresolved blockers
 
-- None within this foundation scope. Open voting and announcement policies belong to W003.
+- No unresolved product or architecture decision within this scope. Voting and announcement policies are approved in W003. The refreshed definition audit remains a delivery prerequisite.
 
 * Acceptance Criteria
 :PROPERTIES:
@@ -257,6 +259,7 @@ An operator can *build and run the service locally* with synthetic configuration
 - Boundary :: Local repository commands and generated binary, without deployment.
 - Procedure :: Run build, lint, test, and vulncheck targets; cross-compile Linux amd64; inspect the binary format. Run install twice with PREFIX inside an OS temporary directory; compare installed content, verify an unrelated sentinel survives, and run installed help/version plus serve from its packaged working directory. Verify missing-scanner failure in an isolated invocation and review sync without executing a repository synchronization test.
 - Expected :: Real checks run, failures propagate, go.mod/go.sum remain unchanged by vulncheck, and the Linux artefact is produced without CGo. Source and configuration retain the documented provenance and ignore rules. The managed binary/assets exist under PREFIX; repeating installation preserves their content and unrelated files. Secrets and host configuration are excluded. Installed help/version work, and installed serve operates from the packaged asset directory with the supplied runtime variables.
+- Web-tool evidence :: Check all owned CSS with standalone Biome and application-rendered HTML with tidy-html5 diagnostics. In disposable fixtures, introduce one CSS violation, one HTML validation error, and one missing-tool case for each applicable web linter; require non-zero lint status without source/output rewrites or tool installation. Confirm the recorded tool versions and integrity/provisioning instructions. No JavaScript/TypeScript is introduced, so oxlint is not a required executable for this release. These are bounded one-off checks, not source-text regression tests.
 - Bounds :: One local verification session; at most one successful invocation and one bounded failure-path invocation of govulncheck; no mail, deployment, metered API, or global installation. Use OS temporary directories for disposable artefacts.
 - Record :: PENDING in =validation.org=; this review is not a permanent test of Makefile text.
 
@@ -355,7 +358,7 @@ data_dirs:
 
 *** Data and state
 
-- Database :: =STATE_DIRECTORY/stv-poll.sqlite= using =database/sql= and =modernc.org/sqlite=. Use the architecture's selected driver; pin the implemented versions and retain =go.sum=.
+- Database :: =STATE_DIRECTORY/stv-poll.sqlite= using =database/sql= and =modernc.org/sqlite=. Apply the [[file:../../docs/ARCHITECTURE.md::#sqlite-dependency-assessment][SQLite dependency assessment]]; retain pinned module versions and =go.sum=, preserve licence/provenance obligations, and review the driver's coupled libc version on upgrades. The assessment records maintenance, alternatives and security/operational risks; it is not vulnerability-scan evidence.
 - Connection policy :: Enforce foreign keys on *every connection*, a 5-second busy timeout, and one connection per process. Use SQLite's default rollback-journal mode initially. Later independent web/worker processes coordinate through write transactions. A health check has a separate 500 ms context deadline.
 - Migration ownership :: Embedded, ordered migrations and a schema-version record. Apply an outstanding migration and its version update in one transaction, serializing initialization. No poll-domain tables are introduced by this ticket.
 - Permissions :: Exodan owns the state directory, identity, ownership and access policy. The app requires the supplied directory to exist and be writable; it does not create/chmod/chown infrastructure directories. Create its database with mode 0600 and preserve existing file modes. Never serve state paths as static assets. Local development instructions create an operator-owned temporary state directory.
@@ -390,11 +393,12 @@ data_dirs:
 - Local installation :: =make install= builds, installs the executable at =PREFIX/bin/stv-poll=, and copies templates, static assets and non-secret defaults under =PREFIX/share/stv-poll/=. PREFIX defaults to the repository's ignored =.local/= directory. Repeated installation updates only these managed paths, preserves unrelated files, and never installs plaintext secrets or host configuration. Document serve from the installed asset directory with explicit runtime variables. No privileged/global installation or deployment is implied.
 - Build :: Use module path =github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-= and entry point =cmd/stv-poll=. Produce the local executable under ignored =bin/=; document Linux cross-compilation with CGo disabled. Do not install a target-side toolchain. Keep CLI help in =docs/stv-poll-help.md= and package it at build time; version output includes the build revision, or =dev= for an untagged local build.
 - Lint :: Apply gofmt checking, go vet, golangci-lint with the Go standard's required checks, standalone Biome for CSS linting/format checking, and tidy-html5 diagnostics for rendered HTML without rewriting output. Oxlint applies to project-owned JavaScript/TypeScript if such source is later approved; none is introduced by this specification. Provision native tool versions explicitly outside check targets.
+- Rendered-HTML coverage :: The lint entry point obtains application-rendered pages using the existing Go rendering/HTTP facilities and synthetic local state. It validates the emitted HTML, not unexpanded Go templates. W003 extends this coverage to its page/form states; no browser automation or separate rendering stack is introduced.
 - Test :: Retained behavioural RTs only; use the race detector for concurrent code. Apply the SDLC coverage floor and complete branch evidence for durable state changes.
 - Security gate :: =govulncheck ./...= plus any additional applicable dependency set introduced by build tooling. The target installs nothing, changes no locks, fails on missing tooling or incomplete scans, and remains separate from =make test=.
-- Tooling dependencies :: Use standalone Biome and tidy-html5 for the owned CSS and rendered HTML, with no Node.js or npm dependency. Enable Biome's CSS linter and formatter in project configuration. Record exact tool versions, platform artefacts and checksums during delivery; provision them outside check targets through approved native distributions. Missing applicable tooling fails the check. No browser JavaScript, bundler or browser automation is introduced; oxlint is conditional on a later approved JavaScript/TypeScript source dependency.
+- Tooling dependencies :: Use standalone Biome and tidy-html5 for the owned CSS and rendered HTML, with no Node.js dependency. Enable Biome's CSS linter and formatter in project configuration. Record exact tool versions, platform artefacts and checksums during delivery; provision them outside check targets through approved native distributions. Missing applicable tooling fails the check. No browser JavaScript, bundler or browser automation is introduced; oxlint is conditional on a later approved JavaScript/TypeScript source dependency.
 - Tooling security :: Run =govulncheck ./...= through =make vulncheck= for the Go application dependencies. Checks do not install tools, edit locks or apply fixes. Pin and verify the standalone CSS tool separately; no package-manager dependency graph is introduced for linting. OT001.1 verifies missing-tool and scanner failure propagation.
-- Tooling decision history :: The former npm-managed Stylelint proposal is withdrawn by the operator's instructions to remove Node and npm on 8 September 2026. The subsequent instruction selects the SDLC-recommended oxlint, tidy-html5 and Biome according to the source types owned by the project. The earlier specification approval remains historical; this material tooling amendment requires a current definition gate before renewed delivery sign-off.
+- Tooling decision history :: The former package-managed Stylelint proposal is withdrawn by the operator's instructions to remove Node-based tooling on 8 September 2026. The subsequent instruction selects the SDLC-recommended oxlint, tidy-html5 and Biome according to the source types owned by the project. The operator explicitly approved that web-tool selection before requesting this three-spec refresh. A current definition gate is still required; approval is not audit evidence.
 - Ignore rules :: Ignore binary output, local plaintext secrets, caches, and entire project-local agent runtime directories. Keep module checksums tracked.
 
 * Delivery Handoff
@@ -403,7 +407,7 @@ data_dirs:
 :END:
 
 - Required reading :: This specification, the project profile, named architecture sections, Exodan's integration contract, and selected SDLC Go/Web/security standards.
-- First implementation step :: Write [[#rt-001-5][RT001.5 - CLI outcomes]] and observe RED before creating the executable.
+- First implementation step :: Inspect the existing code and regression evidence against this specification, beginning with [[#rt-001-5][RT001.5 - CLI outcomes]]. Preserve existing implementation work; add missing behavioural tests and observe the intended RED before changing the corresponding behaviour. Do not recreate the module or claim earlier tests ran from their presence alone.
 - Definition evidence :: [[file:audits.org][W001 - Foundation definition audit]].
 - Validation evidence :: [[file:validation.org][W001 - Foundation user and one-off validation]].
 - Documentation impact :: Update README with working local instructions and replace architecture proposals only where implementation establishes the stated component.

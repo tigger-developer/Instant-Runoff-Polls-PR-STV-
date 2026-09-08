@@ -20,11 +20,11 @@ draft before this approval. Implementation is reserved for another session.
 - Outcome :: Moderators can *invite a group, collect revisable ranked ballots, and inspect automatically counted results*.
 - Before :: Product rules and architecture are captured; W001 supplies the foundation and W002 the counting engine.
 - After :: The full server-rendered workflow supports *grouped email addresses, list reuse, pause/close, and optional announcement*.
-- Changes :: Add moderator/participant access, poll and electorate storage, forms, ballots, durable counting/delivery, result views, and approved help copy.
+- Changes :: Add moderator/participant access, poll and electorate storage, forms, ballots, durable counting/delivery, result views, and approved help copy. This refresh aligns *approval status, native web validation and operational handoff* with the current architecture.
 - Unchanged :: *One participant has one effective vote per poll*. Exodan owns deployment/scheduling; Irish PR-STV guides the application's counting rules; no JavaScript is required. Legislative conformity is not required.
 - Edge cases :: Invalid lists/rankings, expired links, cross-poll access, concurrent aliases, deadline races, paused deadlines, zero turnout, mail failure, and interrupted counts.
-- Decisions :: The policy proposals below explicitly resolve VISION's open questions for *operator review*: owner-only moderation, private individual ballots, frozen opened polls, resumable pauses, fixed deadline semantics, email announcements defaulting off, and defined access/retention rules.
-- Next step :: Definition gate and operator sign-off, including those *proposed policies*. Implementation follows W001 and W002; no production deployment is part of this ticket.
+- Decisions :: The policies below were *approved on 8 September 2026*: owner-only moderation, private individual ballots, frozen opened polls, resumable pauses, fixed deadline semantics, email announcements defaulting off, and defined access/retention rules. VISION preserves the resolved question history.
+- Next step :: Review this architecture reconciliation under the recorded approvals. Implementation follows W001 and W002; no production deployment is part of this ticket.
 
 -----
 
@@ -51,9 +51,10 @@ A moderator can conduct the documented poll from preparation to outcome, and a p
 
 - Project :: [[file:../../.sdlc/project.yaml][Project profile]].
 - Requirements :: [[file:../../README.md][README captured requirements]].
-- Experience and copy :: [[file:../../docs/VISION.md][VISION desired experience, voter-facing copy, and open decisions]].
+- Experience and copy :: [[file:../../docs/VISION.md][VISION desired experience, voter-facing copy, and resolved decision history]].
 - Architecture :: [[file:../../docs/ARCHITECTURE.md][Accepted application architecture and concrete reuse plan]].
 - Baseline :: Documentation commit =be75045= (application architecture and consolidated requirements); no implementation existed when this batch was defined.
+- Refresh authority :: The architecture reconciled at =354aa6f= (foundation sufficiency review), followed by the operator's explicit approval. Initial Go-foundation code and tests now exist; their delivery evidence remains separate. The approved workflow policies below retain their original meaning.
 - Reuse :: The exact upload/writeback files and adaptation concerns are already recorded in ARCHITECTURE. Reuse those foundations; do not restart architectural selection.
 
 ** Constraints and dependencies
@@ -61,13 +62,13 @@ A moderator can conduct the documented poll from preparation to outcome, and a p
 - [[file:../001-go-application-foundation/spec.org][W001 - Go application foundation]] must supply the runtime, storage, and verification entry points.
 - [[file:../002-irish-pr-stv-counting/spec.org][W002 - Reproducible Irish PR-STV counting]] must supply the audited counting interface and explicit application counting rules before this workflow's counting integration can be delivered. Legislation is guidance, not a compliance prerequisite.
 - Use *ordinary HTML forms and Go-rendered pages*. Count work and SMTP run outside web/database write transactions.
-- Definition work stays on *master*, following the operator's instruction; create a coding branch only at delivery.
+- Branch history :: The original definition batch stayed on master before coding. This refresh stays on the *operator-selected existing branch*, following the current SDLC definition contract.
 
 ** Decisions
 
-Established behaviour is taken from README/VISION. The following are *proposed first-release policies for sign-off*, not assertions that the operator previously chose them:
+The following *first-release policies were approved with this specification* on 8 September 2026. README/VISION now reflect these decisions. The original proposal wording remains in Git and the dated audit history; it is not a current request to choose those policies again.
 
-| Area | Proposed policy |
+| Area | Approved policy |
 |------+-----------------|
 | Moderator authority | Each moderator administers only their own polls and copies only their own lists. An invited moderator may vote through a separate participant identity. |
 | Visibility | The owner sees aggregate turnout, count detail, winners, and contact/delivery administration. No interface directly exposes another person's ballot or voting status. Small-poll results may permit inference; disclose this before voting, without a minimum-group-size restriction. A voter sees only their own current ballot. |
@@ -84,11 +85,11 @@ Established behaviour is taken from README/VISION. The following are *proposed f
 | Input bounds | At most 1000 participants, 8 addresses each, 50 options, and 8 MiB per form body; text bounds are defined below. |
 | Delivery timing | Declare a one-minute sweep interval. Announcement work is eligible when the result commits; normal processing attempts it in the same sweep if within the execution bound. |
 
-These choices are *reviewable proposals*. Definition sign-off must approve or amend them explicitly; the current product documents' open-decision history remains preserved.
+These choices are *approved requirements*. Changes require explicit amendment; the product documents preserve their original questions and resolutions.
 
 ** Unresolved blockers
 
-- The product policies above await *operator disposition at definition sign-off*; they are not hidden assumptions for implementation.
+- No unresolved product-policy decision remains. The recorded approvals cover the policies above; this refresh does not introduce additional product choices.
 - W002's approved application counting rules remain a prerequisite. Do not bypass its definition gate or substitute a generic STV implementation; no legislative-conformity gate applies.
 
 * Acceptance Criteria
@@ -189,7 +190,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 :CUSTOM_ID: ac-003-12
 :END:
 
-- Criterion :: Pausing an open poll *stops new ballots and revisions* without freezing a result or creating count work. It may resume before the deadline under the proposed policy.
+- Criterion :: Pausing an open poll *stops new ballots and revisions* without freezing a result or creating count work. It may resume before the deadline under the approved policy.
 - Proven by :: [[#rt-003-10][RT003.10 - Pause resume and manual close]].
 
 ** AC003.13 - Manual close counts paused polls
@@ -435,7 +436,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 - Action :: Request dashboards, results, ballot URLs, and delivery status.
 - Expected :: Only the owner receives aggregate turnout, winners and count breakdown. Participants receive only their own ballot/status. No person-level voted flag or other ballot is rendered. Zero turnout produces a no-votes outcome with no invented winner; checked-announcement handling follows AC003.17.
 - Projection :: Check that count snapshots, per-ballot IDs/preferences, parcel membership and decision fingerprints are absent from moderator/public HTML and error responses; aggregate per-count totals and option-level events remain visible to the owner.
-- Small poll :: Include a one-participant poll. Its aggregate result remains available under the proposed policy, the pre-vote notice explains possible inference, and no separate person-level voting-status or ballot view is introduced. This proposal requires operator sign-off.
+- Small poll :: Include a one-participant poll. Its aggregate result remains available under the approved policy, the pre-vote notice explains possible inference, and no separate person-level voting-status or ballot view is introduced. This policy was included in the original operator sign-off.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.14 - Announcement choice and isolation
@@ -514,7 +515,7 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 
 - Covers :: [[#ac-003-22][AC003.22 - Deployment remains Exodan-owned]]; [[#ac-003-23][AC003.23 - Local end-to-end poll is usable]].
 - Boundary :: Local executable, temporary SQLite, local SMTP capture, and packaged application files.
-- Procedure :: Run one synthetic full poll with both command modes using Exodan-shaped runtime inputs; inspect timer intent, asset packaging, safe diagnostics, and documented backup/restore procedure. Perform one stopped-service database backup and local restore, then verify persisted ballots, decisions, result, and pending work.
+- Procedure :: Run one synthetic full poll with both command modes using Exodan-shaped runtime inputs; inspect timer intent, asset packaging, safe diagnostics, and documented backup/restore procedure. Perform one stopped-service database backup and local restore with serve and every worker quiescent, then verify persisted ballots, decisions, result, and pending work. Run W001's native CSS/rendered-HTML checks over this workflow's pages and response states.
 - Expected :: Same state is visible to serve and process-due-work; assets resolve from packaged cwd; all mutable state remains under STATE_DIRECTORY; restore preserves the committed poll. No app-owned host scheduling or deployment commands appear.
 - Bounds :: One local session, at most two synthetic polls and 20 addresses; zero external mail, production data, deployment, or metered API calls. Temporary state belongs to the test and is cleaned up afterwards.
 - Record :: PENDING in =validation.org=. A live SMTP/provider check requires its own operator-approved destination and bounds; this local review makes no inbox-delivery claim.
@@ -699,7 +700,7 @@ decisions without a new answer or result. This is reproducibility, not ballot
 anonymity.
 
 - Result projection :: The engine's full record remains internal. Moderator HTML shows quota, aggregate turnout, per-option totals by count, elections/exclusions, aggregate transfers/exhaustion and option-level lot outcomes. It never returns snapshot JSON, ballot IDs/preferences, parcel membership or request fingerprints. Participant pages show only that participant's own current ballot and poll state.
-- Privacy presentation :: Before voting, explain that one current ballot is stored per participant, moderators see aggregate results, and records are retained for review/list reuse. Include: "In a small poll, the results or turnout may allow someone to infer how a person voted or whether they took part." Do not promise anonymity: operators controlling storage can access the underlying associations. No individual-vote history or export route is introduced. Permitting aggregate results without a group-size threshold is an explicit proposal for operator sign-off.
+- Privacy presentation :: Before voting, explain that one current ballot is stored per participant, moderators see aggregate results, and records are retained for review/list reuse. Include: "In a small poll, the results or turnout may allow someone to infer how a person voted or whether they took part." Do not promise anonymity: operators controlling storage can access the underlying associations. No individual-vote history or export route is introduced. Aggregate results without a group-size threshold were explicitly approved with this specification.
 
 *** Due work and delivery
 
@@ -718,7 +719,7 @@ anonymity.
 - Logical uniqueness :: Initial invitations are unique per poll/contact; announcements per result/contact. A repeated HTTP action or worker does not create another logical operation. Physical SMTP duplicates remain possible after ambiguous acceptance.
 - Failures :: A count error becomes visible and retains its snapshot/decisions; no automatic repeated count error loop is run. Infrastructure interruption reclaims unfinished work. Do not silently replace an existing successful result.
 
-*** Announcement copy proposed for sign-off
+*** Approved announcement copy
 
 A successful announcement has subject =Result: [thing]= and this plain-text body:
 
@@ -744,10 +745,10 @@ contact lists, or a public result link. Invitations remain *exactly as in VISION
 *** Security impact
 
 - Threat boundary :: Public form/authentication endpoints, email bearer links, moderator ownership, participant identity, and persisted votes.
-- Data and secrets :: The database retains personal contacts and ballot associations; *do not promise anonymity*. Consume Exodan's state-access boundary and disclose the proposed retention/visibility policy in the UI; the application does not manage host ownership or permissions.
+- Data and secrets :: The database retains personal contacts and ballot associations; *do not promise anonymity*. Consume Exodan's state-access boundary and disclose the approved retention/visibility policy in the UI; the application does not manage host ownership or permissions.
 - Access :: Deny cross-owner/cross-poll access; derive participant identity from the scoped session, never a submitted email or arbitrary participant ID.
 - Mitigation :: Atomic grant consumption, hashed sessions, explicit scope, CSRF, output escaping, bounded inputs, private pages, safe link origins, redacted logs, TLS mail, and dependency scanning.
-- Gate :: Privacy, retention, and announcement proposals require explicit operator sign-off before implementation creates this capability.
+- Approval :: Privacy, retention and announcement policies were included in the operator's original specification approval. This refresh preserves them; any later material change requires explicit sign-off.
 
 *** Other relevant qualities
 
@@ -766,6 +767,9 @@ browser automation, source-text regression tests, live email, or metered service
 calls to the persistent suite. UTs establish presentation and usability; OTs
 establish the bounded local integration/packaging evidence.
 
+- Web checks :: Inherit W001's *standalone Biome for CSS and tidy-html5 for rendered HTML*, alongside the separate Go lint/test commands. Extend rendered validation to moderator/access forms, ballots, validation/conflict responses, paused/closed/pending/result views and help, using synthetic state through the existing Go rendering/HTTP facilities. Do not validate unexpanded templates or add a browser stack. This workflow introduces no JavaScript/TypeScript, so oxlint remains conditional on a later approved change.
+- Provisioning :: Reuse W001's pinned native tools and missing-tool/failure contract. No additional frontend runtime, package toolchain or production command dependency is introduced.
+
 * Delivery Handoff
 :PROPERTIES:
 :CUSTOM_ID: delivery-handoff
@@ -775,5 +779,5 @@ establish the bounded local integration/packaging evidence.
 - First implementation step :: After prerequisite delivery and sign-off, write [[#rt-003-3][RT003.3 - Address grouping and entitlement]] and observe RED.
 - Definition evidence :: [[file:audits.org][W003 - Poll workflow definition audit]].
 - Validation evidence :: [[file:validation.org][W003 - Workflow user and one-off validation]].
-- Documentation impact :: Update README's working instructions and links; retain VISION's open-decision history while linking to the policies explicitly approved in this specification. Package the voter-facing help from its existing authority.
+- Documentation impact :: Update README's working instructions and links; retain VISION's resolved decision history while linking to the policies explicitly approved in this specification. Package the voter-facing help from its existing authority.
 - Completion boundary :: All traced tests and required user/one-off evidence must be current; operator closure remains separate. No live deployment, actual invitation sending, or infrastructure mutation is authorized by specification drafting.

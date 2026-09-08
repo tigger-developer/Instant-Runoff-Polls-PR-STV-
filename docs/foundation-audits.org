@@ -17,15 +17,15 @@
 - REVISION :: VISION SHA-256 =b3782e3468f667e2eb0a68d6cd38ad7c2cfa992226091fb8ced83d084475a7e8=; ARCHITECTURE SHA-256 =b29a867061a071283ae0acb62e078fc5d4f12508b151e23e11b3f2ac7578b019= at =10e083c= (foundation implementation audit incident checkpoint).
 - VERDICT :: FAIL.
 - Criteria :: Vision, architecture, alignment, risk and handoff reviewed together in the current context.
-- [risk] [BLOCKING] FOUNDATION-001 - Node/npm tooling conflict :: The profile selects NODE and the foundation specification requires npm-managed Stylelint. The current Web standard instead selects Biome with an approved toolchain and prohibits introducing Node/npm merely for CSS linting. The documents contain no exhausted-alternatives justification. Earlier specification approval is recorded and is not treated as absent; the new standards conflict and the operator's explicit rejection of Node/npm require reconciliation.
+- [risk] [BLOCKING] FOUNDATION-001 - Node-based tooling tooling conflict :: The profile selects NODE and the foundation specification requires package-managed Stylelint. The current Web standard instead selects Biome with an approved toolchain and prohibits introducing Node-based tooling merely for CSS linting. The documents contain no exhausted-alternatives justification. Earlier specification approval is recorded and is not treated as absent; the new standards conflict and the operator's explicit rejection of Node-based tooling require reconciliation.
 - [handoff] [BLOCKING] FOUNDATION-002 - Stale current authority :: VISION's status, introductory text, privacy boundary and decision list still describe privacy, announcements, ownership, deadlines and access lifetimes as unresolved. ARCHITECTURE repeats those deferrals and says the repository contains no application code. The approved poll-workflow specification already resolves those policies, and the current branch contains an initial Go implementation. Neither foundation document directly links those resolutions as its current decision authority. A reader can reopen settled choices or miss approved privacy obligations.
 - [vision] [ADVISORY] FOUNDATION-003 - First-release scope and roadmap :: VISION describes the desired experience and non-goals, but does not explicitly distinguish the first usable release from later possibilities or state that no further roadmap is committed. Add that distinction using the existing approved scope; do not invent features.
 - Positive evidence :: The paired documents identify the problem and users, a single Go application, server-rendered forms, SQLite ownership, scoped participant identity, transaction boundaries, reproducible counts, durable work, SMTP limitations and clear Exodan responsibility for URL/domain policy, deployment, scheduling and host operations.
 
 ** Operator-directed remediation between rounds
 
-- Authority :: "remove node, there is no justification for it here" followed by "remove npm".
-- Change :: Removed NODE from the profile, removed the npm audit commands from Makefile, and moved the untracked tools/package.json containing only Stylelint dependencies to Trash. Replaced the foundation specification's npm requirements with standalone Biome and Go dependency scanning. Added the explicit exclusion of Node/npm to the architecture's development-tooling boundary.
+- Authority :: "remove node, there is no justification for it here" followed by an explicit instruction to remove its package manager.
+- Change :: Removed NODE from the profile, removed the retired package-audit commands from Makefile, and moved the untracked tools/package.json containing only Stylelint dependencies to Trash. Replaced the foundation specification's former package-tooling requirements with standalone Biome and Go dependency scanning. Added the explicit exclusion of Node-based tooling to the architecture's development-tooling boundary.
 - Preservation :: Other concurrent implementation edits were left untouched. The former tooling choice and prior specification approval remain in dated history. This audit does not install Biome or claim its checks have run.
 - Definition impact :: The materially amended Go-foundation specification requires re-audit; its gate/sign-off fields are PENDING and its work item is REVIEW. Counting and workflow approvals are unchanged.
 
@@ -35,11 +35,11 @@
 - REVISION :: VISION SHA-256 =b3782e3468f667e2eb0a68d6cd38ad7c2cfa992226091fb8ced83d084475a7e8=; ARCHITECTURE SHA-256 =64da9749c8305cb966ec2264426baa596e8a1b8470b533c459a2374fed5c465e=; project profile SHA-256 =5d9ca046f220d1eaca99767db254604db852449119fab7973552d4f61ff365a2=.
 - VERDICT :: FAIL.
 - Criteria :: Vision, architecture, alignment, risk and handoff reapplied to the amended pair and adjacent authority.
-- Remediation receipt :: FOUNDATION-001 - Node/npm tooling conflict is addressed by explicit removal and the standalone tooling boundary. No npm package manifest or command remains in the inspected project tooling.
+- Remediation receipt :: FOUNDATION-001 - Node-based tooling tooling conflict is addressed by explicit removal and the standalone tooling boundary. No retired package manifest or command remains in the inspected project tooling.
 - Remaining finding :: FOUNDATION-002 - Stale current authority remains BLOCKING. FOUNDATION-003 - First-release scope and roadmap remains ADVISORY.
 - Required authoring correction :: Preserve the old open-question history, identify it as superseded, link the approved policy and counting decisions, and distinguish intended architecture from implementation status. No new privacy, voting or infrastructure decision is needed for that reconciliation.
 - External review :: Not started; SESSION_ID not issued. The skill permits an external foundation reviewer only after all local checks pass.
-- Boundary :: The audit skill states: "Do not edit the audited documents as an auditor; remediation belongs to the authoring workflow between rounds." The operator explicitly authorized the Node/npm removal; other foundation edits were not inferred from the audit invocation.
+- Boundary :: The audit skill states: "Do not edit the audited documents as an auditor; remediation belongs to the authoring workflow between rounds." The operator explicitly authorized the Node-based tooling removal; other foundation edits were not inferred from the audit invocation.
 
 ** Authoring remediation and local review, round 3
 
@@ -49,7 +49,7 @@
 - VERDICT :: PASS (local only).
 - Criteria :: Vision, architecture, alignment, risk and handoff reviewed together.
 - Remediation receipt :: FOUNDATION-002 - Stale current authority is addressed by direct links to approved specifications, explicit dispositions beside preserved historical questions, current privacy/ownership/deadline/announcement boundaries, and a distinction between target architecture and initial implementation. FOUNDATION-003 - First-release scope and roadmap is addressed by the existing usable-poll scope and an explicit statement that no later feature roadmap is committed.
-- Tooling :: Biome applies to CSS, tidy-html5 to rendered HTML, and oxlint only to a later approved JavaScript/TypeScript source dependency. Go checks remain required; Node/npm remain excluded. Native tool versions and integrity are provisioned reproducibly outside checks. This establishes direction, not installed-tool evidence.
+- Tooling :: Biome applies to CSS, tidy-html5 to rendered HTML, and oxlint only to a later approved JavaScript/TypeScript source dependency. Go checks remain required; Node-based tooling remain excluded. Native tool versions and integrity are provisioned reproducibly outside checks. This establishes direction, not installed-tool evidence.
 - Verification :: Fourteen documentation files parse with Pandoc and sanitize identically; 208 local links and their anchors are valid. The invitation/help section is byte-for-byte unchanged from the preceding commit. No application code or concurrent build edits changed during this remediation.
 - Limitation :: No external foundation verdict or new operator foundation sign-off is implied. The separate Go-foundation feature specification still requires its tooling-amendment re-audit.
 
@@ -94,10 +94,17 @@
 - Revisions :: VISION SHA-256 =96a69f6a624a7ef719281d09a99285cfbe16a0fea8f9ceb211ba89ff2af7e783=; ARCHITECTURE SHA-256 =185aa9aaec8795e30311e1c3c347907ccd1331800225bcaa755a7ce2b18108f7=. Both match the preceding independent PASS. The project profile, Web/Node standards and Exodan contract also match the recorded baseline.
 - Purpose and users :: Invited-group preference polling; voters, moderators and infrastructure operators have defined responsibilities.
 - MVP and scope :: One usable poll from preparation through results, with grouped addresses, list reuse, revisions, pause/close and optional announcements. Non-goals and the absence of a committed later roadmap are explicit.
-- Architecture and technology :: One Go application, server-rendered forms, SQLite, isolated counting and durable work, SMTP and scoped magic links. Sibling adaptation candidates, dependency trade-offs and native lint tooling are recorded; Node/npm are excluded.
+- Architecture and technology :: One Go application, server-rendered forms, SQLite, isolated counting and durable work, SMTP and scoped magic links. Sibling adaptation candidates, dependency trade-offs and native lint tooling are recorded; Node-based tooling are excluded.
 - Security and data :: Participant identity, poll ownership, authorization, token handling, ballot consistency, retention and privacy limitations are explicit.
 - Deployment and operations :: Exodan owns host deployment, public URL/domain policy, secrets delivery, scheduling and backup operations. The application owns its configuration consumption, health, migrations, durable recovery and redacted logs.
 - Assumptions and limitations :: One host with local persistent storage; stopped-service consistent backups; deadline enforcement independent of sweep timing; SMTP acceptance does not guarantee inbox delivery. Deployment-specific values and executed migration/restore checks belong to delivery and operations, not additional product discovery.
 - Separation and handoff :: Product purpose, detailed requirements and application architecture have named authorities. The existing non-blocking duplication advisory remains; no material conflict or missing foundation decision was identified. The review does not introduce copied acceptance criteria or an implementation plan.
 - Unresolved discovery questions :: None required for the documented first release. No new assumptions or product decisions were introduced.
 - Approval boundary :: Current foundation-pair sign-off remains for the operator. The earlier independent verdict is reused only for its unchanged revisions; this invocation did not run a new independent audit. The separate Go-foundation tooling amendment still requires definition re-audit.
+
+** Operator approval and terminology cleanup, 8 September 2026
+
+- Authority :: Taḋg: "ah yes, those are not go linters though. APPROVED", followed by an instruction to refresh all three specifications against the updated architecture.
+- Approval :: The reviewed foundation pair and native web-tool selection are approved. Go checking remains distinct from CSS, HTML and conditional JavaScript checking. This receipt supersedes the earlier pending foundation-approval statements; it does not claim an implementation test result.
+- Documentation direction :: The operator subsequently required removal of every reference to the retired package manager from project documentation. Current wording now describes native tooling and the withdrawn Node-based approach without naming that manager, including historical audit summaries. Quoted removal instructions containing that name are paraphrased and identified as such; original Git history remains intact.
+- Architecture impact :: Editorial terminology cleanup only; the selected tools, exclusion of a Node runtime, component boundaries and dependency rationale remain unchanged. No new foundation decision is introduced.

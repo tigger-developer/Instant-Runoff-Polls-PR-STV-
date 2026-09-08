@@ -20,6 +20,8 @@
 - Procedure and expected result :: Operator views the local page without JavaScript at 320 CSS pixels and 200% zoom, using a keyboard. Verify visible focus, unclipped content, one h1 and ordered headings, meaningful labels/alt text, and WCAG 2.1 AA text contrast of at least 4.5:1 or 3:1 for large text.
 - Execution evidence :: No execution or human result has been recorded.
 
+- Refresh boundary :: The initial test definitions predate the current implementation. This refresh records no new application execution; preserve any separately recorded delivery evidence and verify its revision before reuse.
+
 * One-off tests
 
 ** OT001.1 - Build and tooling contract
@@ -32,4 +34,5 @@
 - Definition :: [[file:spec.org::#ot-001-1][OT001.1 - Build and tooling contract]].
 - Result :: PENDING.
 - Procedure and expected result :: One local build/lint/test/vulnerability-check and Linux cross-compilation review, including govulncheck failure propagation and non-mutating locks. Check standalone Biome for CSS and tidy-html5 for rendered HTML; missing applicable tools fail visibly. Oxlint applies only if approved JavaScript/TypeScript source exists. Install twice to a temporary PREFIX: managed binary/assets remain identical, an unrelated sentinel survives, secrets/host configuration are excluded, and installed help/version/serve operate with the documented runtime inputs. No deployment, mail, or metered API.
+- Web-tool failure evidence :: Use disposable fixtures for one CSS violation, one rendered-HTML error and one missing-tool case per applicable web linter. Each fails without rewriting input/output or installing tools. Verify native versions and integrity/provisioning instructions. No source-text regression or browser stack is introduced.
 - Execution evidence :: No execution or human result has been recorded.
