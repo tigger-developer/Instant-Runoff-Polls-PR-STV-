@@ -4,7 +4,7 @@
 
 * Definition gate
 
-- Execution :: Architecture refresh locally reviewed; the independent batch review returned a runner incident and no accepted verdict. Prior definition results and operator approvals remain revision-specific history below.
+- Execution :: Approved minor refresh; the prior effective definition PASS is retained by explicit operator acceptance on 2026-09-08. The unsuccessful fresh audit attempt remains history, not a new independent verdict.
 - Artefact :: [[file:spec.org][W003 - Invited poll workflow specification]].
 - Required reviews :: Local =audit-spec=, =audit-design=, and =audit-test-definitions=; then one retained external context after the local reviews pass.
 - Evidence policy :: Record exact reviewed revisions, findings, and remediation here. No audit PASS is implied by the existence of the draft.
@@ -122,6 +122,14 @@
 - Scope :: Approval of this refreshed specification, retaining the established product/architecture decisions and native web-tool selection.
 - Revision :: Specification at =3f26bde= (refresh verification and audit runner incident checkpoint), followed only by this approval metadata update.
 - Gate boundary :: Human approval is recorded separately from the independent audit. The runner incident remains unresolved; no independent PASS or implementation closure is inferred. No replacement audit context has yet been started.
+
+** Operator disposition of minor refresh, 8 September 2026
+
+- Authority :: Taḋg described the changes as a minor lint-tool substitution and stated: "previously these passed, i am happy to mark them approved".
+- Accepted revision :: SHA-256 =3a0d7030be61517dabee8c0f8387adcf7f2cdc51ca28db6bf9b6edf4774ee937=, before this disposition's metadata updates.
+- Disposition :: Retain the prior effective definition PASS and mark the refreshed specification approved on the operator's explicit acceptance of the limited change. No replacement independent audit is required for this refresh.
+- Evidence boundary :: The previous independent passing evidence and current local review remain recorded. The failed runner invocation supplied no accepted independent verdict and is not converted into audit PASS. This operator disposition supersedes the earlier pending-gate/replacement-context requests.
+- Limits :: Acceptance covers the documented architecture reconciliation and native web-tooling refresh only. It introduces no new voting, privacy or infrastructure policy and does not waive implementation tests, implementation audit, required validation or operator closure.
 
 * Implementation gate
 

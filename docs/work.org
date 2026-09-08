@@ -83,11 +83,11 @@ classification; it is provenance, not current state.
 - Evidence :: [[file:foundation-audits.org][Foundation review and independent audit evidence]], including exact reviewed revisions and the retained advisory.
 - Approval :: Taḋg explicitly approved the current foundation pair and clarified native web-linter selection on 2026-09-08: "ah yes, those are not go linters though. APPROVED". Earlier approvals remain in the evidence history.
 - Scope :: This review introduces no new requirements, specifications or implementation work. The Go-foundation tooling amendment retains its separate review status below.
-- Refreshed specifications :: Taḋg approved all three refreshed sheets on 2026-09-08: "ok approved". This approval is recorded in each specification and audit history. The independent runner incident remains separate; affected gates stay pending until valid audit evidence is recorded.
+- Refreshed specifications :: Taḋg approved all three refreshed sheets on 2026-09-08 and explicitly accepted the minor changes against their previous passing audits. The prior effective definition PASS is retained on that operator basis. The fresh audit runner incident remains historical and is not represented as a new independent PASS. No replacement definition review is required for this accepted refresh.
 
 * Work items
 
-** REVIEW W001 - Establish the Go application foundation :feature:
+** ACTIVE W001 - Establish the Go application foundation :feature:
 :PROPERTIES:
 :CUSTOM_ID: w-001
 :PRIORITY: P1
@@ -97,7 +97,7 @@ classification; it is provenance, not current state.
 
 - Specification :: [[file:../specs/001-go-application-foundation/spec.org][W001 - Establish the Go application foundation]].
 - Scope :: Go executable, Exodan configuration, SQLite initialization, server-rendered landing page, health, and build/verification commands.
-- Definition :: The original specification and subsequent native web-linter change are approved by Taḋg on 2026-09-08. Local refresh review passed; the independent audit returned a formatting incident without a resumable context ID. The refreshed gate remains pending; see the linked audit history for the required operator direction.
+- Definition :: Original specification and native web-linter refresh approved by Taḋg on 2026-09-08. The prior effective definition PASS is retained by explicit operator acceptance of the minor refresh. Local review passed; the unsuccessful fresh audit attempt remains separate evidence history.
 - Dependencies :: None within this build batch.
 
 ** ACTIVE W002 - Implement reproducible Irish PR-STV counting :feature:
@@ -114,7 +114,7 @@ classification; it is provenance, not current state.
 - Architecture refresh :: Editorial approval/authority updates only; counting rules, fixtures and fingerprints are unchanged. Local review passed. The attempted independent batch review produced no accepted verdict; the original unchanged-rule approval and evidence remain applicable.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]].
 
-** REVIEW W003 - Deliver the invited poll workflow :feature:
+** ACTIVE W003 - Deliver the invited poll workflow :feature:
 :PROPERTIES:
 :CUSTOM_ID: w-003
 :PRIORITY: P1
@@ -125,7 +125,7 @@ classification; it is provenance, not current state.
 - Specification :: [[file:../specs/003-invited-poll-workflow/spec.org][W003 - Deliver the invited poll workflow]].
 - Scope :: Moderator and participant access, grouped email addresses, list reuse, invitations, ballot revisions, pause/close, counting, results, announcements, and help.
 - Definition :: Definition gate PASS after local review and retained independent audit; approved by Taḋg on 2026-09-08. Implementation is reserved for another session. Approval includes the labelled policy proposals; the original proposal history is retained in the specification.
-- Architecture refresh :: Approved policies are retained. Native web-validation coverage and backup verification are reconciled with the architecture. Local review passed; the refreshed definition gate is pending after the independent runner incident described in the linked audit record.
+- Architecture refresh :: Approved policies are retained. Native web-validation coverage and backup verification are reconciled with the architecture. Local review passed; the operator accepts the minor refresh against the prior effective definition PASS. The runner incident remains history and requires no replacement review for this accepted scope.
 - Dependencies :: [[#w-001][W001 - Establish the Go application foundation]] and [[#w-002][W002 - Implement reproducible Irish PR-STV counting]].
 
 * Migration record

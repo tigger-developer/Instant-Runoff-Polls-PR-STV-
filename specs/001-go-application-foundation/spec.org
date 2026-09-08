@@ -2,8 +2,18 @@
 #+SUBTITLE: Unified change specification
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
-#+DEFINITION_GATE: PENDING
-#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; refreshed specification approved
+#+DEFINITION_GATE: PASS
+#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; minor refresh accepted against prior passing audits
+
+#+begin_comment
+Current gate disposition, 8 September 2026: the operator accepts this minor
+architecture/native-web-tooling refresh against the prior passing audits.
+DEFINITION_GATE retains PASS on that explicit operator basis. The attempted
+fresh independent review produced no accepted verdict; its runner incident is
+preserved in audits.org and is not represented as an independent PASS.
+No further definition audit is required for this accepted refresh. This does
+not waive implementation tests, implementation review or operator closure.
+#+end_comment
 
 #+begin_comment
 Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".
@@ -24,7 +34,7 @@ draft before this approval. Implementation is reserved for another session.
 - Unchanged :: *Exodan retains deployment and host ownership*. This change adds no authentication, live email, ballots, counting, or scheduler.
 - Edge cases :: Invalid layers, unsupported schemas, migration failure, restart, missing assets, IPv4/IPv6 binding, request limits, and shutdown.
 - Decisions :: Follow the *accepted application architecture* and SDLC Go/Web standards; adapt the recorded upload/writeback foundations.
-- Next step :: Refresh the *definition audit*, then resume delivery within the recorded approval. Keep this refresh on the operator-selected branch; no new implementation branch or code is created here.
+- Next step :: Resume delivery within the *operator-accepted refreshed definition* and recorded prior audit basis. This documentation refresh creates no implementation branch or code.
 
 -----
 
@@ -74,7 +84,7 @@ An operator can *build and run the service locally* with synthetic configuration
 
 ** Unresolved blockers
 
-- No unresolved product or architecture decision within this scope. Voting and announcement policies are approved in W003. The refreshed definition audit remains a delivery prerequisite.
+- No unresolved product or architecture decision within this scope. Voting and announcement policies are approved in W003. The operator accepted this minor refresh against the prior passing audits; implementation verification remains required.
 
 * Acceptance Criteria
 :PROPERTIES:
@@ -398,7 +408,7 @@ data_dirs:
 - Security gate :: =govulncheck ./...= plus any additional applicable dependency set introduced by build tooling. The target installs nothing, changes no locks, fails on missing tooling or incomplete scans, and remains separate from =make test=.
 - Tooling dependencies :: Use standalone Biome and tidy-html5 for the owned CSS and rendered HTML, with no Node.js dependency. Enable Biome's CSS linter and formatter in project configuration. Record exact tool versions, platform artefacts and checksums during delivery; provision them outside check targets through approved native distributions. Missing applicable tooling fails the check. No browser JavaScript, bundler or browser automation is introduced; oxlint is conditional on a later approved JavaScript/TypeScript source dependency.
 - Tooling security :: Run =govulncheck ./...= through =make vulncheck= for the Go application dependencies. Checks do not install tools, edit locks or apply fixes. Pin and verify the standalone CSS tool separately; no package-manager dependency graph is introduced for linting. OT001.1 verifies missing-tool and scanner failure propagation.
-- Tooling decision history :: The former package-managed Stylelint proposal is withdrawn by the operator's instructions to remove Node-based tooling on 8 September 2026. The subsequent instruction selects the SDLC-recommended oxlint, tidy-html5 and Biome according to the source types owned by the project. The operator explicitly approved that web-tool selection before requesting this three-spec refresh. A current definition gate is still required; approval is not audit evidence.
+- Tooling decision history :: The former package-managed Stylelint proposal is withdrawn by the operator's instructions to remove Node-based tooling on 8 September 2026. The subsequent instruction selects the SDLC-recommended oxlint, tidy-html5 and Biome according to the source types owned by the project. The operator explicitly approved that web-tool selection before requesting this three-spec refresh. The operator subsequently accepted this minor refresh against the prior passing audits; the unsuccessful fresh audit attempt remains recorded separately.
 - Ignore rules :: Ignore binary output, local plaintext secrets, caches, and entire project-local agent runtime directories. Keep module checksums tracked.
 
 * Delivery Handoff

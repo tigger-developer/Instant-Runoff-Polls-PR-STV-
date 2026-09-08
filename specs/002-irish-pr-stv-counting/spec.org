@@ -3,7 +3,17 @@
 #+STARTUP: overview
 #+OPTIONS: toc:2 num:nil
 #+DEFINITION_GATE: PASS
-#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; refreshed specification approved
+#+OPERATOR_SIGNOFF: Taḋg, 2026-09-08; minor refresh accepted against prior passing audits
+
+#+begin_comment
+Current gate disposition, 8 September 2026: the operator accepts this minor
+architecture/native-web-tooling refresh against the prior passing audits.
+DEFINITION_GATE retains PASS on that explicit operator basis. The attempted
+fresh independent review produced no accepted verdict; its runner incident is
+preserved in audits.org and is not represented as an independent PASS.
+No further definition audit is required for this accepted refresh. This does
+not waive implementation tests, implementation review or operator closure.
+#+end_comment
 
 #+begin_comment
 Operator sign-off recorded on 2026-09-08: "approved all 3. i will build in another session".
