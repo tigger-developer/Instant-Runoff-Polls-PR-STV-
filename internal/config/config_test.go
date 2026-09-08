@@ -94,6 +94,22 @@ func TestLoadHandlesEmptyOptionalOverlayAndRejectsEmptyDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsEveryInvalidHTTPDuration(t *testing.T) {
+	directory := t.TempDir()
+	defaults := filepath.Join(directory, "defaults.yaml")
+	writeConfig(t, defaults, validDefaults)
+	for _, key := range []string{"read_header_timeout", "read_timeout", "write_timeout", "idle_timeout", "shutdown_timeout"} {
+		t.Run(key, func(t *testing.T) {
+			overlay := filepath.Join(directory, key+".yaml")
+			writeConfig(t, overlay, "http:\n  "+key+": zero\n")
+			_, err := Load(defaults, overlay, "")
+			if err == nil || !strings.Contains(err.Error(), "http."+key) {
+				t.Fatalf("invalid %s error = %v", key, err)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsMissingOrUnreadableRequiredLayers(t *testing.T) {
 	directory := t.TempDir()
 	missing := filepath.Join(directory, "missing.yaml")

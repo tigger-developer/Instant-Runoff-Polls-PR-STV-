@@ -135,9 +135,9 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		if command.ProcessState == nil || !command.ProcessState.Exited() {
-			_ = command.Process.Signal(os.Interrupt)
+			_ = command.Process.Kill()
+			_ = command.Wait()
 		}
-		_ = command.Wait()
 	})
 
 	client := &http.Client{Timeout: 200 * time.Millisecond}
@@ -176,6 +176,12 @@ func TestExecutableServesLandingStaticAssetAndHealth(t *testing.T) {
 	asset.Body.Close()
 	if asset.StatusCode != http.StatusOK || !strings.HasPrefix(asset.Header.Get("Content-Type"), "text/css") {
 		t.Fatalf("asset response = %d %q", asset.StatusCode, asset.Header.Get("Content-Type"))
+	}
+	if err := command.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("graceful shutdown: %v; stderr: %s", err, stderr.String())
 	}
 }
 
