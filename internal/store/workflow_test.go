@@ -353,6 +353,56 @@ func TestDeliveryAttemptPersistsBeforeRetryAndReleasesClaim(t *testing.T) {
 	}
 }
 
+func TestDeliveryAttemptHoldsPausedAndCancelsIneligibleInvitations(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		state      string
+		deadline   int64
+		wantErr    error
+		workStatus string
+		mailStatus string
+	}{
+		{name: "paused", state: "paused", deadline: 500, wantErr: ErrDeliveryHeld, workStatus: "pending", mailStatus: "pending"},
+		{name: "closed", state: "closed", deadline: 500, wantErr: ErrDeliveryCancelled, workStatus: "succeeded", mailStatus: "cancelled"},
+		{name: "elapsed", state: "open", deadline: 100, wantErr: ErrDeliveryCancelled, workStatus: "succeeded", mailStatus: "cancelled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := workflowStore(t)
+			defer st.Close()
+			if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state=?,deadline=? WHERE id='poll-1'", tc.state, tc.deadline); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id,poll_id) VALUES ('person','poll-1')"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.DB.ExecContext(ctx, "INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact','poll-1','person','reader@example.test','reader@example.test')"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.DB.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status,claim_token,claim_expires_at) VALUES ('mail','poll-1','delivery','invitation:poll-1:contact',10,'claimed','token',300)"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.DB.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES ('delivery','mail','contact','reader@example.test','invitation','pending',10)"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := st.BeginDeliveryAttempt(ctx, "mail", "token", time.Unix(100, 0)); !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error=%v", err)
+			}
+			var workStatus, mailStatus string
+			var attempts int
+			if err := st.DB.QueryRowContext(ctx, "SELECT status,attempts FROM work_items WHERE id='mail'").Scan(&workStatus, &attempts); err != nil {
+				t.Fatal(err)
+			}
+			if err := st.DB.QueryRowContext(ctx, "SELECT status FROM deliveries WHERE id='delivery'").Scan(&mailStatus); err != nil {
+				t.Fatal(err)
+			}
+			if workStatus != tc.workStatus || mailStatus != tc.mailStatus || attempts != 0 {
+				t.Fatalf("work=%s delivery=%s attempts=%d", workStatus, mailStatus, attempts)
+			}
+		})
+	}
+}
+
 func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)

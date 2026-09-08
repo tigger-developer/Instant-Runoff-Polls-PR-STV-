@@ -33,6 +33,7 @@ type WorkHandler func(context.Context, *store.ClaimedWork) (Summary, error)
 var (
 	ErrWorkRescheduled = errors.New("work item was durably rescheduled")
 	ErrWorkFinalized   = errors.New("work item was durably finalized")
+	ErrWorkHandled     = errors.New("work item was durably handled")
 )
 
 func ProcessDueWork(ctx context.Context, repository WorkRepository, handlers map[string]WorkHandler, newToken func() string, now func() time.Time) (Summary, error) {
@@ -70,6 +71,9 @@ func ProcessDueWork(ctx context.Context, repository WorkRepository, handlers map
 			delta, handleErr := handler(ctx, item)
 			summary.add(delta)
 			processed++
+			if errors.Is(handleErr, ErrWorkHandled) {
+				continue
+			}
 			if handleErr != nil {
 				summary.Failed++
 				if errors.Is(handleErr, ErrWorkRescheduled) || errors.Is(handleErr, ErrWorkFinalized) {

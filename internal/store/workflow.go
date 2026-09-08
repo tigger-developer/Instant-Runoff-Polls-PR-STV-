@@ -13,8 +13,10 @@ import (
 )
 
 var (
-	ErrConflict = errors.New("workflow conflict")
-	ErrCapacity = errors.New("workflow capacity reached")
+	ErrConflict          = errors.New("workflow conflict")
+	ErrCapacity          = errors.New("workflow capacity reached")
+	ErrDeliveryHeld      = errors.New("delivery held")
+	ErrDeliveryCancelled = errors.New("delivery cancelled")
 )
 
 type Contact struct {
@@ -536,8 +538,26 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 	var state string
 	var deadline int64
 	err = tx.QueryRowContext(ctx, `SELECT delivery.id,work.poll_id,COALESCE(delivery.contact_id,''),delivery.recipient_email,delivery.message_kind,poll.question,poll.state,poll.deadline,work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id JOIN polls AS poll ON poll.id=work.poll_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &attempt.Attempts)
-	if err != nil || attempt.MessageKind == "invitation" && (state != "open" || now.Unix() >= deadline) {
+	if err != nil {
 		return DeliveryAttempt{}, ErrConflict
+	}
+	if attempt.MessageKind == "invitation" && state == "paused" && now.Unix() < deadline {
+		if err := deferClaimedDelivery(ctx, tx, workID, claimToken, now, now.Add(time.Minute)); err != nil {
+			return DeliveryAttempt{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return DeliveryAttempt{}, fmt.Errorf("commit held delivery: %w", err)
+		}
+		return DeliveryAttempt{}, ErrDeliveryHeld
+	}
+	if attempt.MessageKind == "invitation" && (state != "open" || now.Unix() >= deadline) {
+		if err := cancelClaimedDelivery(ctx, tx, workID, claimToken, now); err != nil {
+			return DeliveryAttempt{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return DeliveryAttempt{}, fmt.Errorf("commit cancelled delivery: %w", err)
+		}
+		return DeliveryAttempt{}, ErrDeliveryCancelled
 	}
 	attempt.Attempts++
 	result, err := tx.ExecContext(ctx, "UPDATE work_items SET attempts=? WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", attempt.Attempts, workID, claimToken, now.Unix())
@@ -555,6 +575,36 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 		return DeliveryAttempt{}, fmt.Errorf("commit delivery attempt: %w", err)
 	}
 	return attempt, nil
+}
+
+func deferClaimedDelivery(ctx context.Context, tx *sql.Tx, workID, claimToken string, now, nextDue time.Time) error {
+	result, err := tx.ExecContext(ctx, "UPDATE work_items SET status='pending',due_at=?,claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", nextDue.Unix(), workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("defer held delivery: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='pending',next_due=? WHERE work_id=?", nextDue.Unix(), workID); err != nil {
+		return fmt.Errorf("record held delivery: %w", err)
+	}
+	return nil
+}
+
+func cancelClaimedDelivery(ctx context.Context, tx *sql.Tx, workID, claimToken string, now time.Time) error {
+	result, err := tx.ExecContext(ctx, "UPDATE work_items SET status='succeeded',claim_token=NULL,claim_expires_at=NULL WHERE id=? AND status='claimed' AND claim_token=? AND claim_expires_at>?", workID, claimToken, now.Unix())
+	if err != nil {
+		return fmt.Errorf("finalize cancelled delivery: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil || changed != 1 {
+		return ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled',smtp_outcome='ineligible' WHERE work_id=?", workID); err != nil {
+		return fmt.Errorf("record cancelled delivery: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) RetryDelivery(ctx context.Context, workID, claimToken string, now, nextDue time.Time, failureClass string) error {

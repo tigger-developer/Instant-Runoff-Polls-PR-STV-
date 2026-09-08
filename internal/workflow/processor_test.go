@@ -84,6 +84,25 @@ func TestProcessDueWorkDoesNotOverwriteDurableRetry(t *testing.T) {
 	}
 }
 
+func TestProcessDueWorkContinuesAfterDurablyHandledItem(t *testing.T) {
+	repository := &fakeWorkRepository{items: map[string][]*store.ClaimedWork{
+		"delivery": {{ID: "held", Kind: "delivery"}, {ID: "sent", Kind: "delivery"}},
+	}}
+	handled := 0
+	summary, err := ProcessDueWork(context.Background(), repository, map[string]WorkHandler{
+		"delivery": func(context.Context, *store.ClaimedWork) (Summary, error) {
+			handled++
+			if handled == 1 {
+				return Summary{}, ErrWorkHandled
+			}
+			return Summary{SMTPAccepted: 1}, nil
+		},
+	}, func() string { return "token" }, func() time.Time { return time.Unix(100, 0) })
+	if err != nil || summary.Failed != 0 || summary.SMTPAccepted != 1 || len(repository.completed) != 1 {
+		t.Fatalf("summary=%#v completed=%v error=%v", summary, repository.completed, err)
+	}
+}
+
 type fakeWorkRepository struct {
 	items      map[string][]*store.ClaimedWork
 	claimOrder []string

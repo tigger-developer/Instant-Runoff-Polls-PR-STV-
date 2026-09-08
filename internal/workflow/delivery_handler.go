@@ -26,6 +26,12 @@ func NewDeliveryHandler(repository *store.Store, sender MessageSender, build Del
 		}
 		at := now()
 		attempt, err := repository.BeginDeliveryAttempt(ctx, item.ID, item.ClaimToken, at)
+		if errors.Is(err, store.ErrDeliveryHeld) {
+			return Summary{}, ErrWorkHandled
+		}
+		if errors.Is(err, store.ErrDeliveryCancelled) {
+			return Summary{Cancelled: 1}, ErrWorkHandled
+		}
 		if err != nil {
 			return Summary{}, fmt.Errorf("begin delivery attempt: %w", err)
 		}
