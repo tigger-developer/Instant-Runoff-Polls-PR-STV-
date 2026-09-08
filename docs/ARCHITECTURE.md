@@ -41,10 +41,47 @@ hosts or sustained write contention would require a fresh persistence decision;
 sharing the database over a network filesystem is outside this architecture.
 See SQLite's [deployment guidance](https://www.sqlite.org/whentouse.html).
 
-The [modernc SQLite driver](https://pkg.go.dev/modernc.org/sqlite) is CGo-free and
-supports `database/sql`. This fits Exodan's cross-compilation model without a
-native database service or a target-side Go toolchain. Dependency versions will
-be selected and pinned when the module is created.
+### SQLite dependency assessment
+
+Assessment date: 8 September 2026. The existing [module manifest](../go.mod)
+pins `modernc.org/sqlite` v1.58.0; [checksums](../go.sum) are tracked. The
+[driver documentation](https://pkg.go.dev/modernc.org/sqlite@v1.58.0) identifies a
+CGo-free `database/sql` driver, a BSD-3-Clause licence, and publication on
+1 September 2026. That recent release and the documented upstream development
+and CI provide evidence of active maintenance, without promising future support.
+Redistribution must retain the required copyright, licence and disclaimer notices.
+
+The choice retains writeback's persistence approach and Exodan's CGo-free
+cross-compilation. The standard-library [database/sql interface](https://pkg.go.dev/database/sql)
+requires a separate driver. The concrete alternative
+[mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) requires CGo and a C compiler,
+adding a cross-compilation toolchain. Replacing SQLite with a database server would
+add a separately operated service; implementing transactional file storage would
+transfer recovery and concurrency responsibilities into this application. Neither
+is justified by the single-host polling workload.
+
+The [upstream module manifest](https://proxy.golang.org/modernc.org/sqlite/@v/v1.58.0.mod)
+records libc, mathutil and x/sys, plus fileutil and pprof, and indirect dependencies
+on go-humanize, uuid, go-isatty, go-strftime, bigfft and memory. These are a real
+maintenance and supply-chain cost, even though no database daemon is deployed.
+The project manifest records the selected application dependencies; the upstream
+module graph also includes development dependencies and is not a binary inventory.
+Upstream warns that its libc version must match exactly; the project currently
+matches v1.75.6. Upgrades must review both pins together. Historical module
+retractions, including client-breaking releases, justify retaining explicit pins
+and exercising storage regression tests on upgrades. Generated SQLite code also
+adds build and binary size; no size or performance measurement is claimed here.
+
+[SQLite's vulnerability history](https://sqlite.org/cves.html) includes memory-safety
+faults involving crafted SQL or database contents, for example CVE-2025-6965 and
+CVE-2025-7709. A CGo-free translation does not establish immunity from upstream
+logic errors. Application-owned parameterized SQL, a service-owned database and
+no uploaded database files constrain exposure. The application maintainer owns
+driver/upstream advisory review and dependency updates; Exodan owns host controls.
+Delivery must run the specified Go vulnerability check and assess relevant
+upstream SQLite advisories against the bundled engine. This assessment is a
+dependency rationale, not a claim that the pinned build passed a vulnerability
+scan or that every transitive licence has been inventoried.
 
 ## Runtime topology
 

@@ -5,7 +5,7 @@
 * Foundation gate
 
 - Scope :: Paired review of [[file:VISION.md][Product vision]] and [[file:ARCHITECTURE.md][Application architecture]] under the operator-invoked audit-project-foundation skill on 8 September 2026.
-- Current verdict :: Local round 3 PASS; independent foundation review pending. Earlier FAIL verdicts remain revision-specific history.
+- Current verdict :: PASS, independent round 2 following local round 4. Earlier verdicts remain revision-specific history. This gate does not grant operator sign-off or re-audit the amended Go-foundation feature specification.
 - Timing :: Retrospective review of this greenfield project's foundation. Feature specifications and initial implementation already exist; this record does not claim that the new foundation gate ran before them.
 - Authority :: Project profile; README; work ledger and recorded specification approvals; SDLC MAIN, AUDITS, CODING, DOCUMENTATION, SECURITY, ORGMODE and GIT; selected API, GO, JAVASCRIPT, SHELL, WEB and NODE standards; Exodan Project Integration Contract version 1.8 read in full.
 - Standards baseline :: Installed SDLC release v3.1.10. WEB SHA-256 =c474f4646fae1e318c78c18b68cfe75d7100b2b7dd85d8ad264326fa375bc000=; NODE SHA-256 =e3d431358ba23fde0c798ba519d76455c75517de8ee12ec991bcda7f2b441d30=; Exodan contract SHA-256 =1c9b02d1924b9e81d05b14645e17c06e104f56acccec4309d6c3f12f807604c5=.
@@ -52,3 +52,37 @@
 - Tooling :: Biome applies to CSS, tidy-html5 to rendered HTML, and oxlint only to a later approved JavaScript/TypeScript source dependency. Go checks remain required; Node/npm remain excluded. Native tool versions and integrity are provisioned reproducibly outside checks. This establishes direction, not installed-tool evidence.
 - Verification :: Fourteen documentation files parse with Pandoc and sanitize identically; 208 local links and their anchors are valid. The invitation/help section is byte-for-byte unchanged from the preceding commit. No application code or concurrent build edits changed during this remediation.
 - Limitation :: No external foundation verdict or new operator foundation sign-off is implied. The separate Go-foundation feature specification still requires its tooling-amendment re-audit.
+
+** Independent review, round 1
+
+- Runner :: Configured definition harness through =sdlc-harness start --phase definition=; one external context.
+- SESSION_ID :: =01a07efd-1852-7491-855a-96477e354c4f=.
+- GATE :: foundation.
+- REVISION :: VISION SHA-256 =96a69f6a624a7ef719281d09a99285cfbe16a0fea8f9ceb211ba89ff2af7e783=; ARCHITECTURE SHA-256 =7ca949b85eb3ce43562e64324e8e13e971e4ba1280977dde76b708b78108bf93=.
+- VERDICT :: FAIL.
+- Criteria :: Vision, architecture, alignment, risk and handoff applied together.
+- [risk] [BLOCKING] FOUNDATION-004 - SQLite dependency assessment :: The selected modernc.org/sqlite driver's CGo-free deployment fit is explained, but the durable assessment lacks maintenance status, licence, security history, transitive graph and concrete alternatives. Judgement is required; this is not a mechanical condition.
+- [vision] [ADVISORY] FOUNDATION-005 - Repeated implementation constraints :: VISION repeats Go, server rendering, JavaScript policy, sibling reuse and component ownership from ARCHITECTURE, weakening the separation between product intent and implementation.
+
+** Authoring remediation and local review, round 4
+
+- GATE :: foundation.
+- REVISION :: VISION SHA-256 =96a69f6a624a7ef719281d09a99285cfbe16a0fea8f9ceb211ba89ff2af7e783=; ARCHITECTURE SHA-256 =185aa9aaec8795e30311e1c3c347907ccd1331800225bcaa755a7ce2b18108f7=.
+- VERDICT :: PASS (local only).
+- Criteria :: Vision, architecture, alignment, risk and handoff reviewed together; changes restricted to the existing dependency rationale and this evidence record.
+- Remediation receipt :: FOUNDATION-004 - SQLite dependency assessment now records the current driver pin, recent maintenance evidence, BSD-3-Clause obligations, upstream module dependencies and libc coupling, historical retractions, concrete persistence alternatives, operational costs, security history, exposure boundaries and maintenance ownership. Sources are linked beside the assessment. The obsolete future-tense module-creation statement is replaced. No dependency or product choice changed.
+- Evidence baseline :: Project go.mod SHA-256 =f4b897adf9ce77f66ee8a2178ae1c6fffd41693724d8693b12210ded91c9be51=; go.sum SHA-256 =2b0621cfd923efe7d89fb55d7698b09305f6507e9f05f7e691fc1eb184d63bd4=. Upstream v1.58.0 module manifest was retrieved and compared with the project pins. The assessment distinguishes module dependencies from a linked-binary inventory and does not claim a vulnerability scan.
+- Advisory disposition :: FOUNDATION-005 - Repeated implementation constraints retained as an advisory. These are explicit operator constraints and quickstart principles already captured in the vision. ARCHITECTURE remains the named authority for component and deployment design; this documentation reconciliation does not move that authority.
+- External continuation :: Resume the same SESSION_ID with the updated architecture and exact supporting inputs. No replacement reviewer is authorized or created.
+
+** Independent review, round 2
+
+- Runner :: =sdlc-harness resume --phase definition=, retaining =01a07efd-1852-7491-855a-96477e354c4f=. Process exited successfully and returned a verdict; no timeout or replacement context.
+- GATE :: foundation.
+- REVISION :: VISION SHA-256 =96a69f6a624a7ef719281d09a99285cfbe16a0fea8f9ceb211ba89ff2af7e783=; ARCHITECTURE SHA-256 =185aa9aaec8795e30311e1c3c347907ccd1331800225bcaa755a7ce2b18108f7=.
+- VERDICT :: PASS.
+- Criteria :: Vision, architecture, alignment, risk and handoff applied together.
+- Finding disposition :: FOUNDATION-004 - SQLite dependency assessment is addressed. The reviewer confirmed maintenance, licence obligations, alternatives, dependency costs, version coupling, security history, operational ownership and verification controls, with the driver/libc pins confirmed by the supplied module files. No required correction remains in this foundation review.
+- [vision] [ADVISORY] FOUNDATION-005 - Repeated implementation constraints :: Retained as a non-blocking duplication and drift-risk advisory because the constraints are explicit operator directions and ARCHITECTURE remains the named design authority.
+- Local verification :: Fourteen documentation files parse through Pandoc and sanitize without changes; 210 local file links and anchors resolve. Invitation and voting-help copy is unchanged from the earlier documentation checkpoint. Whitespace validation passed. These are document checks; application tests, linters and vulnerability scans were not run in this audit.
+- Sign-off boundary :: Foundation documents are available for operator review. The earlier three-spec approval remains historical; the subsequent Go-foundation tooling amendment still requires its own definition re-audit and renewed sign-off. Counting and poll-workflow approvals are unchanged.
