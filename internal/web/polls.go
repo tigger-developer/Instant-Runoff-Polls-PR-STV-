@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
 )
 
 type moderatorAccess struct {
@@ -214,4 +216,292 @@ func randomID(randomness io.Reader) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(value), nil
+}
+
+func (app *authApplication) getParticipants(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	access, ok := app.moderatorAccess(response, request)
+	if !ok {
+		return
+	}
+	poll, err := app.store.OwnedPoll(request.Context(), access.ID, request.PathValue("id"))
+	if err != nil {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
+	}
+	participants, err := app.store.OwnedElectorate(request.Context(), access.ID, poll.ID)
+	if err != nil {
+		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	rows := make([]string, 0, len(participants))
+	for _, participant := range participants {
+		addresses := make([]string, 0, len(participant.Contacts))
+		for _, contact := range participant.Contacts {
+			addresses = append(addresses, contact.DeliveryEmail)
+		}
+		rows = append(rows, strings.Join(addresses, ", "))
+	}
+	app.render(response, "participants.html", map[string]any{"Poll": poll, "Rows": strings.Join(rows, "\n"), "CSRF": access.CSRF})
+}
+
+func (app *authApplication) postParticipants(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	access, ok := app.moderatorAccess(response, request)
+	if !ok {
+		return
+	}
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version", "participants", "copy_poll_id"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if !app.requireModeratorCSRF(response, request, access, values.Get("csrf")) {
+		return
+	}
+	version, err := strconv.Atoi(values.Get("version"))
+	if err != nil {
+		http.Error(response, "Invalid version", http.StatusUnprocessableEntity)
+		return
+	}
+	var participants []store.ElectorateParticipant
+	if sourceID := strings.TrimSpace(values.Get("copy_poll_id")); sourceID != "" {
+		source, err := app.store.OwnedElectorate(request.Context(), access.ID, sourceID)
+		if err != nil {
+			http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+			return
+		}
+		participants, err = app.reidentifyElectorate(source)
+		if err != nil {
+			http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	} else {
+		rows := strings.Split(strings.TrimSpace(values.Get("participants")), "\n")
+		if len(rows) > 1000 {
+			http.Error(response, "Too many participants", http.StatusUnprocessableEntity)
+			return
+		}
+		parsed, err := workflow.ParseElectorate(rows)
+		if err != nil {
+			http.Error(response, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		participants, err = app.identifyElectorate(parsed)
+		if err != nil {
+			http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	if err := app.store.ReplaceElectorate(request.Context(), access.ID, request.PathValue("id"), version, participants); err != nil {
+		http.Error(response, "Conflict", http.StatusConflict)
+		return
+	}
+	http.Redirect(response, request, request.URL.Path, http.StatusSeeOther)
+}
+
+func (app *authApplication) identifyElectorate(parsed []workflow.Participant) ([]store.ElectorateParticipant, error) {
+	participants := make([]store.ElectorateParticipant, 0, len(parsed))
+	for _, parsedParticipant := range parsed {
+		participantID, err := randomID(app.randomness)
+		if err != nil {
+			return nil, err
+		}
+		participant := store.ElectorateParticipant{ID: participantID}
+		for _, address := range parsedParticipant.Addresses {
+			contactID, err := randomID(app.randomness)
+			if err != nil {
+				return nil, err
+			}
+			participant.Contacts = append(participant.Contacts, store.Contact{ID: contactID, DeliveryEmail: address.Delivery, NormalizedEmail: address.Normalized})
+		}
+		participants = append(participants, participant)
+	}
+	return participants, nil
+}
+
+func (app *authApplication) reidentifyElectorate(source []store.ElectorateParticipant) ([]store.ElectorateParticipant, error) {
+	parsed := make([]workflow.Participant, 0, len(source))
+	for _, sourceParticipant := range source {
+		participant := workflow.Participant{}
+		for _, contact := range sourceParticipant.Contacts {
+			participant.Addresses = append(participant.Addresses, workflow.Address{Delivery: contact.DeliveryEmail, Normalized: contact.NormalizedEmail})
+		}
+		parsed = append(parsed, participant)
+	}
+	return app.identifyElectorate(parsed)
+}
+
+func (app *authApplication) postOpenPoll(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	access, ok := app.moderatorAccess(response, request)
+	if !ok {
+		return
+	}
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if !app.requireModeratorCSRF(response, request, access, values.Get("csrf")) {
+		return
+	}
+	version, err := strconv.Atoi(values.Get("version"))
+	if err != nil {
+		http.Error(response, "Invalid version", http.StatusUnprocessableEntity)
+		return
+	}
+	poll, err := app.store.OwnedPoll(request.Context(), access.ID, request.PathValue("id"))
+	if err != nil {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
+	}
+	electorate, err := app.store.OwnedElectorate(request.Context(), access.ID, poll.ID)
+	if err != nil || len(electorate) == 0 || len(poll.Options) < 2 || !poll.Deadline.After(app.now()) {
+		http.Error(response, "Complete the poll before opening", http.StatusUnprocessableEntity)
+		return
+	}
+	closeWorkID, err := randomID(app.randomness)
+	if err != nil {
+		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	var invitations []store.InvitationWork
+	for _, participant := range electorate {
+		for _, contact := range participant.Contacts {
+			workID, workErr := randomID(app.randomness)
+			deliveryID, deliveryErr := randomID(app.randomness)
+			if workErr != nil || deliveryErr != nil {
+				http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			invitations = append(invitations, store.InvitationWork{WorkID: workID, DeliveryID: deliveryID, ContactID: contact.ID})
+		}
+	}
+	changed, err := app.store.OpenPoll(request.Context(), access.ID, poll.ID, version, closeWorkID, invitations, app.now())
+	if err != nil {
+		http.Error(response, "Conflict", http.StatusConflict)
+		return
+	}
+	_ = changed
+	http.Redirect(response, request, "/moderator/polls/"+poll.ID, http.StatusSeeOther)
+}
+
+type ballotOption struct {
+	ID    string
+	Label string
+	Rank  int
+}
+
+func (app *authApplication) participantAccess(response http.ResponseWriter, request *http.Request) (store.PersistedSession, string, bool) {
+	sessionCookie, err := request.Cookie("stv_participant")
+	if err != nil {
+		return store.PersistedSession{}, "", false
+	}
+	sessionHash := sha256.Sum256([]byte(sessionCookie.Value))
+	session, err := app.store.SessionByHash(request.Context(), sessionHash[:], app.now())
+	if err != nil || session.Purpose != "participant" || session.PollID != request.PathValue("id") {
+		return store.PersistedSession{}, "", false
+	}
+	csrf, err := request.Cookie("stv_participant_csrf")
+	if err != nil {
+		http.Error(response, "Invalid session", http.StatusForbidden)
+		return store.PersistedSession{}, "", false
+	}
+	csrfHash := sha256.Sum256([]byte(csrf.Value))
+	if subtle.ConstantTimeCompare(csrfHash[:], session.CSRFHash) != 1 {
+		http.Error(response, "Invalid session", http.StatusForbidden)
+		return store.PersistedSession{}, "", false
+	}
+	return session, csrf.Value, true
+}
+
+func (app *authApplication) getParticipantPoll(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	session, csrf, ok := app.participantAccess(response, request)
+	if !ok {
+		app.render(response, "poll_access.html", map[string]any{"PollID": request.PathValue("id")})
+		return
+	}
+	view, err := app.store.PollForParticipant(request.Context(), session.PrincipalID, session.PollID)
+	if err != nil {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
+	}
+	ranks := make(map[string]int, len(view.Preferences))
+	for index, optionID := range view.Preferences {
+		ranks[optionID] = index + 1
+	}
+	options := make([]ballotOption, 0, len(view.Poll.Options))
+	for _, option := range view.Poll.Options {
+		options = append(options, ballotOption{ID: option.ID, Label: option.Label, Rank: ranks[option.ID]})
+	}
+	app.render(response, "ballot.html", map[string]any{"Poll": view.Poll, "Options": options, "Version": view.BallotVersion, "CSRF": csrf})
+}
+
+func (app *authApplication) postBallot(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	session, csrf, ok := app.participantAccess(response, request)
+	if !ok {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
+	}
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version"}, Repeated: []string{"rank"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if subtle.ConstantTimeCompare([]byte(values.Get("csrf")), []byte(csrf)) != 1 {
+		http.Error(response, "Invalid CSRF token", http.StatusForbidden)
+		return
+	}
+	view, err := app.store.PollForParticipant(request.Context(), session.PrincipalID, session.PollID)
+	version, versionErr := strconv.Atoi(values.Get("version"))
+	preferences, rankErr := rankedPreferences(view.Poll.Options, values["rank"])
+	if err != nil || versionErr != nil || rankErr != nil {
+		http.Error(response, "Ranks must be unique and consecutive from 1", http.StatusUnprocessableEntity)
+		return
+	}
+	encodedPreferences, err := json.Marshal(preferences)
+	if err != nil {
+		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err := app.store.ReplaceBallot(request.Context(), session.PollID, session.PrincipalID, version, encodedPreferences, app.now()); err != nil {
+		http.Error(response, "Conflict", http.StatusConflict)
+		return
+	}
+	http.Redirect(response, request, "/polls/"+session.PollID, http.StatusSeeOther)
+}
+
+func rankedPreferences(options []store.PollOption, ranks []string) ([]string, error) {
+	if len(ranks) != len(options) {
+		return nil, errors.New("one rank per option is required")
+	}
+	byRank := make(map[int]string)
+	for index, raw := range ranks {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		rank, err := strconv.Atoi(raw)
+		if err != nil || rank < 1 || rank > len(options) {
+			return nil, errors.New("invalid rank")
+		}
+		if _, duplicate := byRank[rank]; duplicate {
+			return nil, errors.New("duplicate rank")
+		}
+		byRank[rank] = options[index].ID
+	}
+	if len(byRank) == 0 {
+		return nil, errors.New("at least one rank is required")
+	}
+	preferences := make([]string, len(byRank))
+	for rank := 1; rank <= len(byRank); rank++ {
+		optionID, exists := byRank[rank]
+		if !exists {
+			return nil, errors.New("ranks are not consecutive")
+		}
+		preferences[rank-1] = optionID
+	}
+	return preferences, nil
 }

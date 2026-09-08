@@ -50,6 +50,11 @@ func WorkflowHandler(cfg config.Config, st *store.Store, page *template.Template
 	mux.HandleFunc("POST /moderator/polls/{id}", application.postModeratorPoll)
 	mux.HandleFunc("POST /moderator/polls/{id}/pause", application.postPausePoll)
 	mux.HandleFunc("POST /moderator/polls/{id}/resume", application.postResumePoll)
+	mux.HandleFunc("GET /moderator/polls/{id}/participants", application.getParticipants)
+	mux.HandleFunc("POST /moderator/polls/{id}/participants", application.postParticipants)
+	mux.HandleFunc("POST /moderator/polls/{id}/open", application.postOpenPoll)
+	mux.HandleFunc("GET /polls/{id}", application.getParticipantPoll)
+	mux.HandleFunc("POST /polls/{id}/ballot", application.postBallot)
 	mux.Handle("/", base)
 	return mux
 }

@@ -121,8 +121,10 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Config{BaseURL: "https://poll.example", Moderators: []config.Moderator{{ID: "owner", Email: "owner@example.test"}}}
-	randomMaterial := append(bytes.Repeat([]byte{1}, 16), bytes.Repeat([]byte{2}, 16)...)
-	randomMaterial = append(randomMaterial, bytes.Repeat([]byte{3}, 16)...)
+	var randomMaterial []byte
+	for value := byte(1); value <= 20; value++ {
+		randomMaterial = append(randomMaterial, bytes.Repeat([]byte{value}, 16)...)
+	}
 	handler := WorkflowHandler(cfg, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(randomMaterial), func() time.Time { return time.Unix(100, 0) })
 	form := url.Values{"csrf": {csrfToken}, "question": {"Choose"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
 	request := httptest.NewRequest(http.MethodPost, "/moderator/polls", strings.NewReader(form.Encode()))
@@ -146,6 +148,37 @@ func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
 	if viewResponse.Code != http.StatusOK || !strings.Contains(viewResponse.Body.String(), "Choose") {
 		t.Fatalf("view response=%d body=%s", viewResponse.Code, viewResponse.Body.String())
 	}
+	participantsForm := url.Values{"csrf": {csrfToken}, "version": {"1"}, "participants": {"one@example.test, alt@example.test"}, "copy_poll_id": {""}}
+	participantsRequest := httptest.NewRequest(http.MethodPost, "/moderator/polls/"+pollID+"/participants", strings.NewReader(participantsForm.Encode()))
+	participantsRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	participantsRequest.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	participantsRequest.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	participantsResponse := httptest.NewRecorder()
+	handler.ServeHTTP(participantsResponse, participantsRequest)
+	if participantsResponse.Code != http.StatusSeeOther {
+		t.Fatalf("participants response=%d body=%s", participantsResponse.Code, participantsResponse.Body.String())
+	}
+	openForm := url.Values{"csrf": {csrfToken}, "version": {"2"}}
+	openRequest := httptest.NewRequest(http.MethodPost, "/moderator/polls/"+pollID+"/open", strings.NewReader(openForm.Encode()))
+	openRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	openRequest.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	openRequest.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	openResponse := httptest.NewRecorder()
+	handler.ServeHTTP(openResponse, openRequest)
+	var state string
+	var deliveries, closeWork int
+	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id=?", pollID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM deliveries").Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE kind='close'").Scan(&closeWork); err != nil {
+		t.Fatal(err)
+	}
+	if openResponse.Code != http.StatusSeeOther || state != "open" || deliveries != 2 || closeWork != 1 {
+		t.Fatalf("open response=%d state=%s deliveries=%d close=%d body=%s", openResponse.Code, state, deliveries, closeWork, openResponse.Body.String())
+	}
 }
 
 func authTemplates(t *testing.T) *template.Template {
@@ -157,5 +190,8 @@ func authTemplates(t *testing.T) *template.Template {
 	template.Must(page.New("verify.html").Parse(`<html><body><form method="post"><input name="grant" type="hidden" value="{{.Grant}}"><input name="csrf" type="hidden" value="{{.CSRF}}"></form></body></html>`))
 	template.Must(page.New("moderator_polls.html").Parse(`<html><body>{{range .Polls}}{{.Question}}{{end}}<form><input name="csrf" value="{{.CSRF}}"></form></body></html>`))
 	template.Must(page.New("moderator_poll.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><p>{{.Poll.State}}</p></body></html>`))
+	template.Must(page.New("participants.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><textarea>{{.Rows}}</textarea></body></html>`))
+	template.Must(page.New("poll_access.html").Parse(`<html><body><h1>Access {{.PollID}}</h1></body></html>`))
+	template.Must(page.New("ballot.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{range .Options}}{{.Label}}{{end}}</body></html>`))
 	return page
 }

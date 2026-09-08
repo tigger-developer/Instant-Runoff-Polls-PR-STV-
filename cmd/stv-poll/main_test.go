@@ -104,9 +104,9 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html", "moderator_polls.html", "moderator_poll.html"} {
+	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html", "moderator_polls.html", "moderator_poll.html", "participants.html", "poll_access.html", "ballot.html"} {
 		var rendered bytes.Buffer
-		data := map[string]any{"BaseURL": "https://poll.example", "CSRF": "token", "Grant": "grant", "Polls": []store.PollRecord{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Now(), Places: 1, State: "draft", Version: 1, Options: []store.PollOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}}
+		data := map[string]any{"BaseURL": "https://poll.example", "CSRF": "token", "Grant": "grant", "Rows": "one@example.test", "PollID": "poll", "Version": 0, "Options": []map[string]any{{"ID": "a", "Label": "A", "Rank": 1}}, "Polls": []store.PollRecord{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Now(), Places: 1, State: "draft", Version: 1, Options: []store.PollOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}}
 		if err := tmpl.ExecuteTemplate(&rendered, name, data); err != nil {
 			t.Fatal(err)
 		}

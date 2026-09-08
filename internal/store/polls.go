@@ -5,6 +5,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -36,6 +38,13 @@ type DraftPoll struct {
 	Places        int
 	Announce      bool
 	Options       []PollOption
+}
+
+type ParticipantPoll struct {
+	Poll          PollRecord
+	ParticipantID string
+	Preferences   []string
+	BallotVersion int
 }
 
 func (s *Store) CreateDraftPoll(ctx context.Context, ownerID, pollID string, draft DraftPoll, now time.Time) error {
@@ -188,4 +197,61 @@ func (s *Store) SetPollState(ctx context.Context, ownerID, pollID, fromState, to
 		return ErrConflict
 	}
 	return nil
+}
+
+func (s *Store) OwnedElectorate(ctx context.Context, ownerID, pollID string) ([]ElectorateParticipant, error) {
+	var exists int
+	if err := s.DB.QueryRowContext(ctx, "SELECT 1 FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&exists); err != nil {
+		return nil, ErrConflict
+	}
+	rows, err := s.DB.QueryContext(ctx, "SELECT p.id,p.display_name,c.id,c.delivery_email,c.normalized_email FROM participants AS p JOIN contacts AS c ON c.participant_id=p.id AND c.poll_id=p.poll_id WHERE p.poll_id=? ORDER BY p.id,c.id", pollID)
+	if err != nil {
+		return nil, fmt.Errorf("read owned electorate: %w", err)
+	}
+	defer rows.Close()
+	var participants []ElectorateParticipant
+	indexes := make(map[string]int)
+	for rows.Next() {
+		var participantID, displayName string
+		var contact Contact
+		if err := rows.Scan(&participantID, &displayName, &contact.ID, &contact.DeliveryEmail, &contact.NormalizedEmail); err != nil {
+			return nil, fmt.Errorf("scan owned electorate: %w", err)
+		}
+		index, exists := indexes[participantID]
+		if !exists {
+			index = len(participants)
+			indexes[participantID] = index
+			participants = append(participants, ElectorateParticipant{ID: participantID, DisplayName: displayName})
+		}
+		participants[index].Contacts = append(participants[index].Contacts, contact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate owned electorate: %w", err)
+	}
+	return participants, nil
+}
+
+func (s *Store) PollForParticipant(ctx context.Context, participantID, pollID string) (ParticipantPoll, error) {
+	var view ParticipantPoll
+	var deadline, createdAt int64
+	err := s.DB.QueryRowContext(ctx, `SELECT poll.id,poll.owner_id,poll.question,poll.deadline,poll.display_offset,poll.places,poll.announce,poll.state,poll.counting_status,poll.version,poll.created_at,participant.id FROM polls AS poll JOIN participants AS participant ON participant.poll_id=poll.id WHERE poll.id=? AND participant.id=?`, pollID, participantID).Scan(&view.Poll.ID, &view.Poll.OwnerID, &view.Poll.Question, &deadline, &view.Poll.DisplayOffset, &view.Poll.Places, &view.Poll.Announce, &view.Poll.State, &view.Poll.CountingStatus, &view.Poll.Version, &createdAt, &view.ParticipantID)
+	if err != nil {
+		return ParticipantPoll{}, ErrConflict
+	}
+	view.Poll.Deadline = time.Unix(deadline, 0).UTC()
+	view.Poll.CreatedAt = time.Unix(createdAt, 0).UTC()
+	view.Poll.Options, err = s.pollOptions(ctx, pollID)
+	if err != nil {
+		return ParticipantPoll{}, err
+	}
+	var preferences []byte
+	err = s.DB.QueryRowContext(ctx, "SELECT preferences_json,version FROM ballots WHERE poll_id=? AND participant_id=?", pollID, participantID).Scan(&preferences, &view.BallotVersion)
+	if err == nil {
+		if json.Unmarshal(preferences, &view.Preferences) != nil {
+			return ParticipantPoll{}, ErrConflict
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return ParticipantPoll{}, fmt.Errorf("read participant ballot: %w", err)
+	}
+	return view, nil
 }

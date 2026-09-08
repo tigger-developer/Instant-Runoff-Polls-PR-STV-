@@ -67,3 +67,29 @@ func TestPollPauseAndResumeCheckStateVersionAndDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOwnedElectoratePreservesGroupsAndRejectsCrossOwnerRead(t *testing.T) {
+	ctx := context.Background()
+	st, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SyncModerators(ctx, []ConfiguredModerator{{ID: "one", NormalizedEmail: "one@example.test"}, {ID: "two", NormalizedEmail: "two@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO polls(id,owner_id,question,deadline,places,state,version) VALUES ('poll','one','Question',500,1,'draft',1)"); err != nil {
+		t.Fatal(err)
+	}
+	participants := []ElectorateParticipant{{ID: "person", Contacts: []Contact{{ID: "one", DeliveryEmail: "one@example.test", NormalizedEmail: "one@example.test"}, {ID: "two", DeliveryEmail: "two@example.test", NormalizedEmail: "two@example.test"}}}}
+	if err := st.ReplaceElectorate(ctx, "one", "poll", 1, participants); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := st.OwnedElectorate(ctx, "one", "poll")
+	if err != nil || len(loaded) != 1 || len(loaded[0].Contacts) != 2 {
+		t.Fatalf("loaded=%#v error=%v", loaded, err)
+	}
+	if _, err := st.OwnedElectorate(ctx, "two", "poll"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("cross-owner error=%v", err)
+	}
+}
