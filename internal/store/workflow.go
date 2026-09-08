@@ -25,6 +25,20 @@ type ElectorateParticipant struct {
 	Contacts    []Contact
 }
 
+type InvitationWork struct {
+	WorkID     string
+	DeliveryID string
+	ContactID  string
+}
+
+type CountSnapshot struct {
+	ID               string
+	SchemaVersion    int
+	Rule             string
+	InputFingerprint string
+	InputJSON        []byte
+}
+
 func (s *Store) ReplaceElectorate(ctx context.Context, ownerID, pollID string, expectedVersion int, participants []ElectorateParticipant) error {
 	if s == nil || s.DB == nil || ownerID == "" || pollID == "" || expectedVersion < 1 {
 		return ErrConflict
@@ -115,4 +129,95 @@ func (s *Store) ReplaceBallot(ctx context.Context, pollID, participantID string,
 		return fmt.Errorf("commit ballot replacement: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) OpenPoll(ctx context.Context, ownerID, pollID string, expectedVersion int, invitations []InvitationWork, now time.Time) (bool, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin poll opening: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var state string
+	var version int
+	var deadline int64
+	var places int
+	if err := tx.QueryRowContext(ctx, "SELECT state,version,deadline,places FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&state, &version, &deadline, &places); err != nil {
+		return false, ErrConflict
+	}
+	if state == "open" && version == expectedVersion {
+		return false, nil
+	}
+	if state != "draft" || version != expectedVersion || now.Unix() >= deadline {
+		return false, ErrConflict
+	}
+	var optionCount, participantCount, contactCount int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM options WHERE poll_id=?", pollID).Scan(&optionCount); err != nil {
+		return false, err
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM participants WHERE poll_id=?", pollID).Scan(&participantCount); err != nil {
+		return false, err
+	}
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM contacts WHERE poll_id=?", pollID).Scan(&contactCount); err != nil {
+		return false, err
+	}
+	if optionCount < 2 || places < 1 || places > optionCount || participantCount < 1 || contactCount != len(invitations) {
+		return false, ErrConflict
+	}
+	for _, invitation := range invitations {
+		var recipient string
+		if invitation.WorkID == "" || invitation.DeliveryID == "" || tx.QueryRowContext(ctx, "SELECT delivery_email FROM contacts WHERE id=? AND poll_id=?", invitation.ContactID, pollID).Scan(&recipient) != nil {
+			return false, ErrConflict
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,?,?,?,'pending')", invitation.WorkID, pollID, "invitation", "invitation:"+pollID+":"+invitation.ContactID, now.Unix()); err != nil {
+			return false, fmt.Errorf("insert invitation work: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?,?,'pending',?)", invitation.DeliveryID, invitation.WorkID, invitation.ContactID, recipient, "invitation", now.Unix()); err != nil {
+			return false, fmt.Errorf("insert invitation delivery: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='open',version=version+1 WHERE id=? AND version=?", pollID, expectedVersion); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit poll opening: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Store) ClosePoll(ctx context.Context, ownerID, pollID string, expectedVersion int, snapshot CountSnapshot, workID string, now time.Time) (bool, error) {
+	if snapshot.ID == "" || snapshot.SchemaVersion < 1 || snapshot.Rule == "" || snapshot.InputFingerprint == "" || !json.Valid(snapshot.InputJSON) || workID == "" {
+		return false, ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin poll close: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var state string
+	var version int
+	if err := tx.QueryRowContext(ctx, "SELECT state,version FROM polls WHERE id=? AND owner_id=?", pollID, ownerID).Scan(&state, &version); err != nil {
+		return false, ErrConflict
+	}
+	if state == "closed" && version == expectedVersion {
+		return false, nil
+	}
+	if (state != "open" && state != "paused") || version != expectedVersion {
+		return false, ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO count_snapshots(id,poll_id,schema_version,rule,input_fingerprint,input_json,created_at) VALUES (?,?,?,?,?,?,?)", snapshot.ID, pollID, snapshot.SchemaVersion, snapshot.Rule, snapshot.InputFingerprint, snapshot.InputJSON, now.Unix()); err != nil {
+		return false, fmt.Errorf("insert count snapshot: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?, 'count', ?,?,'pending')", workID, pollID, "count:"+pollID, now.Unix()); err != nil {
+		return false, fmt.Errorf("insert count work: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE deliveries SET status='cancelled' WHERE status IN ('pending','retrying') AND work_id IN (SELECT id FROM work_items WHERE poll_id=? AND kind='invitation')", pollID); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE polls SET state='closed',closed_at=?,version=version+1 WHERE id=? AND version=?", now.Unix(), pollID, expectedVersion); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit poll close: %w", err)
+	}
+	return true, nil
 }

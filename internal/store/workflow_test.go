@@ -64,6 +64,65 @@ func TestReplaceBallotEnforcesDeadlineAndIndependentVersion(t *testing.T) {
 	}
 }
 
+func TestOpenPollCommitsStateAndOneLogicalInvitationPerContact(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO participants(id,poll_id) VALUES ('person-1','poll-1')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO options(poll_id,id,label,display_order) VALUES ('poll-1','a','A',1),('poll-1','b','B',2)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO contacts(id,poll_id,participant_id,delivery_email,normalized_email) VALUES ('contact-1','poll-1','person-1','one@example.test','one@example.test'),('contact-2','poll-1','person-1','other@example.test','other@example.test')"); err != nil {
+		t.Fatal(err)
+	}
+	invitations := []InvitationWork{{WorkID: "work-1", DeliveryID: "delivery-1", ContactID: "contact-1"}, {WorkID: "work-2", DeliveryID: "delivery-2", ContactID: "contact-2"}}
+	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 1, invitations, time.Unix(100, 0)); err != nil || !changed {
+		t.Fatalf("open changed=%v error=%v", changed, err)
+	}
+	if changed, err := st.OpenPoll(ctx, "moderator-1", "poll-1", 2, invitations, time.Unix(100, 0)); err != nil || changed {
+		t.Fatalf("repeat open changed=%v error=%v", changed, err)
+	}
+	var state string
+	var workCount int
+	if err := st.DB.QueryRowContext(ctx, "SELECT state FROM polls WHERE id='poll-1'").Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE poll_id='poll-1' AND kind='invitation'").Scan(&workCount); err != nil {
+		t.Fatal(err)
+	}
+	if state != "open" || workCount != 2 {
+		t.Fatalf("state=%s work=%d", state, workCount)
+	}
+}
+
+func TestClosePollCommitsSnapshotAndOneCountWork(t *testing.T) {
+	ctx := context.Background()
+	st := workflowStore(t)
+	defer st.Close()
+	if _, err := st.DB.ExecContext(ctx, "UPDATE polls SET state='paused', version=4 WHERE id='poll-1'"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := CountSnapshot{ID: "snapshot-1", SchemaVersion: 1, Rule: "irish-guided-stv-v1", InputFingerprint: "fingerprint", InputJSON: []byte(`{"ballots":[]}`)}
+	if changed, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 4, snapshot, "count-work-1", time.Unix(100, 0)); err != nil || !changed {
+		t.Fatalf("close changed=%v error=%v", changed, err)
+	}
+	if changed, err := st.ClosePoll(ctx, "moderator-1", "poll-1", 5, snapshot, "count-work-1", time.Unix(101, 0)); err != nil || changed {
+		t.Fatalf("repeat close changed=%v error=%v", changed, err)
+	}
+	var snapshots, work int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM count_snapshots WHERE poll_id='poll-1'").Scan(&snapshots); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM work_items WHERE logical_key='count:poll-1'").Scan(&work); err != nil {
+		t.Fatal(err)
+	}
+	if snapshots != 1 || work != 1 {
+		t.Fatalf("snapshots=%d work=%d", snapshots, work)
+	}
+}
+
 func TestReplaceElectorateRollsBackDuplicateAndRejectsOwnerOrVersion(t *testing.T) {
 	ctx := context.Background()
 	st := workflowStore(t)
