@@ -328,9 +328,9 @@ These choices are *reviewable proposals*. Definition sign-off must approve or am
 :END:
 
 - Covers :: [[#ac-003-5][AC003.5 - Invite every address once logically]]; [[#ac-003-6][AC003.6 - Short invitation copy]].
-- Setup :: A valid draft with three participants and five distinct addresses; local mail capture; injected failure before opening commit and interruption after it.
+- Setup :: A valid draft with three participants and five distinct addresses; local mail capture; injected failure before opening commit and interruption after it. Configure a synthetic HTTPS =base_url= through the host YAML while the server listens on a distinct loopback =ADDR=; include requests with attacker-controlled Host and forwarded-host headers.
 - Action :: Open, repeat the action, and process/retry invitation work.
-- Expected :: Either draft state and no invitations remain, or open state and exactly five logical delivery records commit together. Each captured message has one recipient and the exact VISION body with its own link. No email is sent before commit. Recovery sends pending messages without generating another logical invitation.
+- Expected :: Either draft state and no invitations remain, or open state and exactly five logical delivery records commit together. Each captured message has one recipient and the exact VISION body with its own link. Every invitation uses the configured public URL, never the listener address or request headers. No email is sent before commit. Recovery sends pending messages without generating another logical invitation.
 - Retention :: Persistent standard Go suite through =make test=; exercise HTTP, real temporary SQLite, and the local mail boundary. Observe the intended RED result before implementing the covered behaviour.
 
 ** RT003.6 - Participant grant and session boundaries
@@ -552,6 +552,7 @@ access form without exposing the protected content.
 *** Configuration and access
 
 - Extend YAML with =moderators= entries containing stable ID and email; =auth.signing_key=; and =smtp.host=, =port=, =from=, =username=, =password=, =tls_mode=. Signing and SMTP credentials come through decrypted secrets.
+- Construct all absolute poll, moderator login, participant invitation, and replacement links from the supplied =base_url= loaded through W001's configuration boundary. Neither =ADDR=, request Host, nor forwarded headers may select a link destination. URL/domain validation and deployment policy belong to Exodan; this application consumes the configuration without duplicating those checks.
 - Use separate moderator and participant session purposes. Each session is an opaque, cryptographically random identifier whose hash and expiry are stored; cookies are host-only, HttpOnly, Secure in deployment, SameSite=Lax, and path=/.
 - Magic-link claims contain version, purpose, principal, poll/address scope where applicable, issuance/expiry, and a cryptographic nonce. Sign with standard-library HMAC and store the token hash plus claims. Session tokens are not interchangeable with grants.
 - Reconstruct an outbound grant from persisted claims and the signing key when retrying delivery; *do not store a raw bearer URL in delivery rows*. If the grant expires before delivery, create a new grant explicitly and record that replacement.

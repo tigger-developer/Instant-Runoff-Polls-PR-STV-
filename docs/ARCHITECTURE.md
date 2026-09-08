@@ -133,7 +133,7 @@ The magic-link flow is:
 1. The invitation service creates an access grant for an allowed address and its
    poll participant. Moderator login uses a distinct grant purpose and the
    configured moderator identity.
-2. The mail adapter sends a link built from the validated configured `base_url`.
+2. The mail adapter sends a link built from the supplied `base_url`.
 3. The verification handler validates the grant's authenticity, purpose,
    validity, and association with the current participant or moderator.
 4. The application establishes a session and redirects to a URL without the
@@ -302,8 +302,15 @@ committed and pushed source through the infrastructure workflow.
 Configuration precedence is defaults, host YAML, then decrypted secrets. The
 loader validates the merged configuration at startup. An explicitly supplied
 but unreadable layer is an error; required values must not silently disappear
-through a fallback. The configured `base_url` supplies absolute invitation links.
-Request `Host` headers do not determine authentication-link destinations.
+through a fallback. These checks concern configuration loading and application
+settings; URL and domain validation belong to Exodan. The application consumes
+the supplied `base_url` to construct invitation links. Request `Host` headers do
+not determine authentication-link destinations.
+
+The operator clarified this boundary on 8 September 2026. The earlier proposal
+for application-level `base_url` validation is withdrawn. Exodan owns domain
+validation, DNS, routing, and public TLS; the application consumes its runtime
+contract.
 
 The contract uses `config/defaults.yaml`, `config/<host>.yaml`, and encrypted
 `secrets/<host>.yaml.age`. Local development may use ignored

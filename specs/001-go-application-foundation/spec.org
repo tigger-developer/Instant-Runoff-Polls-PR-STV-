@@ -60,6 +60,8 @@ An operator can *build and run the service locally* with synthetic configuration
 
 - Operator direction :: Draft specifications *on master*. Create implementation branches when coding starts; this overrides global feature-branch timing for this definition batch.
 - Design proposal for sign-off :: The precise CLI, endpoint, configuration keys, and bounds below refine the accepted architecture. They are *new interface definitions*, not claims of existing behaviour.
+- Operator clarification, 8 September 2026 :: *Strict separation of concerns*: the application consumes Exodan's supplied URL and listener configuration. URL/domain validation, DNS, routing, and public TLS belong to Exodan.
+- Withdrawn proposal :: The earlier application URL policy requiring an absolute URL, excluding userinfo/query/fragment, and requiring HTTPS with a loopback exception is removed from scope by that clarification. It is not an implementation or test requirement.
 
 ** Unresolved blockers
 
@@ -75,7 +77,7 @@ An operator can *build and run the service locally* with synthetic configuration
 :CUSTOM_ID: ac-001-1
 :END:
 
-- Criterion :: Given supplied runtime paths, the application *merges defaults, host YAML, and secrets in that order* and uses the resulting application values.
+- Criterion :: Given supplied runtime paths, the application *merges defaults, host YAML, and secrets in that order* and uses the resulting application values. The documented host configuration supplies the public =base_url= that Exodan reads for Caddy routing and DNS; the listener still uses =ADDR= independently.
 - Proven by :: [[#rt-001-1][RT001.1 - Layered configuration]].
 
 ** AC001.2 - Invalid configuration fails visibly
@@ -83,7 +85,7 @@ An operator can *build and run the service locally* with synthetic configuration
 :CUSTOM_ID: ac-001-2
 :END:
 
-- Criterion :: Given a missing required value, malformed application value, or unreadable explicitly supplied layer, startup *fails before listening* and identifies the field or layer without disclosing its value.
+- Criterion :: Given a missing required value, malformed application value, or unreadable explicitly supplied layer, startup *fails before listening* and identifies the field or layer without disclosing its value. This covers configuration loading and application-owned settings, not URL or domain validation.
 - Proven by :: [[#rt-001-1][RT001.1 - Layered configuration]].
 
 ** AC001.3 - Configured listener and page
@@ -162,9 +164,10 @@ An operator can *build and run the service locally* with synthetic configuration
 
 - Covers :: [[#ac-001-1][AC001.1 - Exodan configuration]]; [[#ac-001-2][AC001.2 - Invalid configuration fails visibly]].
 - Boundary :: The configuration loader and executable startup.
-- Setup :: Temporary defaults, host, and synthetic secrets files with overlapping scalar and nested values; cases with absent optional paths, an empty explicit file, malformed YAML, wrong types, missing required fields, and unreadable paths.
+- Setup :: Temporary defaults, host, and synthetic secrets files with overlapping scalar and nested values; cases with absent optional paths, an empty explicit file, malformed YAML, wrong types, missing required fields, and unreadable paths. Use distinct synthetic default and host URLs, with credentials only in the secrets layer and a separate loopback =ADDR=.
 - Action :: Load the layers and start the executable with each invalid case.
-- Expected :: Rightmost supplied values win, omitted values remain inherited, optional absent layers are allowed, and all invalid cases fail before listener readiness. Diagnostics contain field names but no synthetic secret values. Unrelated Exodan keys are tolerated.
+- Expected :: Rightmost supplied values win, omitted values remain inherited, optional absent layers are allowed, and all invalid cases fail before listener readiness. The host URL becomes the configured public URL independently of =ADDR=; the secrets layer preserves it. Diagnostics contain field names but no synthetic secret values. Unrelated Exodan keys are tolerated.
+- Scope boundary :: Check consumption of the supplied =base_url=; do not add application URL-policy checks, domain verification, DNS queries, or deployment probes.
 - Retention :: Persistent standard Go regression suite through =make test=; written before the implementation and observed RED.
 
 ** RT001.2 - Executable HTTP boundary
@@ -286,10 +289,34 @@ An operator can *build and run the service locally* with synthetic configuration
 - Commands :: =stv-poll serve=, =stv-poll -h=, =stv-poll --help=, and =stv-poll --version=. No successful placeholder =process-due-work= command; W003 adds that operation.
 - Routes :: =GET /= serves the landing page; =GET /healthz= returns the JSON health contract; =GET /static/*= serves only packaged public assets. Unsupported methods return 405; unknown routes return 404.
 - Runtime paths :: =DEFAULT_CONFIG_PATH= and =STATE_DIRECTORY= are required for serve; =CONFIG_PATH= and =SECRETS_PATH= are optional when absent, mandatory to read when explicitly supplied. =ADDR= is required. Relative runtime asset paths resolve from process cwd.
-- YAML :: =base_url= is required and must be an absolute URL without userinfo, query, or fragment. HTTPS is required except for an explicitly configured loopback development URL. Known app values are type-checked; unrelated Exodan keys remain tolerated.
+- YAML :: Consume the required =base_url= string supplied through Exodan configuration for link construction. The application does not validate the URL or domain or impose scheme, host, or deployment policy. Known application settings are type-checked; unrelated Exodan keys remain tolerated.
 - HTTP defaults :: Header timeout 5 seconds, request read/write timeouts 15 seconds, idle timeout 60 seconds, shutdown grace 10 seconds, maximum header size 64 KiB. Nested =http= YAML permits positive timeout overrides; the header maximum is fixed.
 - Configuration layering :: Recursively merge maps; a supplied scalar or sequence replaces its previous value. Reject non-string map keys, incompatible known types, and null required values. Do not use legacy environment overrides for application values.
 - Assets :: Declare =templates= and =static= in =data_dirs=; cache parsed templates at startup. Their absence or syntax error is a startup failure.
+
+*** Public URL and deployment handoff
+
+- Primary domain :: Exodan reads =base_url= from the app's =config/<host>.yaml= for Caddy routing and DNS. Supply the same public URL to the application through =CONFIG_PATH=; =DEFAULT_CONFIG_PATH= supplies the base layer. Keep deployment domain settings in non-secret configuration, not in a secrets-only override that Exodan's domain discovery cannot see.
+- Ownership :: These declarations describe the integration handoff. Exodan owns URL/domain validation and infrastructure configuration. The application reads the supplied values, constructs its links, and binds =ADDR=; it does not verify or reconcile the deployment.
+- Listener :: =ADDR= is the infrastructure-supplied internal bind address. It does not set the public URL, scheme, or port used in invitations. The application does not allocate a deployment port or terminate public TLS.
+- Configuration artefacts :: Implementation supplies =config/defaults.yaml=, =config/localhost.yaml.example=, and a documented host example. A real =config/<host>.yaml= with the operator-selected domain is required before deployment. No hostname, domain registration, or live deployment is selected by this specification.
+- Host example :: The following values are illustrative placeholders only. The host filename identifies the Exodan deployment target; =base_url= identifies the public application endpoint.
+
+#+begin_src yaml
+# config/<host>.yaml, after substituting the selected public domain
+base_url: https://polls.example.com
+#+end_src
+
+- Base assets :: Declare the following in =config/defaults.yaml= alongside its required =base_url=.
+
+#+begin_src yaml
+data_dirs:
+  - templates
+  - static
+#+end_src
+
+- Additional domains :: Exodan's optional =extra_domains= setting belongs to its routing contract. It does not change the application's canonical link origin. This build requires one primary domain; it makes no alias or path-prefix deployment claim.
+- Deployment prerequisite :: The operator configures the application and =serve= invocation in Exodan, chooses the target host and public domain, and supplies encrypted secrets when W003 needs them. The app documentation points to that handoff without creating infrastructure configuration or running deployment commands.
 
 *** Data and state
 
