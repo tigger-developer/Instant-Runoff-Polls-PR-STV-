@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -87,7 +88,11 @@ func processDueWork() (workflow.Summary, error) {
 	}
 	defer st.Close()
 	now := time.Now
-	messageBuilder := workflow.NewInvitationMessageBuilder(st, cfg.BaseURL, cfg.Auth.KeyID, cfg.Auth.SigningKey, rand.Reader, now)
+	activeModerators := make(map[string]string, len(cfg.Moderators))
+	for _, moderator := range cfg.Moderators {
+		activeModerators[moderator.ID] = strings.ToLower(moderator.Email)
+	}
+	messageBuilder := workflow.NewInvitationMessageBuilder(st, cfg.BaseURL, cfg.Auth.KeyID, cfg.Auth.SigningKey, activeModerators, rand.Reader, now)
 	handlers := map[string]workflow.WorkHandler{
 		"close":    workflow.NewCloseHandler(st, rand.Reader, now),
 		"count":    workflow.NewCountHandler(st, rand.Reader, now),
@@ -151,7 +156,14 @@ func serve() error {
 	if err != nil {
 		return fmt.Errorf("parse templates: %w", err)
 	}
-	server := newHTTPServer(addr, web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.Dir(staticDirectory))), cfg.HTTP)
+	moderators := make([]store.ConfiguredModerator, 0, len(cfg.Moderators))
+	for _, moderator := range cfg.Moderators {
+		moderators = append(moderators, store.ConfiguredModerator{ID: moderator.ID, NormalizedEmail: strings.ToLower(moderator.Email)})
+	}
+	if err := st.SyncModerators(context.Background(), moderators); err != nil {
+		return err
+	}
+	server := newHTTPServer(addr, web.WorkflowHandler(cfg, st, tmpl, http.FileServer(http.Dir(staticDirectory)), rand.Reader, time.Now), cfg.HTTP)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	listener, err := net.Listen("tcp", addr)

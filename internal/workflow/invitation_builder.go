@@ -15,10 +15,21 @@ import (
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 )
 
-func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string, key []byte, randomness io.Reader, now func() time.Time) DeliveryMessageBuilder {
+func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string, key []byte, activeModerators map[string]string, randomness io.Reader, now func() time.Time) DeliveryMessageBuilder {
 	return func(ctx context.Context, item *store.ClaimedWork, attempt store.DeliveryAttempt) (Message, error) {
 		if attempt.MessageKind == "announcement" {
 			return ResultMessage(attempt.RecipientEmail, attempt.Question, attempt.Winners, attempt.NoVotes)
+		}
+		if attempt.MessageKind == "moderator_login" {
+			if activeModerators[attempt.PrincipalID] != attempt.RecipientEmail {
+				return Message{}, errors.New("moderator is not currently configured")
+			}
+			token, err := RestoreGrant(attempt.GrantPayload, key)
+			if err != nil {
+				return Message{}, err
+			}
+			link := strings.TrimRight(baseURL, "/") + "/auth/verify?grant=" + url.QueryEscape(token)
+			return ModeratorLoginMessage(attempt.RecipientEmail, link)
 		}
 		if ctx == nil || repository == nil || strings.TrimSpace(baseURL) == "" || keyID == "" || len(key) != 32 || randomness == nil || now == nil || item == nil || item.ID == "" || item.ClaimToken == "" || attempt.MessageKind != "invitation" {
 			return Message{}, errors.New("invitation builder dependencies are invalid")

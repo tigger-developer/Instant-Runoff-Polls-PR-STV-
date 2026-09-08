@@ -66,6 +66,8 @@ type DeliveryAttempt struct {
 	PollID         string
 	ContactID      string
 	ParticipantID  string
+	PrincipalID    string
+	GrantPayload   []byte
 	RecipientEmail string
 	MessageKind    string
 	Question       string
@@ -554,7 +556,7 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 	var deadline int64
 	var countingStatus string
 	var resultJSON []byte
-	err = tx.QueryRowContext(ctx, `SELECT delivery.id,COALESCE(work.poll_id,''),COALESCE(delivery.contact_id,''),COALESCE(contact.participant_id,''),delivery.recipient_email,delivery.message_kind,COALESCE(poll.question,''),COALESCE(poll.state,''),COALESCE(poll.deadline,0),COALESCE(poll.counting_status,''),COALESCE((SELECT result_json FROM count_results WHERE snapshot_id=(SELECT id FROM count_snapshots WHERE poll_id=poll.id)),''),work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id LEFT JOIN polls AS poll ON poll.id=work.poll_id LEFT JOIN contacts AS contact ON contact.id=delivery.contact_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.ParticipantID, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &countingStatus, &resultJSON, &attempt.Attempts)
+	err = tx.QueryRowContext(ctx, `SELECT delivery.id,COALESCE(work.poll_id,''),COALESCE(delivery.contact_id,''),COALESCE(contact.participant_id,''),COALESCE(grant.principal_id,''),COALESCE(grant.claims_json,''),delivery.recipient_email,delivery.message_kind,COALESCE(poll.question,''),COALESCE(poll.state,''),COALESCE(poll.deadline,0),COALESCE(poll.counting_status,''),COALESCE((SELECT result_json FROM count_results WHERE snapshot_id=(SELECT id FROM count_snapshots WHERE poll_id=poll.id)),''),work.attempts FROM work_items AS work JOIN deliveries AS delivery ON delivery.work_id=work.id LEFT JOIN grants AS grant ON grant.id=delivery.grant_id LEFT JOIN polls AS poll ON poll.id=work.poll_id LEFT JOIN contacts AS contact ON contact.id=delivery.contact_id WHERE work.id=? AND work.kind='delivery' AND work.status='claimed' AND work.claim_token=? AND work.claim_expires_at>?`, workID, claimToken, now.Unix()).Scan(&attempt.DeliveryID, &attempt.PollID, &attempt.ContactID, &attempt.ParticipantID, &attempt.PrincipalID, &attempt.GrantPayload, &attempt.RecipientEmail, &attempt.MessageKind, &attempt.Question, &state, &deadline, &countingStatus, &resultJSON, &attempt.Attempts)
 	if err != nil {
 		return DeliveryAttempt{}, ErrConflict
 	}

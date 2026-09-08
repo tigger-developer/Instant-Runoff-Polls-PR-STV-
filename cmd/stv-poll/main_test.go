@@ -103,7 +103,7 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"index.html", "voting.html", "counting.html"} {
+	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html"} {
 		var rendered bytes.Buffer
 		if err := tmpl.ExecuteTemplate(&rendered, name, struct{ BaseURL string }{"https://poll.example"}); err != nil {
 			t.Fatal(err)

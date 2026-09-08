@@ -26,6 +26,13 @@ func InvitationMessage(recipient, question, link string) (Message, error) {
 	return Message{To: recipient, Subject: encodeSubject("Vote: " + question), Body: body}, nil
 }
 
+func ModeratorLoginMessage(recipient, link string) (Message, error) {
+	if err := validateMessageFields(recipient, link); err != nil {
+		return Message{}, err
+	}
+	return Message{To: recipient, Subject: "Sign in to STV Poll", Body: fmt.Sprintf("Use this link to sign in to STV Poll:\n\n%s\n", link)}, nil
+}
+
 func ResultMessage(recipient, question string, winners []string, noVotes bool) (Message, error) {
 	if err := validateMessageFields(recipient, question); err != nil {
 		return Message{}, err
