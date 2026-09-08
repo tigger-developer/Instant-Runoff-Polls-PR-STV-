@@ -1,0 +1,1194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="sdlc-preview">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>spec.org</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { max-width: 76rem; margin: 2rem auto; padding: 0 1.5rem 4rem;
+      font: 18px/1.55 system-ui, sans-serif; }
+    h1, h2, h3, h4 { line-height: 1.2; margin-top: 1.8em; }
+    a { color: #2673c9; }
+    code, pre { font-family: ui-monospace, monospace; }
+    pre { overflow: auto; padding: 1rem; border: 1px solid #8886;
+      border-radius: .4rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #8886; padding: .45rem; text-align: left; }
+    blockquote { margin-left: 0; padding-left: 1rem; border-left: .25rem solid #8888; }
+  </style>
+</head>
+<body>
+<h1 id="summary">Establish the Go application foundation</h1>
+<dl>
+<dt>Outcome</dt>
+<dd>
+A <strong>runnable Go service</strong> consumes Exodan configuration and
+provides persistent storage, server-rendered HTML, and truthful health.
+</dd>
+<dt>Before</dt>
+<dd>
+At original definition, the repository contained <strong>documentation
+only</strong>. An initial Go foundation now exists; this refresh
+reconciles its delivery contract with the approved architecture.
+</dd>
+<dt>After</dt>
+<dd>
+The application can be built and run locally and packaged for Exodan;
+<strong>polling behaviour follows in W003</strong>.
+</dd>
+<dt>Changes</dt>
+<dd>
+Establish the Go module, executable, configuration loader, SQLite
+initialization, templates, health endpoint, and build/verification entry
+points. The refresh records <strong>native CSS/HTML tooling</strong>,
+approved dependency rationale, and the existing implementation baseline.
+</dd>
+<dt>Unchanged</dt>
+<dd>
+<strong>Exodan retains deployment and host ownership</strong>. This
+change adds no authentication, live email, ballots, counting, or
+scheduler.
+</dd>
+<dt>Edge cases</dt>
+<dd>
+Invalid layers, unsupported schemas, migration failure, restart, missing
+assets, IPv4/IPv6 binding, request limits, and shutdown.
+</dd>
+<dt>Decisions</dt>
+<dd>
+Follow the <strong>accepted application architecture</strong> and SDLC
+Go/Web standards; adapt the recorded upload/writeback foundations.
+</dd>
+<dt>Next step</dt>
+<dd>
+Refresh the <strong>definition audit</strong>, then resume delivery
+within the recorded approval. Keep this refresh on the operator-selected
+branch; no new implementation branch or code is created here.
+</dd>
+</dl>
+<hr />
+<h1 id="context">Context</h1>
+<h2 id="problem">Problem</h2>
+<p>At original definition the accepted architecture had <strong>no
+executable foundation</strong>. Initial implementation now exists, but
+the delivery contract still requires the runtime and verification
+boundaries consumed by the two subsequent specifications. Existing code
+is implementation evidence, not a replacement for these
+requirements.</p>
+<h2 id="outcome">Outcome</h2>
+<p>An operator can <strong>build and run the service locally</strong>
+with synthetic configuration, observe its health, restart it without
+losing stored state, and produce the Linux deployment artefact.</p>
+<h2 id="scope">Scope</h2>
+<dl>
+<dt>In scope</dt>
+<dd>
+Application composition, runtime configuration, SQLite initialization
+and migrations, HTML/CSS landing page, health, CLI behaviour, local
+documentation, and verification commands.
+</dd>
+<dt>Out of scope</dt>
+<dd>
+Poll data, authentication, mail delivery, count processing, live
+deployment, infrastructure changes, and production secrets.
+</dd>
+<dt>Unchanged</dt>
+<dd>
+README and VISION retain the product rules. ARCHITECTURE retains
+component and ownership decisions.
+</dd>
+</dl>
+<h2 id="authority-and-starting-point">Authority and starting point</h2>
+<dl>
+<dt>Project</dt>
+<dd>
+<a href="../../.sdlc/project.yaml">Project profile</a>.
+</dd>
+<dt>Product</dt>
+<dd>
+<a href="../../README.md">README application direction</a> and <a
+href="../../docs/VISION.md">VISION delivery direction</a>.
+</dd>
+<dt>Architecture</dt>
+<dd>
+<a href="../../docs/ARCHITECTURE.md">Application components, runtime
+contract, and reuse plan</a>; accepted by the operator on 8 September
+2026: "ok architecture looks good".
+</dd>
+<dt>External contract</dt>
+<dd>
+Exodan's <code
+class="verbatim">deploy/docs/PROJECT-INTEGRATION.md</code>, version 1.8,
+as identified and summarized in ARCHITECTURE.
+</dd>
+<dt>Baseline</dt>
+<dd>
+Documentation commit <code class="verbatim">be75045</code> (application
+architecture and consolidated requirements); no application or
+regression pack existed at definition start.
+</dd>
+<dt>Refresh baseline</dt>
+<dd>
+Architecture and foundation review at <code
+class="verbatim">354aa6f</code> (foundation sufficiency review),
+followed by the operator's explicit approval. The current repository
+contains the Go module, CLI, config/store/web packages and initial
+tests; concurrent implementation edits are preserved. Their presence
+does not establish acceptance or current test results.
+</dd>
+<dt>Reuse evidence</dt>
+<dd>
+The architecture records upload <code
+class="verbatim">3776f42e84d5</code> and writeback <code
+class="verbatim">8bd639af78e4</code> source snapshots and exact
+adaptation candidates. They are implementation examples, not requirement
+authorities.
+</dd>
+</dl>
+<h2 id="constraints-and-dependencies">Constraints and dependencies</h2>
+<ul>
+<li>Use <strong>Go, standard-library HTTP/templates, and SQLite</strong>
+as selected in the architecture.</li>
+<li>New modules remain under <code class="verbatim">internal/</code>;
+<strong>no JavaScript or frontend runtime</strong> is needed.</li>
+<li>No deployment target or host scheduler is introduced. Exodan remains
+an infrastructure dependency, <strong>not part of this
+delivery</strong>.</li>
+<li>This work is the prerequisite for <a
+href="../002-irish-pr-stv-counting/spec.org">W002 - Reproducible Irish
+PR-STV counting</a> and <a
+href="../003-invited-poll-workflow/spec.org">W003 - Invited poll
+workflow</a>.</li>
+</ul>
+<h2 id="decisions">Decisions</h2>
+<dl>
+<dt>Branch history</dt>
+<dd>
+The original instruction was to draft specifications on master and
+branch when coding started. This refresh remains on the
+<strong>operator-selected existing branch</strong>, following the
+current SDLC definition contract.
+</dd>
+<dt>Approved interfaces</dt>
+<dd>
+The precise CLI, endpoint, configuration keys and bounds below were
+approved with the original specification. They define <strong>required
+behaviour</strong>, not claims of implementation conformance.
+</dd>
+<dt>Tooling approval</dt>
+<dd>
+On 8 September 2026 the operator explicitly approved standalone Biome
+for CSS, tidy-html5 for rendered HTML, and conditional oxlint for
+later-approved JavaScript/TypeScript. These are <strong>web
+linters</strong>; the Go lint checks remain separate.
+</dd>
+<dt>Operator clarification, 8 September 2026</dt>
+<dd>
+<strong>Strict separation of concerns</strong>: the application consumes
+Exodan's supplied URL and listener configuration. URL/domain validation,
+DNS, routing, and public TLS belong to Exodan.
+</dd>
+<dt>Withdrawn proposal</dt>
+<dd>
+The earlier application URL policy requiring an absolute URL, excluding
+userinfo/query/fragment, and requiring HTTPS with a loopback exception
+is removed from scope by that clarification. It is not an implementation
+or test requirement.
+</dd>
+</dl>
+<h2 id="unresolved-blockers">Unresolved blockers</h2>
+<ul>
+<li>No unresolved product or architecture decision within this scope.
+Voting and announcement policies are approved in W003. The refreshed
+definition audit remains a delivery prerequisite.</li>
+</ul>
+<h1 id="acceptance-criteria">Acceptance Criteria</h1>
+<h2 id="ac-001-1">AC001.1 - Exodan configuration</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Given supplied runtime paths, the application <strong>merges defaults,
+host YAML, and secrets in that order</strong> and uses the resulting
+application values. The documented host configuration supplies the
+public <code class="verbatim">base_url</code> that Exodan reads for
+Caddy routing and DNS; the listener still uses <code
+class="verbatim">ADDR</code> independently.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-1">RT001.1 - Layered configuration</a>.
+</dd>
+</dl>
+<h2 id="ac-001-2">AC001.2 - Invalid configuration fails visibly</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Given a missing required value, malformed application value, or
+unreadable explicitly supplied layer, startup <strong>fails before
+listening</strong> and identifies the field or layer without disclosing
+its value. This covers configuration loading and application-owned
+settings, not URL or domain validation.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-1">RT001.1 - Layered configuration</a>.
+</dd>
+</dl>
+<h2 id="ac-001-3">AC001.3 - Configured listener and page</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Given valid configuration, <code class="verbatim">serve</code>
+<strong>binds the supplied ADDR</strong> and serves an HTML landing page
+and local CSS. The page's canonical link uses the supplied <code
+class="verbatim">base_url</code> independently of request headers or the
+listener address.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-2">RT001.2 - Executable HTTP boundary</a>.
+</dd>
+</dl>
+<h2 id="ac-001-4">AC001.4 - Persistent state survives restart</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Given an existing application database, restarting <strong>preserves its
+state</strong> and applies each supported migration once.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-3">RT001.3 - Storage lifecycle</a>.
+</dd>
+</dl>
+<h2 id="ac-001-5">AC001.5 - Unusable storage prevents operation</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Given unavailable storage, a newer unsupported schema, or a failed
+migration, the application <strong>does not accept work against that
+state</strong>.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-3">RT001.3 - Storage lifecycle</a>.
+</dd>
+</dl>
+<h2 id="ac-001-6">AC001.6 - Truthful health</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+The health endpoint returns <strong>200 only when required storage and
+schema are usable</strong>; dependency failure returns 503 without
+configuration or database details.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-4">RT001.4 - Health reflects storage</a>.
+</dd>
+</dl>
+<h2 id="ac-001-7">AC001.7 - Safe CLI behaviour</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Help and version requests <strong>exit successfully without runtime
+configuration or writes</strong>. Invalid invocation exits 2;
+operational failure exits 1.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-5">RT001.5 - CLI outcomes</a>.
+</dd>
+</dl>
+<h2 id="ac-001-8">AC001.8 - Bounded server lifecycle</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Requests and shutdown <strong>respect the specified size and time
+bounds</strong>. A normal termination closes the listener and database
+without accepting further work.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-6">RT001.6 - Limits and shutdown</a>.
+</dd>
+</dl>
+<h2 id="ac-001-9">AC001.9 - Accessible page without JavaScript</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+The landing page <strong>works without JavaScript</strong>, has semantic
+structure and visible keyboard focus, and remains readable at 320 CSS
+pixels and 200% zoom. Apply WCAG 2.1 AA: text contrast at least 4.5:1,
+or 3:1 for large text; keyboard access, meaningful labels/alt text, one
+h1 and ordered headings are required.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#rt-001-2">RT001.2 - Executable HTTP boundary</a>; <a
+href="#ut-001-1">UT001.1 - Landing-page usability</a>.
+</dd>
+</dl>
+<h2 id="ac-001-10">AC001.10 - Portable build and verification</h2>
+<dl>
+<dt>Criterion</dt>
+<dd>
+Repository-owned commands <strong>build, install locally, lint, test,
+and check vulnerabilities</strong> with failures propagated. Repeating
+local installation preserves the same installed content and unrelated
+files. The application can be cross-compiled for Linux amd64 without a
+target Go installation.
+</dd>
+<dt>Proven by</dt>
+<dd>
+<a href="#ot-001-1">OT001.1 - Build and tooling contract</a>.
+</dd>
+</dl>
+<h1 id="test-definitions">Test Definitions</h1>
+<h2 id="rt-001-1">RT001.1 - Layered configuration</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-1">AC001.1 - Exodan configuration</a>; <a
+href="#ac-001-2">AC001.2 - Invalid configuration fails visibly</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+The configuration loader and executable startup.
+</dd>
+<dt>Setup</dt>
+<dd>
+Temporary defaults, host, and synthetic secrets files with overlapping
+scalar and nested values; cases with absent optional paths, an empty
+explicit file, malformed YAML, wrong types, missing required fields, and
+unreadable paths. Use distinct synthetic default and host URLs, with
+credentials only in the secrets layer and a separate loopback <code
+class="verbatim">ADDR</code>.
+</dd>
+<dt>Action</dt>
+<dd>
+Load the layers and start the executable with each invalid case.
+</dd>
+<dt>Expected</dt>
+<dd>
+Rightmost supplied values win, omitted values remain inherited, optional
+absent layers are allowed, and all invalid cases fail before listener
+readiness. The host URL becomes the configured public URL independently
+of <code class="verbatim">ADDR</code>; the secrets layer preserves it.
+Diagnostics contain field names but no synthetic secret values.
+Unrelated Exodan keys are tolerated.
+</dd>
+<dt>Scope boundary</dt>
+<dd>
+Check consumption of the supplied <code
+class="verbatim">base_url</code>; do not add application URL-policy
+checks, domain verification, DNS queries, or deployment probes.
+</dd>
+<dt>Retention</dt>
+<dd>
+Persistent standard Go regression suite through <code
+class="verbatim">make test</code>; written before the implementation and
+observed RED.
+</dd>
+</dl>
+<h2 id="rt-001-2">RT001.2 - Executable HTTP boundary</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-3">AC001.3 - Configured listener and page</a>; <a
+href="#ac-001-9">AC001.9 - Accessible page without JavaScript</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+Requests to the built executable on an OS-assigned loopback port.
+</dd>
+<dt>Setup</dt>
+<dd>
+Temporary runtime tree and database, with test-owned valid HTML
+templates and a small CSS/static fixture matching the packaged paths;
+one IPv4 case and one IPv6 loopback case on a host supporting both. Use
+separate absent/malformed template copies for failure cases.
+</dd>
+<dt>Action</dt>
+<dd>
+Wait for observable readiness, request the root page, CSS, an unknown
+path, and an unsupported method; repeat with templates absent or
+malformed.
+</dd>
+<dt>Expected</dt>
+<dd>
+Correct HTML/CSS content types, local asset links, one h1, labelled
+navigation, no script-dependent interaction, 404/405 for invalid routes,
+and startup failure when required templates cannot be parsed. Listener
+address matches ADDR; the canonical link equals configured
+base<sub>url</sub> even under a different request Host.
+</dd>
+<dt>Retention</dt>
+<dd>
+Persistent standard Go regression suite through <code
+class="verbatim">make test</code>; written before the implementation and
+observed RED.
+</dd>
+</dl>
+<h2 id="rt-001-3">RT001.3 - Storage lifecycle</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-4">AC001.4 - Persistent state survives restart</a>; <a
+href="#ac-001-5">AC001.5 - Unusable storage prevents operation</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+Store initialization using a real local SQLite database.
+</dd>
+<dt>Setup</dt>
+<dd>
+Fresh, initialized, unsupported-newer, read-only, and deliberately
+failed-migration databases in test-owned directories. Supply a
+test-owned migration that creates a small parent/child table; this
+fixture does not add a production domain table.
+</dd>
+<dt>Action</dt>
+<dd>
+Initialize twice, insert and reopen a fixture row, and exercise the
+failure cases through the migration/store boundary. The migration runner
+accepts an explicit ordered migration collection, enabling a failing
+fixture without a production test switch.
+</dd>
+<dt>Expected</dt>
+<dd>
+Persistence survives restart, migration version advances only after
+commit, repeated initialization is harmless, and failures preserve the
+previous committed schema and data. Foreign-key violations fail on every
+pooled connection.
+</dd>
+<dt>Retention</dt>
+<dd>
+Persistent standard Go regression suite through <code
+class="verbatim">make test</code>; written before the implementation and
+observed RED.
+</dd>
+</dl>
+<h2 id="rt-001-4">RT001.4 - Health reflects storage</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-6">AC001.6 - Truthful health</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+HTTP health response using the real store.
+</dd>
+<dt>Setup</dt>
+<dd>
+A ready server and a store subsequently made unavailable through its
+lifecycle boundary.
+</dd>
+<dt>Action</dt>
+<dd>
+Request /healthz before and after store closure.
+</dd>
+<dt>Expected</dt>
+<dd>
+200 with {"status":"ok"} when ready; 503 with {"status":"unavailable"}
+afterwards; neither response exposes paths, configuration, or SQL
+errors.
+</dd>
+<dt>Retention</dt>
+<dd>
+Persistent standard Go regression suite through <code
+class="verbatim">make test</code>; written before the implementation and
+observed RED.
+</dd>
+</dl>
+<h2 id="rt-001-5">RT001.5 - CLI outcomes</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-7">AC001.7 - Safe CLI behaviour</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+Executable process, exit status, stdout, stderr, and temporary-directory
+contents.
+</dd>
+<dt>Setup</dt>
+<dd>
+No runtime configuration; help/version, unknown command, unknown flag,
+and malformed serve configuration cases.
+</dd>
+<dt>Action</dt>
+<dd>
+Invoke each case once.
+</dd>
+<dt>Expected</dt>
+<dd>
+-h and –help provide equivalent usage; –version identifies the build;
+these exit 0 with no state writes. Invalid invocation exits 2,
+operational failure exits 1, and diagnostics use stderr.
+</dd>
+<dt>Retention</dt>
+<dd>
+Persistent standard Go regression suite through <code
+class="verbatim">make test</code>; written before the implementation and
+observed RED.
+</dd>
+</dl>
+<h2 id="rt-001-6">RT001.6 - Limits and shutdown</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-8">AC001.8 - Bounded server lifecycle</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+HTTP requests and termination of the executable.
+</dd>
+<dt>Setup</dt>
+<dd>
+Temporary runtime with short test-configured timeouts. Use the shared
+HTTP-server constructor with test-owned handlers to hold a request body
+or response at synchronization points; separately exercise process
+termination through the executable.
+</dd>
+<dt>Action</dt>
+<dd>
+Exceed the header bound; stall headers, body reads, response writes and
+idle keep-alive connections in separate cases; then terminate during an
+active request. These are real socket interactions, not assertions about
+timeout field values.
+</dd>
+<dt>Expected</dt>
+<dd>
+Oversized headers and timeout cases are rejected or disconnected,
+accepted work receives only its configured grace period, the listener
+closes, and the database can be reopened. Successful draining exits 0;
+expiry of shutdown grace exits 1 with a safe diagnostic. No fixed sleep
+is used as readiness evidence.
+</dd>
+<dt>Retention</dt>
+<dd>
+Persistent standard Go regression suite through <code
+class="verbatim">make test</code>; written before the implementation and
+observed RED.
+</dd>
+</dl>
+<h2 id="ut-001-1">UT001.1 - Landing-page usability</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-9">AC001.9 - Accessible page without JavaScript</a>.
+</dd>
+<dt>Reviewer</dt>
+<dd>
+Operator.
+</dd>
+<dt>Procedure</dt>
+<dd>
+View the local landing page in Safari or Firefox with JavaScript
+disabled, at a narrow mobile width and 200% zoom; navigate by keyboard.
+</dd>
+<dt>Expected</dt>
+<dd>
+At 320 CSS pixels and 200% zoom, text remains readable, content is not
+clipped, and keyboard navigation has visible focus. Verify WCAG 2.1 AA
+contrast of at least 4.5:1 for body text or 3:1 for large text,
+meaningful labels/alt text, one h1 and ordered headings.
+</dd>
+<dt>Record</dt>
+<dd>
+PENDING in <code class="verbatim">validation.org</code> until the
+operator reports the result.
+</dd>
+</dl>
+<h2 id="ot-001-1">OT001.1 - Build and tooling contract</h2>
+<dl>
+<dt>Covers</dt>
+<dd>
+<a href="#ac-001-10">AC001.10 - Portable build and verification</a>.
+</dd>
+<dt>Boundary</dt>
+<dd>
+Local repository commands and generated binary, without deployment.
+</dd>
+<dt>Procedure</dt>
+<dd>
+Run build, lint, test, and vulncheck targets; cross-compile Linux amd64;
+inspect the binary format. Run install twice with PREFIX inside an OS
+temporary directory; compare installed content, verify an unrelated
+sentinel survives, and run installed help/version plus serve from its
+packaged working directory. Verify missing-scanner failure in an
+isolated invocation and review sync without executing a repository
+synchronization test.
+</dd>
+<dt>Expected</dt>
+<dd>
+Real checks run, failures propagate, go.mod/go.sum remain unchanged by
+vulncheck, and the Linux artefact is produced without CGo. Source and
+configuration retain the documented provenance and ignore rules. The
+managed binary/assets exist under PREFIX; repeating installation
+preserves their content and unrelated files. Secrets and host
+configuration are excluded. Installed help/version work, and installed
+serve operates from the packaged asset directory with the supplied
+runtime variables.
+</dd>
+<dt>Web-tool evidence</dt>
+<dd>
+Check all owned CSS with standalone Biome and application-rendered HTML
+with tidy-html5 diagnostics. In disposable fixtures, introduce one CSS
+violation, one HTML validation error, and one missing-tool case for each
+applicable web linter; require non-zero lint status without
+source/output rewrites or tool installation. Confirm the recorded tool
+versions and integrity/provisioning instructions. No
+JavaScript/TypeScript is introduced, so oxlint is not a required
+executable for this release. These are bounded one-off checks, not
+source-text regression tests.
+</dd>
+<dt>Bounds</dt>
+<dd>
+One local verification session; at most one successful invocation and
+one bounded failure-path invocation of govulncheck; no mail, deployment,
+metered API, or global installation. Use OS temporary directories for
+disposable artefacts.
+</dd>
+<dt>Record</dt>
+<dd>
+PENDING in <code class="verbatim">validation.org</code>; this review is
+not a permanent test of Makefile text.
+</dd>
+</dl>
+<h1 id="edge-cases">Edge Cases</h1>
+<ul>
+<li>A supplied but unreadable configuration layer <strong>fails
+startup</strong>, even if lower layers contain usable values. Covered by
+<a href="#ac-001-2">AC001.2 - Invalid configuration fails
+visibly</a>.</li>
+<li>A database created by a newer application version <strong>is not
+downgraded</strong>. Covered by <a href="#ac-001-5">AC001.5 - Unusable
+storage prevents operation</a>.</li>
+<li>A dependency failure after startup <strong>changes health to
+unavailable</strong>. Covered by <a href="#ac-001-6">AC001.6 - Truthful
+health</a>.</li>
+<li>An IPv6 address <strong>is passed intact to the listener</strong>.
+Covered by <a href="#ac-001-3">AC001.3 - Configured listener and
+page</a>.</li>
+<li>Help and version requests <strong>do not initialize
+storage</strong>. Covered by <a href="#ac-001-7">AC001.7 - Safe CLI
+behaviour</a>.</li>
+</ul>
+<h1 id="solution-design">Solution Design</h1>
+<h2 id="architecture-context">Architecture context</h2>
+<dl>
+<dt>Components</dt>
+<dd>
+<code class="verbatim">cmd/stv-poll</code>, <code
+class="verbatim">internal/config</code>, <code
+class="verbatim">internal/store</code>, and <code
+class="verbatim">internal/web</code>.
+</dd>
+<dt>Reuse</dt>
+<dd>
+Adapt upload's layered configuration and writeback's explicit
+application wiring, cached templates, migration pattern, and bounded
+HTTP lifecycle. Preserve source provenance and applicable licence
+obligations. Do not copy their domain schemas or legacy configuration
+fallbacks.
+</dd>
+<dt>Dependency direction</dt>
+<dd>
+The entry point constructs typed configuration, store, templates, and
+HTTP handlers. Handlers do not access environment variables or execute
+SQL.
+</dd>
+</dl>
+<h2 id="high-level-design">High-level design</h2>
+<h3 id="flow">Flow</h3>
+<ol>
+<li>Parse invocation; <strong>help and version return before
+configuration</strong>.</li>
+<li>Load and validate YAML, initialize the database transactionally, and
+parse templates.</li>
+<li>Bind the supplied address and serve until cancellation.</li>
+<li>Stop accepting requests, allow bounded draining, and close owned
+resources.</li>
+</ol>
+<h3 id="interfaces-and-configuration">Interfaces and configuration</h3>
+<dl>
+<dt>Commands</dt>
+<dd>
+<code class="verbatim">stv-poll serve</code>, <code
+class="verbatim">stv-poll -h</code>, <code
+class="verbatim">stv-poll --help</code>, and <code
+class="verbatim">stv-poll --version</code>. No successful placeholder
+<code class="verbatim">process-due-work</code> command; W003 adds that
+operation.
+</dd>
+<dt>Routes</dt>
+<dd>
+<code class="verbatim">GET /</code> serves the landing page; <code
+class="verbatim">GET /healthz</code> returns the JSON health contract;
+<code class="verbatim">GET /static/*</code> serves only packaged public
+assets. Unsupported methods return 405; unknown routes return 404.
+</dd>
+<dt>Runtime paths</dt>
+<dd>
+<code class="verbatim">DEFAULT_CONFIG_PATH</code> and <code
+class="verbatim">STATE_DIRECTORY</code> are required for serve; <code
+class="verbatim">CONFIG_PATH</code> and <code
+class="verbatim">SECRETS_PATH</code> are optional when absent, mandatory
+to read when explicitly supplied. <code class="verbatim">ADDR</code> is
+required. Relative runtime asset paths resolve from process cwd.
+</dd>
+<dt>Compatibility</dt>
+<dd>
+This new application deliberately requires DEFAULT<sub>CONFIG</sub>_PATH
+and does not implement Exodan's fallback for older applications. Exodan
+supplies this variable to the service, admin wrapper and timers. Local
+instructions supply it explicitly; omission fails before listening.
+</dd>
+<dt>YAML</dt>
+<dd>
+Consume the required <code class="verbatim">base_url</code> string
+supplied through Exodan configuration for link construction. The
+application does not validate the URL or domain or impose scheme, host,
+or deployment policy. Known application settings are type-checked;
+unrelated Exodan keys remain tolerated.
+</dd>
+<dt>HTTP settings</dt>
+<dd>
+Use the exact duration keys and defaults in the table below. Durations
+are positive Go duration strings; zero, negative, empty, and malformed
+supplied durations fail startup. The header maximum is fixed at 64 KiB.
+</dd>
+<dt>Configuration layering</dt>
+<dd>
+Recursively merge maps; a supplied scalar or sequence replaces its
+previous value. Reject non-string map keys, incompatible known types,
+and null required values. Do not use legacy environment overrides for
+application values.
+</dd>
+<dt>Assets</dt>
+<dd>
+Declare <code class="verbatim">templates</code> and <code
+class="verbatim">static</code> in <code
+class="verbatim">data_dirs</code>; cache parsed templates at startup.
+Their absence or syntax error is a startup failure.
+</dd>
+</dl>
+<table>
+<thead>
+<tr>
+<th>Application YAML key</th>
+<th>Default / contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>base<sub>url</sub></td>
+<td>Required non-empty string, consumed for links without URL/domain
+validation.</td>
+</tr>
+<tr>
+<td>http.read<sub>header</sub>_timeout</td>
+<td>5s</td>
+</tr>
+<tr>
+<td>http.read<sub>timeout</sub></td>
+<td>15s</td>
+</tr>
+<tr>
+<td>http.write<sub>timeout</sub></td>
+<td>15s</td>
+</tr>
+<tr>
+<td>http.idle<sub>timeout</sub></td>
+<td>60s</td>
+</tr>
+<tr>
+<td>http.shutdown<sub>timeout</sub></td>
+<td>10s</td>
+</tr>
+</tbody>
+</table>
+<dl>
+<dt>Configuration parsing</dt>
+<dd>
+Use <code class="verbatim">gopkg.in/yaml.v3</code>. Accept one mapping
+document per layer; an empty optional document is an empty overlay.
+Reject duplicate keys, non-string keys, malformed YAML, and multiple
+documents. Defaults must be a non-empty mapping. Unknown keys are
+tolerated for Exodan and later application features.
+</dd>
+<dt>Example and loading</dt>
+<dd>
+The example below is complete for foundation startup when runtime paths
+and <code class="verbatim">ADDR</code> are supplied. Load configuration
+once per process; changes take effect on restart. Neither <code
+class="verbatim">serve</code> nor a later worker rewrites configuration
+or decrypts age files.
+</dd>
+</dl>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># config/defaults.yaml; illustrative base_url only</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">base_url</span><span class="kw">:</span><span class="at"> https://polls.example.com</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">data_dirs</span><span class="kw">:</span><span class="at"> </span><span class="kw">[</span><span class="at">templates</span><span class="kw">,</span><span class="at"> static</span><span class="kw">]</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">http</span><span class="kw">:</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">read_header_timeout</span><span class="kw">:</span><span class="at"> 5s</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">read_timeout</span><span class="kw">:</span><span class="at"> 15s</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">write_timeout</span><span class="kw">:</span><span class="at"> 15s</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">idle_timeout</span><span class="kw">:</span><span class="at"> 60s</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="fu">shutdown_timeout</span><span class="kw">:</span><span class="at"> 10s</span></span></code></pre></div>
+<dl>
+<dt>Regression detail</dt>
+<dd>
+RT001.1 exercises every duration key, duplicate keys, multiple
+documents, an empty optional overlay, and a required empty defaults
+file. Its expected outcomes follow these parsing rules; no URL-policy
+cases are added.
+</dd>
+<dt>Page and assets</dt>
+<dd>
+The landing page identifies STV Poll and explains that it collects
+ranked preferences; it contains no non-working poll controls. Package
+CSS and a generic Open Graph image under <code
+class="verbatim">static/</code>. Include semantic HTML,
+language/viewport metadata, and generic Open Graph metadata. Reject
+traversal and symlinks escaping the public asset root; RT001.2 covers
+those requests and a missing asset without exposing state/configuration
+files.
+</dd>
+</dl>
+<h3 id="public-url-and-deployment-handoff">Public URL and deployment
+handoff</h3>
+<dl>
+<dt>Primary domain</dt>
+<dd>
+Exodan reads <code class="verbatim">base_url</code> from the app's <code
+class="verbatim">config/&lt;host&gt;.yaml</code> for Caddy routing and
+DNS. Supply the same public URL to the application through <code
+class="verbatim">CONFIG_PATH</code>; <code
+class="verbatim">DEFAULT_CONFIG_PATH</code> supplies the base layer.
+Keep deployment domain settings in non-secret configuration, not in a
+secrets-only override that Exodan's domain discovery cannot see.
+</dd>
+<dt>Ownership</dt>
+<dd>
+These declarations describe the integration handoff. Exodan owns
+URL/domain validation and infrastructure configuration. The application
+reads the supplied values, constructs its links, and binds <code
+class="verbatim">ADDR</code>; it does not verify or reconcile the
+deployment.
+</dd>
+<dt>Listener</dt>
+<dd>
+<code class="verbatim">ADDR</code> is the infrastructure-supplied
+internal bind address. It does not set the public URL, scheme, or port
+used in invitations. The application does not allocate a deployment port
+or terminate public TLS.
+</dd>
+<dt>Configuration artefacts</dt>
+<dd>
+Implementation supplies <code
+class="verbatim">config/defaults.yaml</code>, <code
+class="verbatim">config/localhost.yaml.example</code>, and a documented
+host example. A real <code
+class="verbatim">config/&lt;host&gt;.yaml</code> with the
+operator-selected domain is required before deployment. No hostname,
+domain registration, or live deployment is selected by this
+specification.
+</dd>
+<dt>Host example</dt>
+<dd>
+The following values are illustrative placeholders only. The host
+filename identifies the Exodan deployment target; <code
+class="verbatim">base_url</code> identifies the public application
+endpoint.
+</dd>
+</dl>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># config/&lt;host&gt;.yaml, after substituting the selected public domain</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">base_url</span><span class="kw">:</span><span class="at"> https://polls.example.com</span></span></code></pre></div>
+<dl>
+<dt>Base assets</dt>
+<dd>
+Declare the following in <code
+class="verbatim">config/defaults.yaml</code> alongside its required
+<code class="verbatim">base_url</code>.
+</dd>
+</dl>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode yaml"><code class="sourceCode yaml"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">data_dirs</span><span class="kw">:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> templates</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> static</span></span></code></pre></div>
+<dl>
+<dt>Additional domains</dt>
+<dd>
+Exodan's optional <code class="verbatim">extra_domains</code> setting
+belongs to its routing contract. It does not change the application's
+canonical link origin. This build requires one primary domain; it makes
+no alias or path-prefix deployment claim.
+</dd>
+<dt>Deployment prerequisite</dt>
+<dd>
+The operator configures the application and <code
+class="verbatim">serve</code> invocation in Exodan, chooses the target
+host and public domain, and supplies encrypted secrets when W003 needs
+them. The app documentation points to that handoff without creating
+infrastructure configuration or running deployment commands.
+</dd>
+</dl>
+<h3 id="data-and-state">Data and state</h3>
+<dl>
+<dt>Database</dt>
+<dd>
+<code class="verbatim">STATE_DIRECTORY/stv-poll.sqlite</code> using
+<code class="verbatim">database/sql</code> and <code
+class="verbatim">modernc.org/sqlite</code>. Apply the <a
+href="../../docs/ARCHITECTURE.md::#sqlite-dependency-assessment">SQLite
+dependency assessment</a>; retain pinned module versions and <code
+class="verbatim">go.sum</code>, preserve licence/provenance obligations,
+and review the driver's coupled libc version on upgrades. The assessment
+records maintenance, alternatives and security/operational risks; it is
+not vulnerability-scan evidence.
+</dd>
+<dt>Connection policy</dt>
+<dd>
+Enforce foreign keys on <strong>every connection</strong>, a 5-second
+busy timeout, and one connection per process. Use SQLite's default
+rollback-journal mode initially. Later independent web/worker processes
+coordinate through write transactions. A health check has a separate 500
+ms context deadline.
+</dd>
+<dt>Migration ownership</dt>
+<dd>
+Embedded, ordered migrations and a schema-version record. Apply an
+outstanding migration and its version update in one transaction,
+serializing initialization. No poll-domain tables are introduced by this
+ticket.
+</dd>
+<dt>Permissions</dt>
+<dd>
+Exodan owns the state directory, identity, ownership and access policy.
+The app requires the supplied directory to exist and be writable; it
+does not create/chmod/chown infrastructure directories. Create its
+database with mode 0600 and preserve existing file modes. Never serve
+state paths as static assets. Local development instructions create an
+operator-owned temporary state directory.
+</dd>
+</dl>
+<h3 id="failure-behaviour">Failure behaviour</h3>
+<ul>
+<li>Startup failures exit 1 with safe context. Invocation errors exit 2;
+unknown flags are not ignored.</li>
+<li>Health uses a bounded store check and returns its small documented
+response. Detailed diagnostics remain in structured stderr logs with
+credentials and data redacted.</li>
+<li>Cancellation propagates to owned work. Successful draining exits 0;
+shutdown-grace expiry closes remaining connections and exits 1. Both
+paths release the database and emit safe structured stderr
+diagnostics.</li>
+</ul>
+<h2 id="architecture-impact">Architecture impact</h2>
+<h3 id="security-impact">Security impact</h3>
+<dl>
+<dt>Threat boundary</dt>
+<dd>
+First HTTP listener, filesystem state, and configuration inputs.
+</dd>
+<dt>Data and secrets</dt>
+<dd>
+Only synthetic/local configuration is needed for this delivery. No
+production secret is generated, committed, or displayed.
+</dd>
+<dt>Access</dt>
+<dd>
+Public landing page and minimal health only; no administrative, polling,
+filesystem browsing, or configuration-inspection route.
+</dd>
+<dt>Mitigation</dt>
+<dd>
+Contextual HTML escaping, restricted static paths, no raw Host-derived
+links, bounded requests, and deliberate state permissions.
+</dd>
+</dl>
+<h3 id="other-relevant-qualities">Other relevant qualities</h3>
+<dl>
+<dt>Reliability</dt>
+<dd>
+Transactional migrations, bounded startup/health/shutdown, and
+fail-closed schema compatibility.
+</dd>
+<dt>Performance</dt>
+<dd>
+Small local service and bounded connections; this ticket makes no
+measured capacity claim.
+</dd>
+<dt>Operability</dt>
+<dd>
+README gains exact local prerequisites, build/run instructions, runtime
+keys, and failure recovery. Add <code
+class="verbatim">config/localhost.yaml.example</code> and a synthetic
+development example. Do not create live host files.
+</dd>
+<dt>Accessibility</dt>
+<dd>
+Semantic HTML, responsive CSS, keyboard focus, and Web-standard
+contrast; UT001.1 covers presentation.
+</dd>
+<dt>Portability</dt>
+<dd>
+Local Darwin development and Linux amd64 build, with IPv4 and IPv6
+listener verification.
+</dd>
+<dt>Maintainability</dt>
+<dd>
+Standard <code class="verbatim">testing</code> and <code
+class="verbatim">httptest</code>, real temporary SQLite, injected
+clocks/roots when needed; no new browser test framework.
+</dd>
+</dl>
+<h2 id="build-and-verification-contract">Build and verification
+contract</h2>
+<dl>
+<dt>Commands</dt>
+<dd>
+<code class="verbatim">make build</code>, <code
+class="verbatim">make install</code>, <code
+class="verbatim">make lint</code>, <code
+class="verbatim">make test</code>, <code
+class="verbatim">make vulncheck</code>, and the SDLC-defined
+operator-only <code class="verbatim">make sync</code>.
+</dd>
+<dt>Local installation</dt>
+<dd>
+<code class="verbatim">make install</code> builds, installs the
+executable at <code class="verbatim">PREFIX/bin/stv-poll</code>, and
+copies templates, static assets and non-secret defaults under <code
+class="verbatim">PREFIX/share/stv-poll/</code>. PREFIX defaults to the
+repository's ignored <code class="verbatim">.local/</code> directory.
+Repeated installation updates only these managed paths, preserves
+unrelated files, and never installs plaintext secrets or host
+configuration. Document serve from the installed asset directory with
+explicit runtime variables. No privileged/global installation or
+deployment is implied.
+</dd>
+<dt>Build</dt>
+<dd>
+Use module path <code
+class="verbatim">github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-</code>
+and entry point <code class="verbatim">cmd/stv-poll</code>. Produce the
+local executable under ignored <code class="verbatim">bin/</code>;
+document Linux cross-compilation with CGo disabled. Do not install a
+target-side toolchain. Keep CLI help in <code
+class="verbatim">docs/stv-poll-help.md</code> and package it at build
+time; version output includes the build revision, or <code
+class="verbatim">dev</code> for an untagged local build.
+</dd>
+<dt>Lint</dt>
+<dd>
+Apply gofmt checking, go vet, golangci-lint with the Go standard's
+required checks, standalone Biome for CSS linting/format checking, and
+tidy-html5 diagnostics for rendered HTML without rewriting output.
+Oxlint applies to project-owned JavaScript/TypeScript if such source is
+later approved; none is introduced by this specification. Provision
+native tool versions explicitly outside check targets.
+</dd>
+<dt>Rendered-HTML coverage</dt>
+<dd>
+The lint entry point obtains application-rendered pages using the
+existing Go rendering/HTTP facilities and synthetic local state. It
+validates the emitted HTML, not unexpanded Go templates. W003 extends
+this coverage to its page/form states; no browser automation or separate
+rendering stack is introduced.
+</dd>
+<dt>Test</dt>
+<dd>
+Retained behavioural RTs only; use the race detector for concurrent
+code. Apply the SDLC coverage floor and complete branch evidence for
+durable state changes.
+</dd>
+<dt>Security gate</dt>
+<dd>
+<code class="verbatim">govulncheck ./...</code> plus any additional
+applicable dependency set introduced by build tooling. The target
+installs nothing, changes no locks, fails on missing tooling or
+incomplete scans, and remains separate from <code
+class="verbatim">make test</code>.
+</dd>
+<dt>Tooling dependencies</dt>
+<dd>
+Use standalone Biome and tidy-html5 for the owned CSS and rendered HTML,
+with no Node.js dependency. Enable Biome's CSS linter and formatter in
+project configuration. Record exact tool versions, platform artefacts
+and checksums during delivery; provision them outside check targets
+through approved native distributions. Missing applicable tooling fails
+the check. No browser JavaScript, bundler or browser automation is
+introduced; oxlint is conditional on a later approved
+JavaScript/TypeScript source dependency.
+</dd>
+<dt>Tooling security</dt>
+<dd>
+Run <code class="verbatim">govulncheck ./...</code> through <code
+class="verbatim">make vulncheck</code> for the Go application
+dependencies. Checks do not install tools, edit locks or apply fixes.
+Pin and verify the standalone CSS tool separately; no package-manager
+dependency graph is introduced for linting. OT001.1 verifies
+missing-tool and scanner failure propagation.
+</dd>
+<dt>Tooling decision history</dt>
+<dd>
+The former package-managed Stylelint proposal is withdrawn by the
+operator's instructions to remove Node-based tooling on 8 September
+2026. The subsequent instruction selects the SDLC-recommended oxlint,
+tidy-html5 and Biome according to the source types owned by the project.
+The operator explicitly approved that web-tool selection before
+requesting this three-spec refresh. A current definition gate is still
+required; approval is not audit evidence.
+</dd>
+<dt>Ignore rules</dt>
+<dd>
+Ignore binary output, local plaintext secrets, caches, and entire
+project-local agent runtime directories. Keep module checksums tracked.
+</dd>
+</dl>
+<h1 id="delivery-handoff">Delivery Handoff</h1>
+<dl>
+<dt>Required reading</dt>
+<dd>
+This specification, the project profile, named architecture sections,
+Exodan's integration contract, and selected SDLC Go/Web/security
+standards.
+</dd>
+<dt>First implementation step</dt>
+<dd>
+Inspect the existing code and regression evidence against this
+specification, beginning with <a href="#rt-001-5">RT001.5 - CLI
+outcomes</a>. Preserve existing implementation work; add missing
+behavioural tests and observe the intended RED before changing the
+corresponding behaviour. Do not recreate the module or claim earlier
+tests ran from their presence alone.
+</dd>
+<dt>Definition evidence</dt>
+<dd>
+<a href="audits.org">W001 - Foundation definition audit</a>.
+</dd>
+<dt>Validation evidence</dt>
+<dd>
+<a href="validation.org">W001 - Foundation user and one-off
+validation</a>.
+</dd>
+<dt>Documentation impact</dt>
+<dd>
+Update README with working local instructions and replace architecture
+proposals only where implementation establishes the stated component.
+</dd>
+<dt>Delivery boundary</dt>
+<dd>
+Operator sign-off and an effective definition PASS are required. Do not
+implement W002 counting or W003 poll behaviour in this ticket.
+</dd>
+</dl>
+</body>
+</html>
