@@ -3,11 +3,15 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +24,8 @@ import (
 func TestAdminCLIProcessesPollLifecycleThroughConfiguredBoundary(t *testing.T) {
 	state := t.TempDir()
 	overlay := filepath.Join(t.TempDir(), "host.yaml")
-	configuration := "base_url: https://poll.example\nmoderators:\n  - id: owner\n    email: owner@example.test\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n"
+	smtpHost, smtpPort, captured := startAdminSMTP(t)
+	configuration := fmt.Sprintf("base_url: https://poll.example\nmoderators:\n  - id: owner\n    email: owner@example.test\nauth:\n  key_id: test-key\n  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\nsmtp:\n  host: %s\n  port: %d\n  from: polls@example.test\n  tls_mode: development_plain\n", smtpHost, smtpPort)
 	if err := os.WriteFile(overlay, []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +51,20 @@ participants:
 	if !strings.Contains(createdOutput.String(), `"invitations":1`) {
 		t.Fatalf("create output=%s", createdOutput.String())
 	}
+	var deliveryOutput bytes.Buffer
+	commandError.Reset()
+	if code := run([]string{"process-due-work"}, strings.NewReader(""), &deliveryOutput, &commandError); code != 0 || !strings.Contains(deliveryOutput.String(), `"smtp_accepted":1`) {
+		t.Fatalf("delivery code=%d stdout=%s stderr=%s", code, deliveryOutput.String(), commandError.String())
+	}
+	transcript := <-captured
+	for _, evidence := range []string{"RCPT TO:<one@example.test>", "RCPT TO:<alias@example.test>", "To: one@example.test, alias@example.test", "/auth/verify?grant="} {
+		if !strings.Contains(transcript, evidence) {
+			t.Fatalf("SMTP transcript missing %q: %s", evidence, transcript)
+		}
+	}
+	if strings.Count(transcript, "DATA\n") != 1 {
+		t.Fatalf("SMTP message count in %s", transcript)
+	}
 
 	ctx := context.Background()
 	st, err := store.Open(ctx, state)
@@ -64,12 +83,6 @@ participants:
 		t.Fatal(err)
 	}
 	if err := st.ReplaceBallot(ctx, "cli-poll", participantID, 0, preferences, time.Now); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.DB.ExecContext(ctx, "UPDATE deliveries SET status='smtp_accepted',smtp_outcome='accepted' WHERE message_kind='invitation'"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.DB.ExecContext(ctx, "UPDATE work_items SET status='succeeded' WHERE kind='delivery'"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.Close(); err != nil {
@@ -96,6 +109,73 @@ participants:
 			t.Fatalf("audit missing %s: %s", evidence, auditOutput.String())
 		}
 	}
+}
+
+func startAdminSMTP(t *testing.T) (string, int, <-chan string) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	host, portText, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured := make(chan string, 1)
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			captured <- "accept failed: " + acceptErr.Error()
+			return
+		}
+		defer connection.Close()
+		reader := bufio.NewReader(connection)
+		writer := bufio.NewWriter(connection)
+		reply := func(line string) {
+			_, _ = writer.WriteString(line + "\r\n")
+			_ = writer.Flush()
+		}
+		var transcript strings.Builder
+		reply("220 local test")
+		for {
+			line, readErr := reader.ReadString('\n')
+			if readErr != nil {
+				captured <- transcript.String()
+				return
+			}
+			command := strings.ToUpper(strings.TrimSpace(line))
+			switch {
+			case strings.HasPrefix(command, "EHLO"):
+				reply("250 localhost")
+			case strings.HasPrefix(command, "MAIL FROM:"), strings.HasPrefix(command, "RCPT TO:"):
+				transcript.WriteString(strings.TrimSpace(line) + "\n")
+				reply("250 OK")
+			case command == "DATA":
+				transcript.WriteString("DATA\n")
+				reply("354 End data")
+				for {
+					part, dataErr := reader.ReadString('\n')
+					if dataErr != nil || strings.TrimSpace(part) == "." {
+						break
+					}
+					transcript.WriteString(part)
+				}
+				reply("250 accepted")
+			case command == "QUIT":
+				reply("221 bye")
+				captured <- transcript.String()
+				return
+			default:
+				reply("250 OK")
+			}
+		}
+	}()
+	return host, port, captured
 }
 
 func TestManualCloseFreezesBallotsAndQueuesCount(t *testing.T) {
@@ -139,14 +219,47 @@ func TestCountAuditExportsFrozenInputAndResultWithoutVoterIdentity(t *testing.T)
 	if err := exportCountAudit(ctx, st, adminConfig(), "poll", &output); err != nil {
 		t.Fatal(err)
 	}
+	var document map[string]any
+	if err := json.Unmarshal(output.Bytes(), &document); err != nil {
+		t.Fatalf("decode count audit: %v", err)
+	}
+	for _, field := range []string{"options", "input", "decisions", "result"} {
+		if document[field] == nil {
+			t.Fatalf("parsed audit lacks %s: %#v", field, document)
+		}
+	}
+	rejectAuditIdentity(t, document)
 	for _, required := range []string{`"poll_id":"poll"`, `"rule":"irish-guided-stv-v1"`, `"input_fingerprint"`, `"result"`, `"winners":["a"]`} {
 		if !strings.Contains(output.String(), required) {
 			t.Fatalf("audit missing %s: %s", required, output.String())
 		}
 	}
-	for _, forbidden := range []string{"Alex", "one@example.test"} {
+	for _, forbidden := range []string{"Alex", "one@example.test", `"participant_id"`, `"contact_id"`, `"person"`, `"contact"`} {
 		if strings.Contains(output.String(), forbidden) {
 			t.Fatalf("audit exposed %q: %s", forbidden, output.String())
+		}
+	}
+}
+
+func rejectAuditIdentity(t *testing.T, value any) {
+	t.Helper()
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			switch key {
+			case "participant_id", "contact_id", "email", "recipient_email":
+				t.Fatalf("audit exposed identity field %q", key)
+			}
+			rejectAuditIdentity(t, child)
+		}
+	case []any:
+		for _, child := range typed {
+			rejectAuditIdentity(t, child)
+		}
+	case string:
+		switch typed {
+		case "Alex", "one@example.test", "person", "contact":
+			t.Fatalf("audit exposed identity value %q", typed)
 		}
 	}
 }

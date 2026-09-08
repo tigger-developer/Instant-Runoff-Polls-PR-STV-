@@ -130,3 +130,38 @@ func TestOpenCreatesInvitedPollWorkflowSchema(t *testing.T) {
 		t.Fatal("poll with missing owner unexpectedly succeeded")
 	}
 }
+
+func TestOpenMigratesLegacyDeliveriesIntoRecipientRows(t *testing.T) {
+	ctx := context.Background()
+	directory := t.TempDir()
+	legacy, err := OpenWithMigrations(ctx, directory, migrations[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.DB.ExecContext(ctx, "INSERT INTO work_items(id,kind,logical_key,due_at,status) VALUES ('work','delivery','legacy-delivery',100,'pending')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.DB.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,recipient_email,message_kind,status,next_due) VALUES ('delivery','work','legacy@example.test','invitation','pending',100)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	upgraded, err := Open(ctx, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	var email string
+	var order, version int
+	if err := upgraded.DB.QueryRowContext(ctx, "SELECT email,display_order FROM delivery_recipients WHERE delivery_id='delivery'").Scan(&email, &order); err != nil {
+		t.Fatal(err)
+	}
+	if err := upgraded.DB.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if email != "legacy@example.test" || order != 1 || version != 3 {
+		t.Fatalf("email=%q order=%d schema=%d", email, order, version)
+	}
+}

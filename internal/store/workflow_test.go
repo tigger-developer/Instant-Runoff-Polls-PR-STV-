@@ -152,6 +152,19 @@ func TestOpenPollCommitsOneMultiRecipientInvitationPerParticipant(t *testing.T) 
 	if state != "open" || workCount != 1 || recipientCount != 2 {
 		t.Fatalf("state=%s work=%d", state, workCount)
 	}
+	var firstRecipient, secondRecipient, logicalKey string
+	if err := st.DB.QueryRowContext(ctx, "SELECT email FROM delivery_recipients WHERE delivery_id='delivery-1' AND display_order=1").Scan(&firstRecipient); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT email FROM delivery_recipients WHERE delivery_id='delivery-1' AND display_order=2").Scan(&secondRecipient); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB.QueryRowContext(ctx, "SELECT logical_key FROM work_items WHERE id='work-1'").Scan(&logicalKey); err != nil {
+		t.Fatal(err)
+	}
+	if firstRecipient != "one@example.test" || secondRecipient != "other@example.test" || logicalKey != "invitation:poll-1:person-1" {
+		t.Fatalf("recipients=%q,%q logical key=%q", firstRecipient, secondRecipient, logicalKey)
+	}
 	var closeDue int64
 	if err := st.DB.QueryRowContext(ctx, "SELECT due_at FROM work_items WHERE id='close-work' AND kind='close' AND status='pending'").Scan(&closeDue); err != nil || closeDue != 9999999999 {
 		t.Fatalf("close due=%d error=%v", closeDue, err)

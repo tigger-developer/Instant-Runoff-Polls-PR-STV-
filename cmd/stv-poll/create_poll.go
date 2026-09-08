@@ -99,6 +99,16 @@ func createPollFromDefinition(ctx context.Context, st *store.Store, cfg config.C
 	if !adminPollID.MatchString(definition.ID) || !adminPollID.MatchString(definition.OwnerID) || len([]rune(definition.Question)) < 1 || len([]rune(definition.Question)) > 500 || len(definition.Options) < 2 || len(definition.Options) > 50 || definition.Places < 1 || definition.Places > len(definition.Options) || len(definition.Participants) < 1 || len(definition.Participants) > 1000 {
 		return createdPoll{}, errors.New("invalid poll definition")
 	}
+	ownerConfigured := false
+	for _, moderator := range cfg.Moderators {
+		if moderator.ID == definition.OwnerID {
+			ownerConfigured = true
+			break
+		}
+	}
+	if !ownerConfigured {
+		return createdPoll{}, errors.New("poll owner is not a configured moderator")
+	}
 	deadline, err := time.Parse(time.RFC3339, definition.Deadline)
 	if err != nil || !deadline.After(now) {
 		return createdPoll{}, errors.New("deadline must be a future RFC3339 timestamp")

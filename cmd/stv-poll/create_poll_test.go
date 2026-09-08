@@ -42,7 +42,7 @@ participants:
     emails:
       - two@example.test
 `)
-	created, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, deterministicIDMaterial(), time.Unix(100, 0))
+	created, err := createPollFromDefinition(ctx, st, pollCreationConfig(), definition, deterministicIDMaterial(), time.Unix(100, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll(t *testin
 		t.Fatal(err)
 	}
 	definition := strings.NewReader("id: bad\nowner_id: owner\nquestion: Question\noptions: [A, A]\nplaces: 1\ndeadline: 2030-01-01T18:00:00Z\nparticipants:\n  - name: One\n    emails: [same@example.test]\n  - name: Two\n    emails: [SAME@example.test]\n")
-	if _, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, definition, bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
+	if _, err := createPollFromDefinition(ctx, st, pollCreationConfig(), definition, bytes.NewReader(make([]byte, 256)), time.Unix(100, 0)); err == nil {
 		t.Fatal("invalid definition unexpectedly created a poll")
 	}
 	var polls int
@@ -118,8 +118,32 @@ func TestCreatePollDefinitionRejectsUnknownFieldsAndTrailingDocuments(t *testing
 		"id: poll\nowner_id: owner\nquestion: Question\noptions: [A, B]\nplaces: 1\ndeadline: 2099-01-01T18:00:00Z\nparticipants: [{name: Alex, emails: [one@example.test]}]\n---\nextra: document\n",
 	}
 	for _, definition := range definitions {
-		if _, err := createPollFromDefinition(ctx, st, config.Config{BaseURL: "https://poll.example"}, strings.NewReader(definition), deterministicIDMaterial(), time.Unix(100, 0)); err == nil {
+		if _, err := createPollFromDefinition(ctx, st, pollCreationConfig(), strings.NewReader(definition), deterministicIDMaterial(), time.Unix(100, 0)); err == nil {
 			t.Fatalf("invalid YAML was accepted: %s", definition)
 		}
 	}
+}
+
+func TestCreatePollDefinitionRejectsUnconfiguredOwnerWithoutPartialWrite(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	definition := "id: poll\nowner_id: intruder\nquestion: Question\noptions: [A, B]\nplaces: 1\ndeadline: 2099-01-01T18:00:00Z\nparticipants: [{name: Alex, emails: [one@example.test]}]\n"
+	if _, err := createPollFromDefinition(ctx, st, pollCreationConfig(), strings.NewReader(definition), deterministicIDMaterial(), time.Unix(100, 0)); err == nil {
+		t.Fatal("unconfigured owner was accepted")
+	}
+	var polls int
+	if err := st.DB.QueryRowContext(ctx, "SELECT count(*) FROM polls").Scan(&polls); err != nil || polls != 0 {
+		t.Fatalf("polls=%d error=%v", polls, err)
+	}
+}
+
+func pollCreationConfig() config.Config {
+	return config.Config{BaseURL: "https://poll.example", Moderators: []config.Moderator{{ID: "owner", Email: "owner@example.test"}}}
 }
