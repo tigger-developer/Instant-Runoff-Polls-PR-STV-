@@ -213,6 +213,20 @@
 - Receipt :: Regression tests exercise configuration parsing/layering, real SQLite migration and failure recovery, executable CLI and HTTP behaviour, IPv4/conditional IPv6 listeners, static assets, template failure, header/read/write/idle limits and normal/deadline shutdown. One-off tooling validation is recorded for the same candidate series, including isolated native-tool failures and Linux cross-compilation.
 - Boundary :: Local evidence is not an effective implementation gate. A retained external composite audit is now required before final validation and operator closure.
 
+** Retained external implementation audit, reset round 4
+:PROPERTIES:
+:CONTEXT: 01a07f47-11e2-74c1-8161-53c8f9bbbe98
+:ROUND: 4
+:END:
+
+- Gate :: implementation.
+- Revision :: Harness returned SHA-256 =356206229b58195a7140898b778b7f24d9b6cb9c4edbc7f42c2f52522aa04bbc= rather than the submitted current candidate.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: FAIL.
+- [audit-test-code] [BLOCKING] RT001.1-RT001.6 coverage, RT001.5 CLI assertions, and RED/GREEN/validation evidence were reported absent.
+- [audit-code] [BLOCKING] Rendered-HTML/native-tool evidence and =go.sum= were reported absent.
+- Continuation :: The retained context must be resumed. The returned revision and findings conflict with the supplied current evidence bundle, so the resume request will identify the current revision and include =go.sum=.
+
 ** Retained independent implementation audit, runner incident
 :PROPERTIES:
 :CONTEXT: not issued
