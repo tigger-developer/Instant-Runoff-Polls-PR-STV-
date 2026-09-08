@@ -171,6 +171,21 @@
 - [audit-code] [BLOCKING] AC001.8 - The shutdown path does not distinguish graceful completion from a shutdown deadline and does not report a safe lifecycle outcome.
 - Remediation :: Add the missing observable regression coverage, then make the smallest production changes required by the resulting RED failures. Re-run affected tests and this local composite review before external audit.
 
+** Local implementation review, reset round 2
+:PROPERTIES:
+:ROUND: 2
+:END:
+
+- Gate :: implementation.
+- Revision :: =e1a57d5=.
+- Context :: Authoring context.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: FAIL.
+- [audit-test-code] [BLOCKING] RT001.6 - Header, incomplete-body and idle-connection timeouts now use real sockets, and normal signal shutdown is covered. Write-timeout and shutdown-grace-expiry outcomes remain uncovered.
+- [audit-test-code] [BLOCKING] RT001.2 - The executable covers the IPv4 listener, actual root/static/health responses and malformed templates. IPv6 remains unexercised on a host that supports it.
+- [audit-code] [BLOCKING] AC001.8 - A shutdown deadline still returns a generic context error rather than a defined safe lifecycle diagnostic and exit outcome.
+- Remediation :: Define and exercise write-timeout and shutdown-deadline behaviour through the shared server lifecycle, add conditional IPv6 coverage, then rerun this local composite review.
+
 ** Retained independent implementation audit, runner incident
 :PROPERTIES:
 :CONTEXT: not issued
