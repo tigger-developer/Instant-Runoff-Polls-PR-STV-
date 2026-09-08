@@ -44,6 +44,12 @@ func WorkflowHandler(cfg config.Config, st *store.Store, page *template.Template
 	mux.HandleFunc("GET /auth/verify", application.getVerify)
 	mux.HandleFunc("POST /auth/verify", application.postVerify)
 	mux.HandleFunc("POST /logout", application.postLogout)
+	mux.HandleFunc("GET /moderator/polls", application.getModeratorPolls)
+	mux.HandleFunc("POST /moderator/polls", application.postModeratorPolls)
+	mux.HandleFunc("GET /moderator/polls/{id}", application.getModeratorPoll)
+	mux.HandleFunc("POST /moderator/polls/{id}", application.postModeratorPoll)
+	mux.HandleFunc("POST /moderator/polls/{id}/pause", application.postPausePoll)
+	mux.HandleFunc("POST /moderator/polls/{id}/resume", application.postResumePoll)
 	mux.Handle("/", base)
 	return mux
 }
@@ -154,6 +160,7 @@ func (app *authApplication) postVerify(response http.ResponseWriter, request *ht
 	}
 	_ = app.store.RevokeSession(request.Context(), preAuthHash[:], app.now())
 	http.SetCookie(response, workflow.SessionCookie(purpose, issued.Token, app.config.HTTP.SecureCookies))
+	http.SetCookie(response, csrfCookie(purpose, issued.CSRFToken, app.config.HTTP.SecureCookies))
 	destination := "/polls/" + claims.PollID
 	if purpose == workflow.ModeratorSession {
 		destination = "/moderator/polls"
@@ -176,7 +183,7 @@ func (app *authApplication) authorizeGrant(ctx context.Context, token string) (w
 
 func (app *authApplication) postLogout(response http.ResponseWriter, request *http.Request) {
 	securePrivateResponse(response)
-	for _, name := range []string{"stv_moderator", "stv_participant"} {
+	for _, name := range []string{"stv_moderator", "stv_participant", "stv_moderator_csrf", "stv_participant_csrf"} {
 		if cookie, err := request.Cookie(name); err == nil {
 			hash := sha256.Sum256([]byte(cookie.Value))
 			_ = app.store.RevokeSession(request.Context(), hash[:], app.now())
@@ -184,6 +191,14 @@ func (app *authApplication) postLogout(response http.ResponseWriter, request *ht
 		}
 	}
 	http.Redirect(response, request, "/", http.StatusSeeOther)
+}
+
+func csrfCookie(purpose workflow.SessionPurpose, token string, secure bool) *http.Cookie {
+	name := "stv_participant_csrf"
+	if purpose == workflow.ModeratorSession {
+		name = "stv_moderator_csrf"
+	}
+	return &http.Cookie{Name: name, Value: token, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode}
 }
 
 func (app *authApplication) render(response http.ResponseWriter, name string, data any) {

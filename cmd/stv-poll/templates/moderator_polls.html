@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <link rel="stylesheet" href="/static/site.css">
+  <title>Your polls</title>
+</head>
+<body>
+<main>
+  <h1>Your polls</h1>
+  <ul>{{range .Polls}}<li><a href="/moderator/polls/{{.ID}}">{{.Question}}</a> ({{.State}})</li>{{else}}<li>No polls yet.</li>{{end}}</ul>
+  <h2>Create a draft</h2>
+  <form method="post" action="/moderator/polls">
+    <input name="csrf" type="hidden" value="{{.CSRF}}">
+    <label for="question">Question</label>
+    <input id="question" name="question" maxlength="500" required>
+    <label for="deadline">Deadline, including time zone</label>
+    <input id="deadline" name="deadline" type="text" placeholder="2026-09-09T17:00:00+01:00" required>
+    <label for="places">Winners</label>
+    <input id="places" name="places" type="number" min="1" max="50" value="1" required>
+    <label for="option-1">Option 1</label>
+    <input id="option-1" name="option" maxlength="200" required>
+    <label for="option-2">Option 2</label>
+    <input id="option-2" name="option" maxlength="200" required>
+    <label><input name="announce" type="checkbox"> Email the result</label>
+    <button type="submit">Save draft</button>
+  </form>
+</main>
+</body>
+</html>

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"html/template"
 	"io"
 	"net"
@@ -103,9 +104,10 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html"} {
+	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html", "moderator_polls.html", "moderator_poll.html"} {
 		var rendered bytes.Buffer
-		if err := tmpl.ExecuteTemplate(&rendered, name, struct{ BaseURL string }{"https://poll.example"}); err != nil {
+		data := map[string]any{"BaseURL": "https://poll.example", "CSRF": "token", "Grant": "grant", "Polls": []store.PollRecord{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Now(), Places: 1, State: "draft", Version: 1, Options: []store.PollOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}}
+		if err := tmpl.ExecuteTemplate(&rendered, name, data); err != nil {
 			t.Fatal(err)
 		}
 		command := exec.Command(tidy, "-errors", "-quiet", "-")

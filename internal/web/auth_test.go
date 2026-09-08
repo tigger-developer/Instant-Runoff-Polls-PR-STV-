@@ -5,6 +5,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -78,7 +79,7 @@ func TestModeratorLoginQueuesGrantAndExchangesThroughPreAuthCSRF(t *testing.T) {
 		t.Fatalf("exchange response=%d location=%s body=%s", exchangeResponse.Code, exchangeResponse.Header().Get("Location"), exchangeResponse.Body.String())
 	}
 	cookies := exchangeResponse.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != "stv_moderator" || cookies[0].Value == token {
+	if len(cookies) != 2 || cookies[0].Name != "stv_moderator" || cookies[0].Value == token || cookies[1].Name != "stv_moderator_csrf" {
 		t.Fatalf("session cookies=%v", cookies)
 	}
 }
@@ -104,6 +105,49 @@ func TestModeratorLoginUnknownAddressHasSameConfirmationWithoutDelivery(t *testi
 	}
 }
 
+func TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.SyncModerators(ctx, []store.ConfiguredModerator{{ID: "owner", NormalizedEmail: "owner@example.test"}}); err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, csrfToken := "session-token", "csrf-token"
+	sessionHash, csrfHash := sha256.Sum256([]byte(sessionToken)), sha256.Sum256([]byte(csrfToken))
+	if _, err := st.DB.ExecContext(ctx, "INSERT INTO sessions(token_hash,purpose,principal_id,csrf_hash,expires_at) VALUES (?,'moderator','owner',?,500)", sessionHash[:], csrfHash[:]); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{BaseURL: "https://poll.example", Moderators: []config.Moderator{{ID: "owner", Email: "owner@example.test"}}}
+	randomMaterial := append(bytes.Repeat([]byte{1}, 16), bytes.Repeat([]byte{2}, 16)...)
+	randomMaterial = append(randomMaterial, bytes.Repeat([]byte{3}, 16)...)
+	handler := WorkflowHandler(cfg, st, authTemplates(t), http.NotFoundHandler(), bytes.NewReader(randomMaterial), func() time.Time { return time.Unix(100, 0) })
+	form := url.Values{"csrf": {csrfToken}, "question": {"Choose"}, "deadline": {"1970-01-01T00:08:20Z"}, "places": {"1"}, "option": {"Alice", "Bob"}}
+	request := httptest.NewRequest(http.MethodPost, "/moderator/polls", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	request.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("create response=%d body=%s", response.Code, response.Body.String())
+	}
+	var pollID string
+	if err := st.DB.QueryRowContext(ctx, "SELECT id FROM polls WHERE owner_id='owner'").Scan(&pollID); err != nil {
+		t.Fatal(err)
+	}
+	view := httptest.NewRequest(http.MethodGet, "/moderator/polls/"+pollID, nil)
+	view.AddCookie(&http.Cookie{Name: "stv_moderator", Value: sessionToken})
+	view.AddCookie(&http.Cookie{Name: "stv_moderator_csrf", Value: csrfToken})
+	viewResponse := httptest.NewRecorder()
+	handler.ServeHTTP(viewResponse, view)
+	if viewResponse.Code != http.StatusOK || !strings.Contains(viewResponse.Body.String(), "Choose") {
+		t.Fatalf("view response=%d body=%s", viewResponse.Code, viewResponse.Body.String())
+	}
+}
+
 func authTemplates(t *testing.T) *template.Template {
 	t.Helper()
 	page := template.Must(template.New("index.html").Parse(`<html><body>Home</body></html>`))
@@ -111,5 +155,7 @@ func authTemplates(t *testing.T) *template.Template {
 	template.Must(page.New("counting.html").Parse(`<html><body>Counting</body></html>`))
 	template.Must(page.New("moderator_login.html").Parse(`<html><body>{{if .Sent}}Sent{{end}}<form method="post"><input name="email"></form></body></html>`))
 	template.Must(page.New("verify.html").Parse(`<html><body><form method="post"><input name="grant" type="hidden" value="{{.Grant}}"><input name="csrf" type="hidden" value="{{.CSRF}}"></form></body></html>`))
+	template.Must(page.New("moderator_polls.html").Parse(`<html><body>{{range .Polls}}{{.Question}}{{end}}<form><input name="csrf" value="{{.CSRF}}"></form></body></html>`))
+	template.Must(page.New("moderator_poll.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><p>{{.Poll.State}}</p></body></html>`))
 	return page
 }
