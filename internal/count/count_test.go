@@ -2,7 +2,9 @@ package count
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -238,6 +240,57 @@ func TestRunUsesHistoricalHighForRemainderTie(t *testing.T) {
 	}
 }
 
+func TestRunRejectsInvalidBoundariesWithoutMutatingInput(t *testing.T) {
+	valid := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B"}, Places: 1, Ballots: []Ballot{{ID: "b1", Preferences: []string{"A", "B"}}}}
+	cases := []struct {
+		name  string
+		input Input
+	}{
+		{name: "unsupported schema", input: func() Input { value := valid; value.SchemaVersion = 2; return value }()},
+		{name: "invalid option identifier", input: func() Input { value := valid; value.Options = []string{"A space", "B"}; return value }()},
+		{name: "invalid ballot identifier", input: func() Input {
+			value := valid
+			value.Ballots = []Ballot{{ID: "", Preferences: []string{"A"}}}
+			return value
+		}()},
+		{name: "unknown preference", input: func() Input {
+			value := valid
+			value.Ballots = []Ballot{{ID: "b1", Preferences: []string{"C"}}}
+			return value
+		}()},
+		{name: "repeated preference", input: func() Input {
+			value := valid
+			value.Ballots = []Ballot{{ID: "b1", Preferences: []string{"A", "A"}}}
+			return value
+		}()},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			before := cloneInput(testCase.input)
+			outcome, err := Run(context.Background(), testCase.input, nil)
+			if !errors.Is(err, ErrInvalidInput) || outcome.Result != nil || outcome.DecisionRequest != nil {
+				t.Fatalf("outcome = %#v, error = %v, want ErrInvalidInput", outcome, err)
+			}
+			if !reflect.DeepEqual(testCase.input, before) {
+				t.Fatalf("input mutated: got %#v want %#v", testCase.input, before)
+			}
+		})
+	}
+}
+
+func TestRunRejectsCancellationAndUnusedDecision(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B"}, Places: 1, Ballots: []Ballot{{ID: "b1", Preferences: []string{"A"}}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if outcome, err := Run(ctx, input, nil); !errors.Is(err, context.Canceled) || outcome.Result != nil {
+		t.Fatalf("cancelled outcome = %#v, error = %v", outcome, err)
+	}
+	unused := Decision{Sequence: 1, Kind: "exclusion_lot", RequestFingerprint: "unused", SelectedOptionIDs: []string{"B"}}
+	if outcome, err := Run(context.Background(), input, []Decision{unused}); !errors.Is(err, ErrInvalidDecision) || outcome.Result != nil {
+		t.Fatalf("unused-decision outcome = %#v, error = %v", outcome, err)
+	}
+}
+
 func ballots(preferences ...string) []Ballot {
 	result := make([]Ballot, 0, len(preferences))
 	for index, preference := range preferences {
@@ -253,4 +306,14 @@ func recordContains(records []CountRecord, predicate func(CountRecord) bool) boo
 		}
 	}
 	return false
+}
+
+func cloneInput(input Input) Input {
+	cloned := input
+	cloned.Options = append([]string(nil), input.Options...)
+	cloned.Ballots = make([]Ballot, len(input.Ballots))
+	for index, ballot := range input.Ballots {
+		cloned.Ballots[index] = Ballot{ID: ballot.ID, Preferences: append([]string(nil), ballot.Preferences...)}
+	}
+	return cloned
 }

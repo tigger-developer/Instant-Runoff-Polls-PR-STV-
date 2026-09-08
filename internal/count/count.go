@@ -15,6 +15,11 @@ import (
 
 const RuleIrishGuidedSTV = "irish-guided-stv-v1"
 
+var (
+	ErrInvalidInput    = errors.New("invalid count input")
+	ErrInvalidDecision = errors.New("invalid count decision")
+)
+
 type Ballot struct {
 	ID          string   `json:"id"`
 	Preferences []string `json:"preferences"`
@@ -82,7 +87,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 		return Outcome{}, err
 	}
 	if err := validate(input); err != nil {
-		return Outcome{}, err
+		return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
 	quota := len(input.Ballots)/(input.Places+1) + 1
 	inputFingerprint, err := fingerprintInput(input)
@@ -127,7 +132,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 				electionParcel[option] = operation
 				if len(winners) == input.Places {
 					if decisionIndex != len(decisions) {
-						return Outcome{}, errors.New("unused count decision")
+						return Outcome{}, fmt.Errorf("%w: unused decision", ErrInvalidDecision)
 					}
 					return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: orderByOptions(input.Options, winners), Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
 				}
@@ -140,7 +145,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 				}
 			}
 			if decisionIndex != len(decisions) {
-				return Outcome{}, errors.New("unused count decision")
+				return Outcome{}, fmt.Errorf("%w: unused decision", ErrInvalidDecision)
 			}
 			return Outcome{Result: &Result{SchemaVersion: 1, Rule: input.Rule, InputFingerprint: inputFingerprint, Quota: quota, Winners: orderByOptions(input.Options, winners), Counts: countRecords, UsedDecisions: append([]Decision(nil), decisions...)}}, nil
 		}
@@ -192,7 +197,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 				}
 				decision := decisions[decisionIndex]
 				if err := validateDecision(decision, request); err != nil {
-					return Outcome{}, errors.New("ineligible count decision")
+					return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
 				}
 				choice = decision.SelectedOptionIDs[0]
 				decisionIndex++
@@ -238,7 +243,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			}
 			decision := decisions[decisionIndex]
 			if err := validateDecision(decision, request); err != nil {
-				return Outcome{}, err
+				return Outcome{}, fmt.Errorf("%w: %v", ErrInvalidDecision, err)
 			}
 			lowest = decision.SelectedOptionIDs[0]
 			decisionIndex++
