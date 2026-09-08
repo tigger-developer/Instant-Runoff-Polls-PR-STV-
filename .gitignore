@@ -1,0 +1,10 @@
+bin/
+.local/
+secrets/localhost.yaml
+secrets/*.yaml
+!secrets/*.yaml.age
+!secrets/*.yaml.example
+.agent/
+.agents/
+.claude/
+.codex/
