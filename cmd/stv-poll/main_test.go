@@ -34,6 +34,10 @@ func TestCLIOutcomesWithoutRuntimeConfiguration(t *testing.T) {
 		{name: "unknown command", args: []string{"unknown"}, code: 2, want: "invalid invocation"},
 		{name: "missing serve configuration", args: []string{"serve"}, code: 1, want: "DEFAULT_CONFIG_PATH is required"},
 		{name: "missing worker configuration", args: []string{"process-due-work"}, code: 1, want: `"failed":1`},
+		{name: "missing close configuration", args: []string{"close-poll", "poll"}, code: 1, want: "DEFAULT_CONFIG_PATH is required"},
+		{name: "missing count audit configuration", args: []string{"count-audit", "poll"}, code: 1, want: "DEFAULT_CONFIG_PATH is required"},
+		{name: "missing close poll ID", args: []string{"close-poll"}, code: 2, want: "invalid invocation"},
+		{name: "missing count audit poll ID", args: []string{"count-audit"}, code: 2, want: "invalid invocation"},
 	}
 
 	for _, tc := range cases {
@@ -112,6 +116,8 @@ func TestRunHandlesHelpVersionAndInvalidConfiguration(t *testing.T) {
 		{args: []string{"unknown"}, code: 2},
 		{args: []string{"serve"}, code: 1},
 		{args: []string{"process-due-work"}, code: 1},
+		{args: []string{"close-poll", "poll"}, code: 1},
+		{args: []string{"count-audit", "poll"}, code: 1},
 	} {
 		t.Setenv("DEFAULT_CONFIG_PATH", "")
 		t.Setenv("STATE_DIRECTORY", "")

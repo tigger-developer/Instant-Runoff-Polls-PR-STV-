@@ -51,8 +51,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if len(args) == 2 && args[0] == "close-poll" {
+		if err := closePollCommand(args[1], stdout); err != nil {
+			fmt.Fprintf(stderr, "close poll failed: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if len(args) == 2 && args[0] == "count-audit" {
+		if err := countAuditCommand(args[1], stdout); err != nil {
+			fmt.Fprintf(stderr, "export count audit failed: %v\n", err)
+			return 1
+		}
+		return 0
+	}
 	if len(args) != 1 || args[0] != "serve" && args[0] != "process-due-work" {
-		fmt.Fprintln(stderr, "invalid invocation: expected serve, process-due-work, or create-poll")
+		fmt.Fprintln(stderr, "invalid invocation: expected serve, process-due-work, create-poll, close-poll POLL_ID, or count-audit POLL_ID")
 		return 2
 	}
 	if args[0] == "process-due-work" {

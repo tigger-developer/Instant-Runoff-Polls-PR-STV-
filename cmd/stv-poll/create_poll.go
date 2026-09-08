@@ -1,5 +1,5 @@
 // ABOUTME: Creates an open invited poll through the Exodan admin CLI boundary.
-// ABOUTME: It validates voter identities before queuing one invitation per address.
+// ABOUTME: It validates voter identities before queuing one invitation per participant.
 package main
 
 import (

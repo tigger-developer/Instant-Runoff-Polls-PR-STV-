@@ -4,6 +4,8 @@ Usage:
 
     stv-poll serve
     stv-poll create-poll
+    stv-poll close-poll POLL_ID
+    stv-poll count-audit POLL_ID
     stv-poll process-due-work
     stv-poll -h
     stv-poll --help
@@ -34,3 +36,18 @@ participant invitations. The YAML structure is demonstrated in
 
 `process-due-work` performs one bounded pass over pending close, count, and
 delivery work, then writes a JSON summary and exits.
+
+## Close and count a poll
+
+`close-poll POLL_ID` immediately closes an open or paused poll, freezes its
+anonymized ballots, and queues the count. It does not wait for the configured
+deadline. Run the bounded worker to perform the queued count:
+
+    ssh HOST 'sudo -u stv-poll stv-poll-admin close-poll POLL_ID'
+    ssh HOST 'sudo -u stv-poll stv-poll-admin process-due-work'
+
+After the count succeeds, `count-audit POLL_ID` writes one JSON document with
+the option mapping, frozen anonymized input, input fingerprint, any recorded
+lot decisions, and the result:
+
+    ssh HOST 'sudo -u stv-poll stv-poll-admin count-audit POLL_ID'
