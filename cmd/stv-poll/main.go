@@ -4,17 +4,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/web"
 	"html/template"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 var version = "dev"
@@ -88,16 +91,27 @@ func serve() error {
 	server := newHTTPServer(addr, web.Handler(cfg.BaseURL, st, tmpl, http.FileServer(http.Dir(staticDirectory))), cfg.HTTP)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen on configured address: %w", err)
+	}
+	return runServer(ctx, server, listener, cfg.HTTP.ShutdownTimeout)
+}
+
+func runServer(ctx context.Context, server *http.Server, listener net.Listener, shutdownTimeout time.Duration) error {
 	shutdownErr := make(chan error, 1)
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		shutdownErr <- server.Shutdown(shutdownCtx)
 	}()
-	err = server.ListenAndServe()
-	if err == http.ErrServerClosed {
-		return <-shutdownErr
+	err := server.Serve(listener)
+	if errors.Is(err, http.ErrServerClosed) {
+		if shutdownErr := <-shutdownErr; shutdownErr != nil {
+			return fmt.Errorf("shutdown deadline exceeded: %w", shutdownErr)
+		}
+		return nil
 	}
 	return err
 }

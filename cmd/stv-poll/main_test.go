@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"html/template"
@@ -332,6 +333,47 @@ func TestHTTPServerClosesIdleKeepAliveConnections(t *testing.T) {
 	if count != 0 || err == nil {
 		t.Fatalf("idle keep-alive read = %d, %v", count, err)
 	}
+}
+
+func TestRunServerReportsShutdownDeadline(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	server := newHTTPServer("127.0.0.1:0", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-release
+	}), config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: 30 * time.Millisecond})
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- runServer(ctx, server, listener, 30*time.Millisecond) }()
+	request, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer request.Close()
+	if _, err := request.Write([]byte("GET / HTTP/1.1\r\nHost: poll.example\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("handler did not start")
+	}
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil || !strings.Contains(err.Error(), "shutdown deadline") {
+			t.Fatalf("shutdown result = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shutdown deadline did not end server")
+	}
+	close(release)
 }
 
 func buildBinary(t *testing.T) string {
