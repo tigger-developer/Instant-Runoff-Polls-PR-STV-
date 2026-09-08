@@ -53,10 +53,52 @@ func WorkflowHandler(cfg config.Config, st *store.Store, page *template.Template
 	mux.HandleFunc("GET /moderator/polls/{id}/participants", application.getParticipants)
 	mux.HandleFunc("POST /moderator/polls/{id}/participants", application.postParticipants)
 	mux.HandleFunc("POST /moderator/polls/{id}/open", application.postOpenPoll)
+	mux.HandleFunc("POST /moderator/polls/{id}/close", application.postClosePoll)
+	mux.HandleFunc("GET /moderator/polls/{id}/results", application.getResults)
 	mux.HandleFunc("GET /polls/{id}", application.getParticipantPoll)
+	mux.HandleFunc("POST /polls/{id}/access", application.postParticipantAccess)
 	mux.HandleFunc("POST /polls/{id}/ballot", application.postBallot)
 	mux.Handle("/", base)
 	return mux
+}
+
+func (app *authApplication) postParticipantAccess(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"email"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	normalized, valid := normalizeAddress(values.Get("email"))
+	pollID := request.PathValue("id")
+	requestHash := sha256.Sum256([]byte("participant\x00" + pollID + "\x00" + normalized))
+	allowed, err := app.store.RecordLinkRequest(request.Context(), requestHash[:], "participant", pollID, app.now())
+	if err != nil {
+		http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if allowed && valid {
+		if contact, contactErr := app.store.ContactForReturn(request.Context(), pollID, normalized, app.now()); contactErr == nil {
+			if err := app.queueParticipantReturn(request.Context(), contact); err != nil {
+				http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+				return
+			}
+		}
+	}
+	http.Redirect(response, request, "/polls/"+pollID+"?sent=1", http.StatusSeeOther)
+}
+
+func (app *authApplication) queueParticipantReturn(ctx context.Context, contact store.EligibleContact) error {
+	now := app.now()
+	claims := workflow.GrantClaims{Version: 1, KeyID: app.config.Auth.KeyID, Purpose: workflow.ParticipantGrant, PrincipalID: contact.ParticipantID, PollID: contact.PollID, ContactID: contact.ContactID, IssuedAt: now, ExpiresAt: now.Add(24 * time.Hour)}
+	token, payload, err := workflow.IssuePersistableGrant(claims, app.config.Auth.SigningKey, app.randomness)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256([]byte(token))
+	id := hex.EncodeToString(hash[:])
+	material := store.GrantMaterial{ID: id, KeyID: claims.KeyID, TokenHash: hash[:], ClaimsJSON: payload, IssuedAt: claims.IssuedAt, ExpiresAt: claims.ExpiresAt}
+	return app.store.QueueParticipantReturn(ctx, contact, "participant-work:"+id, "participant-delivery:"+id, material, now)
 }
 
 func (app *authApplication) getModeratorLogin(response http.ResponseWriter, request *http.Request) {

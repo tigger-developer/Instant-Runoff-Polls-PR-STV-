@@ -35,17 +35,10 @@ func NewCloseHandler(repository *store.Store, randomness io.Reader, now func() t
 			}
 			return Summary{}, nil
 		}
-		poll := closeWorkflowPoll(work)
-		input, err := BuildCountInput(poll, randomness)
+		snapshot, err := BuildCloseSnapshot(work, randomness)
 		if err != nil {
 			return Summary{}, err
 		}
-		encoded, err := json.Marshal(input)
-		if err != nil {
-			return Summary{}, fmt.Errorf("encode count snapshot: %w", err)
-		}
-		fingerprint := sha256.Sum256(encoded)
-		snapshot := store.CountSnapshot{ID: "snapshot:" + work.PollID, SchemaVersion: input.SchemaVersion, Rule: input.Rule, InputFingerprint: hex.EncodeToString(fingerprint[:]), InputJSON: encoded}
 		changed, err := repository.ClosePoll(ctx, work.OwnerID, work.PollID, work.Version, snapshot, "count:"+work.PollID, at)
 		if err != nil {
 			return Summary{}, fmt.Errorf("commit poll close: %w", err)
@@ -55,6 +48,20 @@ func NewCloseHandler(repository *store.Store, randomness io.Reader, now func() t
 		}
 		return Summary{}, nil
 	}
+}
+
+func BuildCloseSnapshot(work store.CloseWork, randomness io.Reader) (store.CountSnapshot, error) {
+	poll := closeWorkflowPoll(work)
+	input, err := BuildCountInput(poll, randomness)
+	if err != nil {
+		return store.CountSnapshot{}, err
+	}
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return store.CountSnapshot{}, fmt.Errorf("encode count snapshot: %w", err)
+	}
+	fingerprint := sha256.Sum256(encoded)
+	return store.CountSnapshot{ID: "snapshot:" + work.PollID, SchemaVersion: input.SchemaVersion, Rule: input.Rule, InputFingerprint: hex.EncodeToString(fingerprint[:]), InputJSON: encoded}, nil
 }
 
 func closeWorkflowPoll(work store.CloseWork) Poll {

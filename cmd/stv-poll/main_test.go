@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/config"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
 	"html/template"
 	"io"
 	"net"
@@ -104,9 +105,9 @@ func TestRenderedPagesPassTidy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html", "moderator_polls.html", "moderator_poll.html", "participants.html", "poll_access.html", "ballot.html"} {
+	for _, name := range []string{"index.html", "voting.html", "counting.html", "moderator_login.html", "verify.html", "moderator_polls.html", "moderator_poll.html", "participants.html", "poll_access.html", "ballot.html", "results.html"} {
 		var rendered bytes.Buffer
-		data := map[string]any{"BaseURL": "https://poll.example", "CSRF": "token", "Grant": "grant", "Rows": "one@example.test", "PollID": "poll", "Version": 0, "Options": []map[string]any{{"ID": "a", "Label": "A", "Rank": 1}}, "Polls": []store.PollRecord{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Now(), Places: 1, State: "draft", Version: 1, Options: []store.PollOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}}
+		data := map[string]any{"BaseURL": "https://poll.example", "CSRF": "token", "Grant": "grant", "Rows": "one@example.test", "PollID": "poll", "Version": 0, "Options": []map[string]any{{"ID": "a", "Label": "A", "Rank": 1}}, "Polls": []store.PollRecord{}, "Poll": store.PollRecord{ID: "poll", Question: "Question", Deadline: time.Now(), Places: 1, State: "draft", CountingStatus: "pending", Version: 1, Options: []store.PollOption{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}}, "Result": workflow.ResultView{}, "Deliveries": map[string]int{}}
 		if err := tmpl.ExecuteTemplate(&rendered, name, data); err != nil {
 			t.Fatal(err)
 		}

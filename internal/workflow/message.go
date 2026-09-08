@@ -33,6 +33,13 @@ func ModeratorLoginMessage(recipient, link string) (Message, error) {
 	return Message{To: recipient, Subject: "Sign in to STV Poll", Body: fmt.Sprintf("Use this link to sign in to STV Poll:\n\n%s\n", link)}, nil
 }
 
+func ParticipantReturnMessage(recipient, question, link string) (Message, error) {
+	if err := validateMessageFields(recipient, question, link); err != nil {
+		return Message{}, err
+	}
+	return Message{To: recipient, Subject: encodeSubject("Return to " + question), Body: fmt.Sprintf("Use this link to return to %s:\n\n%s\n", question, link)}, nil
+}
+
 func ResultMessage(recipient, question string, winners []string, noVotes bool) (Message, error) {
 	if err := validateMessageFields(recipient, question); err != nil {
 		return Message{}, err

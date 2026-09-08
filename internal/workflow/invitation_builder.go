@@ -31,6 +31,14 @@ func NewInvitationMessageBuilder(repository *store.Store, baseURL, keyID string,
 			link := strings.TrimRight(baseURL, "/") + "/auth/verify?grant=" + url.QueryEscape(token)
 			return ModeratorLoginMessage(attempt.RecipientEmail, link)
 		}
+		if attempt.MessageKind == "participant_return" {
+			token, err := RestoreGrant(attempt.GrantPayload, key)
+			if err != nil {
+				return Message{}, err
+			}
+			link := strings.TrimRight(baseURL, "/") + "/auth/verify?grant=" + url.QueryEscape(token)
+			return ParticipantReturnMessage(attempt.RecipientEmail, attempt.Question, link)
+		}
 		if ctx == nil || repository == nil || strings.TrimSpace(baseURL) == "" || keyID == "" || len(key) != 32 || randomness == nil || now == nil || item == nil || item.ID == "" || item.ClaimToken == "" || attempt.MessageKind != "invitation" {
 			return Message{}, errors.New("invitation builder dependencies are invalid")
 		}

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/count"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/store"
 	"github.com/tigger-developer/Instant-Runoff-Polls-PR-STV-/internal/workflow"
 )
@@ -420,7 +421,7 @@ func (app *authApplication) getParticipantPoll(response http.ResponseWriter, req
 	securePrivateResponse(response)
 	session, csrf, ok := app.participantAccess(response, request)
 	if !ok {
-		app.render(response, "poll_access.html", map[string]any{"PollID": request.PathValue("id")})
+		app.render(response, "poll_access.html", map[string]any{"PollID": request.PathValue("id"), "Sent": request.URL.Query().Get("sent") == "1"})
 		return
 	}
 	view, err := app.store.PollForParticipant(request.Context(), session.PrincipalID, session.PollID)
@@ -504,4 +505,73 @@ func rankedPreferences(options []store.PollOption, ranks []string) ([]string, er
 		preferences[rank-1] = optionID
 	}
 	return preferences, nil
+}
+
+func (app *authApplication) postClosePoll(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	access, ok := app.moderatorAccess(response, request)
+	if !ok {
+		return
+	}
+	values, problem := DecodeForm(response, request, FormSchema{Scalars: []string{"csrf", "version"}}, 8<<20)
+	if problem != nil {
+		http.Error(response, problem.Error(), problem.Status)
+		return
+	}
+	if !app.requireModeratorCSRF(response, request, access, values.Get("csrf")) {
+		return
+	}
+	version, err := strconv.Atoi(values.Get("version"))
+	if err != nil {
+		http.Error(response, "Invalid version", http.StatusUnprocessableEntity)
+		return
+	}
+	work, err := app.store.PollForClose(request.Context(), access.ID, request.PathValue("id"))
+	if err != nil {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
+	}
+	if work.State != "paused" || work.Version != version {
+		http.Error(response, "Conflict", http.StatusConflict)
+		return
+	}
+	if len(work.Ballots) == 0 {
+		_, err = app.store.ClosePollNoVotes(request.Context(), access.ID, work.PollID, version, app.now())
+	} else {
+		var snapshot store.CountSnapshot
+		snapshot, err = workflow.BuildCloseSnapshot(work, app.randomness)
+		if err == nil {
+			_, err = app.store.ClosePoll(request.Context(), access.ID, work.PollID, version, snapshot, "count:"+work.PollID, app.now())
+		}
+	}
+	if err != nil {
+		http.Error(response, "Unable to close poll", http.StatusServiceUnavailable)
+		return
+	}
+	http.Redirect(response, request, "/moderator/polls/"+work.PollID+"/results", http.StatusSeeOther)
+}
+
+func (app *authApplication) getResults(response http.ResponseWriter, request *http.Request) {
+	securePrivateResponse(response)
+	access, ok := app.moderatorAccess(response, request)
+	if !ok {
+		return
+	}
+	stored, err := app.store.ResultForOwner(request.Context(), access.ID, request.PathValue("id"))
+	if err != nil {
+		http.Error(response, "Not found. Request access from the poll page.", http.StatusNotFound)
+		return
+	}
+	var result workflow.ResultView
+	if stored.Poll.CountingStatus == "no_votes" {
+		result = workflow.ProjectZeroTurnout()
+	} else if len(stored.ResultJSON) != 0 {
+		var counted count.Result
+		if json.Unmarshal(stored.ResultJSON, &counted) != nil {
+			http.Error(response, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		result = workflow.ProjectResult(stored.Turnout, counted)
+	}
+	app.render(response, "results.html", map[string]any{"Poll": stored.Poll, "Result": result, "Deliveries": stored.Deliveries})
 }

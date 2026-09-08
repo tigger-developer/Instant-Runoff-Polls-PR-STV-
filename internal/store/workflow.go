@@ -560,7 +560,8 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 	if err != nil {
 		return DeliveryAttempt{}, ErrConflict
 	}
-	if attempt.MessageKind == "invitation" && state == "paused" && now.Unix() < deadline {
+	isVotingAccess := attempt.MessageKind == "invitation" || attempt.MessageKind == "participant_return"
+	if isVotingAccess && state == "paused" && now.Unix() < deadline {
 		if err := deferClaimedDelivery(ctx, tx, workID, claimToken, now, now.Add(time.Minute)); err != nil {
 			return DeliveryAttempt{}, err
 		}
@@ -569,7 +570,7 @@ func (s *Store) BeginDeliveryAttempt(ctx context.Context, workID, claimToken str
 		}
 		return DeliveryAttempt{}, ErrDeliveryHeld
 	}
-	if attempt.MessageKind == "invitation" && (state != "open" || now.Unix() >= deadline) {
+	if isVotingAccess && (state != "open" || now.Unix() >= deadline) {
 		if err := cancelClaimedDelivery(ctx, tx, workID, claimToken, now); err != nil {
 			return DeliveryAttempt{}, err
 		}

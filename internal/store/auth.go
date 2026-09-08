@@ -34,6 +34,14 @@ type PersistedSession struct {
 	ExpiresAt   time.Time
 }
 
+type EligibleContact struct {
+	PollID        string
+	ParticipantID string
+	ContactID     string
+	Recipient     string
+	Question      string
+}
+
 func (s *Store) SyncModerators(ctx context.Context, moderators []ConfiguredModerator) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -78,6 +86,43 @@ func (s *Store) QueueModeratorLogin(ctx context.Context, moderatorID, recipient,
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit moderator login queue: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ContactForReturn(ctx context.Context, pollID, normalizedEmail string, now time.Time) (EligibleContact, error) {
+	var contact EligibleContact
+	err := s.DB.QueryRowContext(ctx, `SELECT poll.id,contact.participant_id,contact.id,contact.delivery_email,poll.question FROM polls AS poll JOIN contacts AS contact ON contact.poll_id=poll.id WHERE poll.id=? AND contact.normalized_email=? AND poll.state='open' AND poll.deadline>?`, pollID, normalizedEmail, now.Unix()).Scan(&contact.PollID, &contact.ParticipantID, &contact.ContactID, &contact.Recipient, &contact.Question)
+	if err != nil {
+		return EligibleContact{}, ErrConflict
+	}
+	return contact, nil
+}
+
+func (s *Store) QueueParticipantReturn(ctx context.Context, contact EligibleContact, workID, deliveryID string, material GrantMaterial, now time.Time) error {
+	if contact.PollID == "" || contact.ParticipantID == "" || contact.ContactID == "" || contact.Recipient == "" || workID == "" || deliveryID == "" || material.ID == "" || len(material.TokenHash) != 32 || !material.ExpiresAt.After(now) {
+		return ErrConflict
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin participant return queue: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var eligible int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM polls AS poll JOIN contacts AS contact ON contact.poll_id=poll.id WHERE poll.id=? AND contact.id=? AND contact.participant_id=? AND contact.delivery_email=? AND poll.state='open' AND poll.deadline>?`, contact.PollID, contact.ContactID, contact.ParticipantID, contact.Recipient, now.Unix()).Scan(&eligible); err != nil || eligible != 1 {
+		return ErrConflict
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO grants(id,purpose,principal_id,poll_id,contact_id,key_id,token_hash,claims_json,issued_at,expires_at) VALUES (?,'participant',?,?,?,?,?,?,?,?)`, material.ID, contact.ParticipantID, contact.PollID, contact.ContactID, material.KeyID, material.TokenHash, material.ClaimsJSON, material.IssuedAt.Unix(), material.ExpiresAt.Unix()); err != nil {
+		return fmt.Errorf("insert participant return grant: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO work_items(id,poll_id,kind,logical_key,due_at,status) VALUES (?,?,'delivery',? ,?,'pending')", workID, contact.PollID, "participant-return:"+material.ID, now.Unix()); err != nil {
+		return fmt.Errorf("insert participant return work: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO deliveries(id,work_id,grant_id,contact_id,recipient_email,message_kind,status,next_due) VALUES (?,?,?,?,?,'participant_return','pending',?)", deliveryID, workID, material.ID, contact.ContactID, contact.Recipient, now.Unix()); err != nil {
+		return fmt.Errorf("insert participant return delivery: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit participant return queue: %w", err)
 	}
 	return nil
 }

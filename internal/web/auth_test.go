@@ -193,5 +193,6 @@ func authTemplates(t *testing.T) *template.Template {
 	template.Must(page.New("participants.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1><textarea>{{.Rows}}</textarea></body></html>`))
 	template.Must(page.New("poll_access.html").Parse(`<html><body><h1>Access {{.PollID}}</h1></body></html>`))
 	template.Must(page.New("ballot.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{range .Options}}{{.Label}}{{end}}</body></html>`))
+	template.Must(page.New("results.html").Parse(`<html><body><h1>{{.Poll.Question}}</h1>{{.Poll.CountingStatus}}</body></html>`))
 	return page
 }
