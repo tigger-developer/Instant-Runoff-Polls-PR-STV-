@@ -2,10 +2,12 @@ package count
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestRunCalculatesQuotaAndStopsAfterSingleWinner(t *testing.T) {
@@ -77,6 +79,9 @@ func TestRunRequestsDecisionForUnresolvedExclusionTie(t *testing.T) {
 	}
 	if outcome.Result != nil || outcome.DecisionRequest == nil {
 		t.Fatalf("outcome = %#v, want exclusion decision request without a result", outcome)
+	}
+	if outcome.DecisionRequest.RequestFingerprint != "8ed98c9fad2b9998df68ff94221d2cda234beee5d2df69f2429808e4e251513e" {
+		t.Fatalf("request fingerprint = %q", outcome.DecisionRequest.RequestFingerprint)
 	}
 }
 
@@ -198,15 +203,36 @@ func TestRunBulkExcludesStrictlyLowerCombinedSet(t *testing.T) {
 }
 
 func TestRunRequestsLotForEqualOutcomeSensitiveSurpluses(t *testing.T) {
-	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C", "D"}, Places: 3, Ballots: []Ballot{
-		{ID: "a1", Preferences: []string{"A", "C"}}, {ID: "a2", Preferences: []string{"A", "C"}}, {ID: "a3", Preferences: []string{"A", "C"}}, {ID: "a4", Preferences: []string{"A", "C"}}, {ID: "a5", Preferences: []string{"A", "C"}},
-		{ID: "b1", Preferences: []string{"B", "D"}}, {ID: "b2", Preferences: []string{"B", "D"}}, {ID: "b3", Preferences: []string{"B", "D"}}, {ID: "b4", Preferences: []string{"B", "D"}}, {ID: "b5", Preferences: []string{"B", "D"}},
-		{ID: "c1", Preferences: []string{"C"}}, {ID: "d1", Preferences: []string{"D"}},
-	}}
+	input := equalSurplusInput()
 	outcome, err := Run(context.Background(), input, nil)
 	if err != nil || outcome.DecisionRequest == nil || outcome.DecisionRequest.Kind != "surplus_order_lot" {
 		t.Fatalf("outcome = %#v, error = %v, want surplus-order decision", outcome, err)
 	}
+}
+
+func TestRunReplaysBothEqualSurplusLotOutcomes(t *testing.T) {
+	for _, testCase := range []struct {
+		firstChoice string
+		thirdWinner string
+	}{
+		{firstChoice: "A", thirdWinner: "C"},
+		{firstChoice: "B", thirdWinner: "D"},
+	} {
+		t.Run(testCase.firstChoice, func(t *testing.T) {
+			outcome := runChoosing(t, equalSurplusInput(), testCase.firstChoice)
+			if outcome.Result == nil || !contains(outcome.Result.Winners, testCase.thirdWinner) {
+				t.Fatalf("outcome = %#v, want third winner %s", outcome, testCase.thirdWinner)
+			}
+		})
+	}
+}
+
+func equalSurplusInput() Input {
+	return Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C", "D"}, Places: 3, Ballots: []Ballot{
+		{ID: "a1", Preferences: []string{"A", "C"}}, {ID: "a2", Preferences: []string{"A", "C"}}, {ID: "a3", Preferences: []string{"A", "C"}}, {ID: "a4", Preferences: []string{"A", "C"}}, {ID: "a5", Preferences: []string{"A", "C"}},
+		{ID: "b1", Preferences: []string{"B", "D"}}, {ID: "b2", Preferences: []string{"B", "D"}}, {ID: "b3", Preferences: []string{"B", "D"}}, {ID: "b4", Preferences: []string{"B", "D"}}, {ID: "b5", Preferences: []string{"B", "D"}},
+		{ID: "c1", Preferences: []string{"C"}}, {ID: "d1", Preferences: []string{"D"}},
+	}}
 }
 
 func TestRunReturnsWinnersInDeclaredOptionOrder(t *testing.T) {
@@ -237,6 +263,47 @@ func TestRunUsesHistoricalHighForRemainderTie(t *testing.T) {
 	}
 	if len(outcome.Result.Winners) != 2 || outcome.Result.Winners[0] != "A" || outcome.Result.Winners[1] != "B" {
 		t.Fatalf("winners = %#v, want [A B]", outcome.Result.Winners)
+	}
+}
+
+func TestRunSurplusTransferBoundaries(t *testing.T) {
+	tests := []struct {
+		name    string
+		ballots []Ballot
+		want    []string
+	}{
+		{name: "no usable surplus", ballots: expandBallots([]ballotGroup{{6, []string{"A"}}, {3, []string{"B"}}, {1, []string{"C", "B"}}}), want: []string{"A", "B"}},
+		{name: "transferable parcel below surplus", ballots: expandBallots([]ballotGroup{{5, []string{"A"}}, {1, []string{"A", "B"}}, {3, []string{"B"}}, {1, []string{"C"}}}), want: []string{"A", "B"}},
+		{name: "transferable parcel equals surplus", ballots: expandBallots([]ballotGroup{{4, []string{"A"}}, {2, []string{"A", "B"}}, {3, []string{"B"}}, {1, []string{"C"}}}), want: []string{"A", "B"}},
+		{name: "equal remainders need no lot when no increment remains", ballots: expandBallots([]ballotGroup{{3, []string{"A", "B"}}, {3, []string{"A", "C"}}, {3, []string{"B"}}, {1, []string{"C"}}}), want: []string{"A", "B"}},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C"}, Places: 2, Ballots: testCase.ballots}
+			outcome, err := Run(context.Background(), input, nil)
+			if err != nil || outcome.Result == nil || !reflect.DeepEqual(outcome.Result.Winners, testCase.want) {
+				t.Fatalf("outcome = %#v, error = %v, want winners %v", outcome, err, testCase.want)
+			}
+		})
+	}
+}
+
+func TestRunFillsLastVacanciesIncludingZeroTallies(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C"}, Places: 3, Ballots: []Ballot{{ID: "b1", Preferences: []string{"A"}}}}
+	outcome, err := Run(context.Background(), input, nil)
+	if err != nil || outcome.Result == nil || !reflect.DeepEqual(outcome.Result.Winners, []string{"A", "B", "C"}) {
+		t.Fatalf("outcome = %#v, error = %v", outcome, err)
+	}
+	if !reflect.DeepEqual(outcome.Result.Counts[len(outcome.Result.Counts)-1].ElectedOptionIDs, []string{"A", "B", "C"}) {
+		t.Fatalf("final election record = %#v", outcome.Result.Counts[len(outcome.Result.Counts)-1])
+	}
+}
+
+func TestRunDoesNotBulkExcludeAtEqualBoundary(t *testing.T) {
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C", "D", "E"}, Places: 2, Ballots: expandBallots([]ballotGroup{{3, []string{"A"}}, {3, []string{"B"}}, {2, []string{"C"}}, {1, []string{"D", "A"}}, {1, []string{"E", "B"}}})}
+	outcome, err := Run(context.Background(), input, nil)
+	if err != nil || outcome.DecisionRequest == nil || outcome.DecisionRequest.Kind != "exclusion_lot" || !reflect.DeepEqual(outcome.DecisionRequest.EligibleOptionIDs, []string{"D", "E"}) {
+		t.Fatalf("outcome = %#v, error = %v, want D/E exclusion lot", outcome, err)
 	}
 }
 
@@ -291,6 +358,64 @@ func TestRunRejectsCancellationAndUnusedDecision(t *testing.T) {
 	}
 }
 
+func TestRunConservesBallotsAndSurvivesJSONReplay(t *testing.T) {
+	input := equalSurplusInput()
+	first := runChoosing(t, input, "A")
+	encodedInput, err := json.Marshal(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedDecisions, err := json.Marshal(first.Result.UsedDecisions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replayInput Input
+	var replayDecisions []Decision
+	if err := json.Unmarshal(encodedInput, &replayInput); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encodedDecisions, &replayDecisions); err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := Run(context.Background(), replayInput, replayDecisions)
+	if err != nil || replayed.Result == nil || !reflect.DeepEqual(first.Result, replayed.Result) {
+		t.Fatalf("replayed = %#v, error = %v, want %#v", replayed.Result, err, first.Result)
+	}
+	for _, record := range replayed.Result.Counts {
+		total := record.Exhausted
+		for _, option := range record.Totals {
+			total += option.Votes
+		}
+		if total != len(input.Ballots) {
+			t.Fatalf("count %d accounts for %d ballots, want %d", record.Index, total, len(input.Ballots))
+		}
+	}
+}
+
+func TestRunSupportsBoundsAndCancellationDuringCount(t *testing.T) {
+	options := make([]string, 50)
+	for index := range options {
+		options[index] = fmt.Sprintf("o%d", index+1)
+	}
+	maxBallots := make([]Ballot, 1000)
+	for index := range maxBallots {
+		maxBallots[index] = Ballot{ID: fmt.Sprintf("b%d", index+1), Preferences: []string{options[index%len(options)]}}
+	}
+	input := Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: options, Places: 25, Ballots: maxBallots}
+	if outcome, err := Run(context.Background(), input, nil); err != nil || (outcome.Result == nil && outcome.DecisionRequest == nil) {
+		t.Fatalf("maximum input outcome = %#v, error = %v", outcome, err)
+	}
+	overLimit := cloneInput(input)
+	overLimit.Ballots = append(overLimit.Ballots, Ballot{ID: "b1001", Preferences: []string{"o1"}})
+	if _, err := Run(context.Background(), overLimit, nil); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("over-limit error = %v", err)
+	}
+	cancelContext := &cancelAfterChecksContext{remaining: 2}
+	if outcome, err := Run(cancelContext, Input{SchemaVersion: 1, Rule: RuleIrishGuidedSTV, Options: []string{"A", "B", "C"}, Places: 1, Ballots: expandBallots([]ballotGroup{{3, []string{"A"}}, {2, []string{"B", "A"}}, {1, []string{"C", "B"}}})}, nil); !errors.Is(err, context.Canceled) || outcome.Result != nil {
+		t.Fatalf("mid-count cancellation outcome = %#v, error = %v", outcome, err)
+	}
+}
+
 func ballots(preferences ...string) []Ballot {
 	result := make([]Ballot, 0, len(preferences))
 	for index, preference := range preferences {
@@ -316,4 +441,57 @@ func cloneInput(input Input) Input {
 		cloned.Ballots[index] = Ballot{ID: ballot.ID, Preferences: append([]string(nil), ballot.Preferences...)}
 	}
 	return cloned
+}
+
+type ballotGroup struct {
+	count       int
+	preferences []string
+}
+
+func expandBallots(groups []ballotGroup) []Ballot {
+	result := []Ballot{}
+	for _, group := range groups {
+		for range group.count {
+			result = append(result, Ballot{ID: fmt.Sprintf("b%d", len(result)+1), Preferences: append([]string(nil), group.preferences...)})
+		}
+	}
+	return result
+}
+
+func runChoosing(t *testing.T, input Input, firstChoice string) Outcome {
+	t.Helper()
+	decisions := []Decision{}
+	for {
+		outcome, err := Run(context.Background(), input, decisions)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if outcome.Result != nil {
+			return outcome
+		}
+		request := outcome.DecisionRequest
+		if request == nil {
+			t.Fatalf("outcome = %#v", outcome)
+		}
+		choice := request.EligibleOptionIDs[0]
+		if len(decisions) == 0 {
+			choice = firstChoice
+		}
+		decisions = append(decisions, Decision{Sequence: request.Sequence, Kind: request.Kind, RequestFingerprint: request.RequestFingerprint, SelectedOptionIDs: []string{choice}})
+	}
+}
+
+type cancelAfterChecksContext struct {
+	remaining int
+}
+
+func (ctx *cancelAfterChecksContext) Deadline() (time.Time, bool) { return time.Time{}, false }
+func (ctx *cancelAfterChecksContext) Done() <-chan struct{}       { return nil }
+func (ctx *cancelAfterChecksContext) Value(any) any               { return nil }
+func (ctx *cancelAfterChecksContext) Err() error {
+	ctx.remaining--
+	if ctx.remaining < 0 {
+		return context.Canceled
+	}
+	return nil
 }

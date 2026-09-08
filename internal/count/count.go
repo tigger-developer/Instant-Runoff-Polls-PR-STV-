@@ -142,6 +142,7 @@ func Run(ctx context.Context, input Input, decisions []Decision) (Outcome, error
 			for _, option := range input.Options {
 				if continuing[option] {
 					winners = append(winners, option)
+					countRecords[len(countRecords)-1].ElectedOptionIDs = append(countRecords[len(countRecords)-1].ElectedOptionIDs, option)
 				}
 			}
 			if decisionIndex != len(decisions) {
