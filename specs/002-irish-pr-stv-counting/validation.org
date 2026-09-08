@@ -26,6 +26,15 @@
 - Category :: Bounded one-off verification.
 - Criterion :: [[file:spec.org::#ac-002-3][AC002.3 - Specified application counting rules]].
 - Definition :: [[file:spec.org::#ot-002-1][OT002.1 - Application rule and fixture review]].
-- Result :: PENDING.
+- Result :: PASS.
 - Procedure and expected result :: Review the approved application counting rules against independent fixture expectations, including arithmetic, conservation, termination, and replay. One review and at most one remediation review; no live polls or external service calls. Legislative conformity and amendment/source-edition verification are not required.
-- Execution evidence :: No execution or human result has been recorded.
+- Revision :: Production and automated-test candidate =baef447=; implementation-gate PASS recorded after evidence revision =6390df4=.
+- Environment :: Darwin host, project Go toolchain, 8 September 2026.
+- Reviewer :: Claudius delivery context, after retained external implementation-gate PASS.
+- Execution evidence :: Reviewed the approved fixed arithmetic cases against the retained test oracles and ran =go test -v ./internal/count=. Quota cases, original and last-parcel transfers, largest and equal surpluses, historical-high and historical-low choices, remainder lots, no-transfer and boundary transfers, strict bulk exclusion, last-vacancy termination, exact records, conservation and deterministic replay all passed.
+- Observed result :: The implemented fixture outcomes, arithmetic records, conservation checks, termination paths and replay behaviour match the approved application rule. Legislative conformity was not assessed because it is outside OT002.1 and the signed-off scope.
+
+* Documentation outcome
+
+- Result :: Not affected.
+- Reason :: The rule identifier, package boundary, fixture mapping and persistence contract are already recorded in the signed-off W002 specification and current architecture authority. This validation added no new public interface or operational behaviour requiring another project-document change.
