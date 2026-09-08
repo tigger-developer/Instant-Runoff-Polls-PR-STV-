@@ -45,7 +45,8 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("begin migration: %w", err)
 	}
-	defer tx.Rollback()
+	// Rollback is best-effort cleanup; a committed transaction returns sql.ErrTxDone.
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, migrations[0].Statements[0]); err != nil {
 		return fmt.Errorf("create schema version: %w", err)
 	}

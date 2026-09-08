@@ -94,3 +94,15 @@
 * Implementation gate
 
 - Execution :: Not started; this batch defines specifications only.
+
+** Retained independent implementation audit, runner incident
+:PROPERTIES:
+:CONTEXT: not issued
+:END:
+
+- Gate :: implementation.
+- Revision :: Local W001 implementation checkpoint at =74bb4cb= plus the uncommitted rollback-cleanup correction; no audited revision was accepted.
+- Context :: Configured retained harness for =gpt-5.6-luna= was invoked once on 2026-09-08.
+- Result :: RUNNER INCIDENT. The harness failed before an auditor response because its internal preparation attempted a prohibited =sed= read of =/Users/tigger/.agents/sdlc/MAIN.md=.
+- Evidence :: The command returned the workspace policy rejection; no =GATE=, =REVISION=, or =VERDICT= was produced.
+- Boundary :: This is neither an audit finding nor PASS/FAIL evidence. Do not create a replacement context. Retry requires operator direction and must use the same retained context if the harness can resume it.
