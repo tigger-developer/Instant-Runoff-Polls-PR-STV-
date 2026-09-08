@@ -280,12 +280,24 @@
 
 ** Retained external implementation audit, continuation runner incident
 :PROPERTIES:
-:CONTEXT: /root/foundation_implementation_audit
+:ATTEMPTED_SESSION_VALUE: /root/foundation_implementation_audit
 :END:
 
 - Gate :: implementation.
 - Revision :: =63f6b35=.
 - Audits requested :: =audit-test-code= and =audit-code=.
 - Result :: RUNNER INCIDENT; no audit verdict was received.
-- Evidence :: On 2026-09-08, the retained context was resumed with the complete W001 specification, audit and validation evidence, project profile, architecture, Makefile, module checksum, implementation and tests. The harness process completed, but this delivery context received no =GATE=, =REVISION=, =VERDICT=, findings, or retained result artefact. A second resume of the same context had the same outcome.
-- Boundary :: This is neither PASS nor FAIL evidence. It does not permit W002 or W003 admission, and no replacement external context was created.
+- Evidence :: On 2026-09-08, the runner was invoked with the complete W001 evidence bundle but supplied the agent task name =/root/foundation_implementation_audit= instead of a harness-emitted session identifier. It failed before a provider audit could begin, and no =GATE=, =REVISION=, =VERDICT=, findings, or retained result artefact was received.
+- Boundary :: This is an invocation failure, not an audit verdict or a consumed audit round. No replacement external context was created.
+
+** Retained external implementation audit, continuation result
+:PROPERTIES:
+:CONTEXT: 01a07f47-11e2-74c1-8161-53c8f9bbbe98
+:END:
+
+- Gate :: implementation.
+- Revision :: =d430b2e=.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: PASS.
+- Evidence :: The retained harness returned =SESSION_ID: 01a07f47-11e2-74c1-8161-53c8f9bbbe98=, =GATE: implementation=, =REVISION: d430b2e= and =VERDICT: PASS= after receiving the current W001 evidence bundle.
+- Boundary :: This is an effective implementation-gate PASS for the reviewed application candidate. Final one-off and user-test evidence, documentation reconciliation, and operator closure remain separate.
