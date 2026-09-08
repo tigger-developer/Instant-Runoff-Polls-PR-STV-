@@ -227,6 +227,16 @@
 - [audit-code] [BLOCKING] Rendered-HTML/native-tool evidence and =go.sum= were reported absent.
 - Continuation :: The retained context must be resumed. The returned revision and findings conflict with the supplied current evidence bundle, so the resume request will identify the current revision and include =go.sum=.
 
+** Retained external implementation audit, resume runner incident
+:PROPERTIES:
+:CONTEXT: 01a07f47-11e2-74c1-8161-53c8f9bbbe98
+:END:
+
+- Gate :: implementation.
+- Result :: RUNNER INCIDENT; no new audit verdict was returned.
+- Evidence :: On 2026-09-08T04:32:20Z the retained context attempted to read its evidence through =sed=. Workspace policy rejected that command before the auditor produced a =GATE=, =REVISION= or =VERDICT= block.
+- Boundary :: This incident is not implementation evidence and does not replace the retained context. The prior external FAIL remains historical until the same context can assess the supplied current candidate.
+
 ** Retained independent implementation audit, runner incident
 :PROPERTIES:
 :CONTEXT: not issued
