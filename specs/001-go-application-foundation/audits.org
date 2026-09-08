@@ -155,6 +155,22 @@
 - Disposition :: Preserve all earlier implementation verdicts as historical evidence. The new delivery invocation begins local implementation review at round 1, with at most five local rounds before an external implementation audit is invoked.
 - Boundary :: This resets the local-round counter for this authorized delivery invocation only. It does not convert a prior failure into PASS, waive RED/GREEN evidence, validation, or external review, or replace an external context without the applicable audit workflow.
 
+** Local implementation review, reset round 1
+:PROPERTIES:
+:ROUND: 1
+:END:
+
+- Gate :: implementation.
+- Revision :: =58848dd= plus the current working tree.
+- Context :: Authoring context.
+- Audits :: =audit-test-code= and =audit-code=.
+- Verdict :: FAIL.
+- [audit-test-code] [BLOCKING] RT001.6 - Limits and shutdown has no retained socket-level coverage for header, read, write and idle limits, graceful draining or expiry outcomes.
+- [audit-test-code] [BLOCKING] RT001.2 - Executable HTTP boundary does not cover IPv6 where available, malformed/absent templates, or unsupported static paths.
+- [audit-test-code] [BLOCKING] RT001.1 - Layered configuration does not cover empty defaults, empty optional overlays, every duration key, or non-string YAML mapping keys.
+- [audit-code] [BLOCKING] AC001.8 - The shutdown path does not distinguish graceful completion from a shutdown deadline and does not report a safe lifecycle outcome.
+- Remediation :: Add the missing observable regression coverage, then make the smallest production changes required by the resulting RED failures. Re-run affected tests and this local composite review before external audit.
+
 ** Retained independent implementation audit, runner incident
 :PROPERTIES:
 :CONTEXT: not issued
