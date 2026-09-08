@@ -9,9 +9,10 @@ build:
 	go build -ldflags "-X main.version=$(VERSION)" -o bin/$(APP) ./cmd/$(APP)
 
 install: build
-	mkdir -p "$(PREFIX)/bin" "$(PREFIX)/share/$(APP)"
+	mkdir -p "$(PREFIX)/bin" "$(PREFIX)/share/$(APP)/docs"
 	cp bin/$(APP) "$(PREFIX)/bin/$(APP)"
 	cp -R cmd/$(APP)/templates cmd/$(APP)/static config/defaults.yaml "$(PREFIX)/share/$(APP)/"
+	cp docs/$(APP)-help.md "$(PREFIX)/share/$(APP)/docs/"
 
 lint:
 	test -z "$$(gofmt -l cmd internal)"
@@ -21,7 +22,7 @@ lint:
 	command -v biome >/dev/null
 	biome check cmd/stv-poll/static
 	command -v tidy >/dev/null
-	go run ./cmd/stv-poll render-html | tidy -errors -quiet -
+	cd cmd/stv-poll && STV_POLL_TIDY=tidy go test -run '^TestRenderedLandingPassesTidy$$'
 
 test:
 	go test -race ./...

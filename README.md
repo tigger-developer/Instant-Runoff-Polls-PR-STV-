@@ -27,6 +27,47 @@ status.
 - This README: the product brief and requirements captured so far. These are
   inputs to the linked specifications, which contain the acceptance criteria.
 
+## Local foundation
+
+The foundation is a Go service. It needs Go, `golangci-lint`, `govulncheck`,
+Biome and tidy-html5 installed through the local development environment.
+
+Build and run the retained checks from the repository root:
+
+```sh
+make build
+```
+
+```sh
+make lint
+```
+
+```sh
+make test
+```
+
+For local serving, create an empty state directory and supply the Exodan-shaped
+runtime values. Run the binary from `cmd/stv-poll`, where the packaged template
+and static-asset paths exist:
+
+```sh
+mkdir -p .local/state
+```
+
+```sh
+cd cmd/stv-poll
+DEFAULT_CONFIG_PATH=../../config/defaults.yaml \
+STATE_DIRECTORY=../../.local/state \
+ADDR=127.0.0.1:8080 \
+../../bin/stv-poll serve
+```
+
+`CONFIG_PATH` and `SECRETS_PATH` are optional overlays. In deployment, Exodan
+supplies all runtime paths and `ADDR`; the application does not configure
+domains, routing, TLS, or host services. `make install PREFIX=/path` copies the
+binary, help, templates, static assets and non-secret defaults beneath that
+prefix. Run the installed binary from `PREFIX/share/stv-poll`.
+
 ## How a poll works
 
 1. A configured moderator creates a poll, supplies its question and options,

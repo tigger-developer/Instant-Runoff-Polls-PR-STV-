@@ -109,6 +109,9 @@ func assetDirectories(dataDirectories []string) (string, string, error) {
 		if err != nil || !info.IsDir() {
 			return "", "", fmt.Errorf("asset directory %q is unavailable", directory)
 		}
+		if err := rejectSymlinks(directory); err != nil {
+			return "", "", err
+		}
 		switch filepath.Base(directory) {
 		case "templates":
 			templates = directory
@@ -120,4 +123,16 @@ func assetDirectories(dataDirectories []string) (string, string, error) {
 		return "", "", fmt.Errorf("configuration data_dirs must include templates and static directories")
 	}
 	return templates, static, nil
+}
+
+func rejectSymlinks(directory string) error {
+	return filepath.WalkDir(directory, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("asset path %q must not be a symlink", path)
+		}
+		return nil
+	})
 }
