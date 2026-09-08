@@ -17,7 +17,7 @@ func TestInvitationBuilderPersistsClaimsAndReusesExactBearer(t *testing.T) {
 	defer st.Close()
 	key := bytes.Repeat([]byte{7}, 32)
 	randomness := bytes.NewReader(bytes.Repeat([]byte{9}, 128))
-	builder := NewInvitationMessageBuilder(st, "https://poll.example/", "key-1", key, randomness, func() time.Time { return time.Unix(100, 0) })
+	builder := NewInvitationMessageBuilder(st, "https://poll.example/", "key-1", key, nil, randomness, func() time.Time { return time.Unix(100, 0) })
 	attempt := store.DeliveryAttempt{PollID: "poll", ContactID: "contact", ParticipantID: "person", RecipientEmail: "reader@example.test", MessageKind: "invitation", Question: "Question"}
 	item := &store.ClaimedWork{ID: "mail", ClaimToken: "token"}
 	first, err := builder(context.Background(), item, attempt)
@@ -43,7 +43,7 @@ func TestInvitationBuilderPersistsClaimsAndReusesExactBearer(t *testing.T) {
 }
 
 func TestInvitationBuilderRoutesAnnouncementWithoutGrant(t *testing.T) {
-	builder := NewInvitationMessageBuilder(nil, "", "", nil, nil, nil)
+	builder := NewInvitationMessageBuilder(nil, "", "", nil, nil, nil, nil)
 	message, err := builder(context.Background(), &store.ClaimedWork{}, store.DeliveryAttempt{RecipientEmail: "reader@example.test", MessageKind: "announcement", Question: "Question", Winners: []string{"Alice"}})
 	if err != nil || !strings.Contains(message.Body, "Alice") || message.Subject != "Result: Question" {
 		t.Fatalf("message=%#v error=%v", message, err)
