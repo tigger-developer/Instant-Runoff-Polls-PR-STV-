@@ -33,6 +33,20 @@
 - RT003.17 :: =TestDecodeFormAcceptsDeclaredScalarAndRepeatedFields=, =TestDecodeFormRejectsWrongTypeUnknownDuplicateAndOversize=, =TestPublicAccessRequestsRejectMissingPreAuthCSRF=, =TestLogoutRequiresSessionCSRFAndRevokesTheSession=, =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft=, and the transactional store tests cover media types, multiplicity, size, CSRF, authentication, ownership, stale versions, and rollback.
 - RT003.18 :: =TestCreatePollDefinitionOpensGroupedPollAndQueuesEveryAddress=, =TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll=, =TestCreatePollDefinitionRejectsUnknownFieldsAndTrailingDocuments=, =TestCreatePollDefinitionRejectsUnconfiguredOwnerWithoutPartialWrite=, =TestAdminCLIProcessesPollLifecycleThroughConfiguredBoundary=, =TestAdminPollOperationsRejectInvalidScopeAndPrematureAudit=, and =TestCountAuditExportsFrozenInputAndResultWithoutVoterIdentity= cover YAML input, configured-owner enforcement without partial writes, named participants, real SMTP delivery with exactly two envelope recipients, one DATA message and one grant link, configured CLI execution, manual closure, count processing, parsed JSON structure, and identity-free audit export including participant/contact identifiers and addresses.
 
+* Automated moderator setup correction
+
+- Scope :: Variable-length option entry, administrator-supplied participant names, and preservation of names and address groups when copying an electorate. Visual appearance is excluded from automated judgement.
+- Options RED evidence :: The focused moderator workflow returned HTTP 422 before the server accepted the scalar, newline-separated =options= field.
+- Named-participant RED evidence :: Against the pre-change tree, =TestAuditRedNamedParticipantRows= failed to compile because =parseNamedElectorate= was absent.
+- Electorate-copy RED evidence :: Against the pre-change tree, =TestAuditRedCopyPreservesParticipantName= failed because the copied participant's display name was empty.
+- Focused GREEN evidence :: =TestModeratorCreatesAndUpdatesOnlyOwnedVersionedDraft=, =TestNamedElectorateRequiresAndBoundsDisplayNames=, =TestReidentifyElectoratePreservesGroupsWithFreshIDs=, and =TestCreatePollDefinitionRejectsInvalidOrAmbiguousInputWithoutPoll= returned zero.
+- Full automated evidence :: =make test= returned zero for every package under the race detector. =make lint= returned zero for gofmt, Go vet, golangci-lint, Biome, and Tidy over rendered production pages. =make vulncheck= returned zero and reported no vulnerabilities.
+- RT003.2 :: The HTTP workflow asserts exact option labels and order through the shipped moderator template after both creation and editing.
+- RT003.3 :: The HTTP and command boundaries accept a 100-rune display name, reject 101 runes, reject a missing name without a partial write, persist the name, and render it on the participant's voting page.
+- RT003.4 :: The HTTP workflow copies two named participant groups and three contacts to new participant/contact identifiers, retains each address association, leaves the source electorate and ballot unchanged, and copies no ballot.
+- Audit evidence :: [[file:audits.yaml][W003 implementation audit record]].
+- Human boundary :: Moderator-page visual layout remains for the operator's user test; no automated aesthetic verdict is recorded.
+
 * User tests
 
 ** UT003.1 - Voting and help experience
@@ -57,7 +71,7 @@
 - Definition :: [[file:spec.org::#ut-003-2][UT003.2 - Moderator and participant journey]].
 - Result :: PENDING.
 - Procedure and expected result :: Operator creates, copies/edits, opens, pauses/resumes, closes, and reviews a synthetic poll; repeats with announcement disabled and confirms the intended privacy boundaries.
-- Execution evidence :: No execution or human result has been recorded.
+- Execution evidence :: The streamlined moderator setup is available for operator deployment and user testing. Automated checks do not supply a visual-layout verdict; no human result has been recorded.
 
 * One-off tests
 
