@@ -1,0 +1,48 @@
+// ABOUTME: Verifies isolated invitation and result message construction.
+// ABOUTME: It protects recipient privacy, approved copy, and header boundaries.
+package workflow
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestInvitationMessageUsesApprovedCopyAndOneRecipient(t *testing.T) {
+	message, err := InvitationMessage("reader@example.test", "Favourite book", "https://poll.example/polls/one?grant=secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.To != "reader@example.test" || message.Subject != "Vote: Favourite book" {
+		t.Fatalf("headers = %#v", message)
+	}
+	want := "Please vote for Favourite book by clicking the link below:\n\nhttps://poll.example/polls/one?grant=secret\n\nYou will be asked to vote by ranking your preferences 1, 2, 3 and so on.\nYou have what is called a *Single Transferable Vote*.\nEvery vote counts towards choosing the result.\nVoter preferences count.\n"
+	if message.Body != want {
+		t.Fatalf("body = %q", message.Body)
+	}
+}
+
+func TestMessagesRejectHeaderInjection(t *testing.T) {
+	if _, err := InvitationMessage("reader@example.test", "Question\r\nBcc: stolen@example.test", "https://poll.example"); err == nil {
+		t.Fatal("header injection succeeded")
+	}
+	if _, err := ResultMessage("reader@example.test", "Question", []string{"A\nB"}, false); err == nil {
+		t.Fatal("winner injection succeeded")
+	}
+}
+
+func TestResultMessagesUseApprovedOutcomes(t *testing.T) {
+	result, err := ResultMessage("reader@example.test", "Question", []string{"A", "B"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Subject != "Result: Question" || result.Body != "The result for Question is:\n\nA\nB\n\nThank you for voting.\n" {
+		t.Fatalf("result = %#v", result)
+	}
+	none, err := ResultMessage("reader@example.test", "Question", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(none.Body, "No votes were received for Question, so there is no winner.") {
+		t.Fatalf("zero turnout body = %q", none.Body)
+	}
+}
