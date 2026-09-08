@@ -1,0 +1,8 @@
+base_url: http://localhost:8080
+data_dirs: [templates, static]
+http:
+  read_header_timeout: 5s
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
