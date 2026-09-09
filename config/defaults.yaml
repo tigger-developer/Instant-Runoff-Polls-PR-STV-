@@ -1,4 +1,5 @@
 base_url: http://localhost:8080
+exec_args: serve
 
 data_dirs:
   - cmd/stv-poll/templates
