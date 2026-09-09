@@ -154,6 +154,27 @@ audits:
             REVISION: 5f0eedfb318a99d39b2bcb4cb52fc0f080a309bd3183021700c51c280b736770
             VERDICT: PASS
           updated: "2026-09-08T18:33:54Z"
+    - work_item: 003-signing-key-derivation-20260909
+      gate: implementation
+      session_id: 01a08627-e439-7f03-9147-333e0f858a5f
+      external_round: 1
+      status: passed
+      updated: "2026-09-09T12:34:30Z"
+      revision: 6e449d9ef87f88cbeba9a9f8ec5405f01971202dd0f9693ba22336e010a2bcdf
+      verdict: PASS
+      response: |-
+        GATE: implementation
+        REVISION: 6e449d9ef87f88cbeba9a9f8ec5405f01971202dd0f9693ba22336e010a2bcdf
+        VERDICT: PASS
+      history:
+        - round: 1
+          revision: 6e449d9ef87f88cbeba9a9f8ec5405f01971202dd0f9693ba22336e010a2bcdf
+          verdict: PASS
+          response: |-
+            GATE: implementation
+            REVISION: 6e449d9ef87f88cbeba9a9f8ec5405f01971202dd0f9693ba22336e010a2bcdf
+            VERDICT: PASS
+          updated: "2026-09-09T12:34:30Z"
 legacy:
     - path: audits.org
       content: |

@@ -47,6 +47,15 @@
 - Audit evidence :: [[file:audits.yaml][W003 implementation audit record]].
 - Human boundary :: Moderator-page visual layout remains for the operator's user test; no automated aesthetic verdict is recorded.
 
+* Automated deployment signing-key correction
+
+- Scope :: Accept an opaque random signing string of at least 32 characters and derive the fixed 32-byte HMAC key as =SHA-256(signing_key)=; do not interpret the configured secret as Base64.
+- RED evidence :: =TestLoadValidatesWorkflowConfiguration= failed because the former Base64 decoder rejected the 32-character opaque test string.
+- GREEN evidence :: The focused configuration test returned zero and asserted the exact derived SHA-256 value. A shorter string remained rejected.
+- Full automated evidence :: =make test= returned zero for every package under the race detector. =make lint= returned zero for gofmt, Go vet, golangci-lint, Biome, and Tidy over rendered pages. =make vulncheck= returned zero and reported no vulnerabilities.
+- Audit evidence :: [[file:audits.yaml][W003 implementation audit record]].
+- Deployment boundary :: No service deployment or production-secret mutation was performed by the application delivery workflow.
+
 * User tests
 
 ** UT003.1 - Voting and help experience
