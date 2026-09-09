@@ -125,6 +125,16 @@ as history.
   and dim remainder are derived from the configured =base_url= hostname; no
   product name, final domain, request =Host=, or forwarded header is used.
 
+** Deployment signing-key amendment, 9 September 2026
+
+The operator replaced the Base64 input requirement after deployment validation.
+=auth.signing_key= is an opaque random string containing at least 32 characters.
+The application derives the required 32-byte HMAC key as
+=SHA-256(auth.signing_key)=. The minimum represents 128 bits of input entropy for
+a uniformly random hexadecimal string and more for a broader random alphabet;
+hashing does not add entropy. Short values fail without being logged. The
+existing =auth.key_id= rotation semantics remain unchanged.
+
 ** Unresolved blockers
 
 - No unresolved product-policy decision remains. The recorded approvals cover the policies above; this refresh does not introduce additional product choices.
@@ -657,7 +667,7 @@ restarting serve; each scheduled invocation loads the current files.
 | moderators[].id | Required string, 1..64 ASCII letters/digits/_/- | Stable owner identity; IDs are never reassigned to another person. |
 | moderators[].email | Required bare mailbox | One email per moderator; case-insensitive comparison. Duplicate normalized emails or IDs fail startup. |
 | auth.key_id | Required string, same ID alphabet | Explicit signing-key version; change it when rotating the key. |
-| auth.signing_key | Required standard-base64 string decoding to 32 random bytes | HMAC-SHA-256 key, supplied through decrypted secrets. |
+| auth.signing_key | Required random string, at least 32 characters | Secret input supplied through decrypted configuration and hashed with SHA-256 to derive the 32-byte HMAC key. |
 | http.secure_cookies | true | Explicit false permits local HTTP development; never infer from URL, Host or forwarded headers. |
 | smtp.host | Required non-empty string | SMTP service endpoint, consumed by the transport. |
 | smtp.port | Required integer 1..65535 | SMTP connection port. |
@@ -675,7 +685,7 @@ moderators:
     email: moderator@example.com
 auth:
   key_id: key-1
-  signing_key: REPLACE_WITH_BASE64_OF_32_RANDOM_BYTES
+  signing_key: REPLACE_WITH_RANDOM_STRING_OF_AT_LEAST_32_CHARACTERS
 smtp:
   username: poll-mail-user
   password: REPLACE_WITH_SMTP_PASSWORD

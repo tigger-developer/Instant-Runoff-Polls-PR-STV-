@@ -373,6 +373,14 @@ settings; URL and domain validation belong to Exodan. The application consumes
 the supplied `base_url` to construct invitation links. Request `Host` headers do
 not determine authentication-link destinations.
 
+The decrypted `auth.signing_key` is an opaque random string of at least 32
+characters. The application derives the fixed 32-byte HMAC key as
+`SHA-256(signing_key)`; the raw string is never decoded as Base64. This length
+sets a 128-bit input-entropy floor for a uniformly random hexadecimal string and
+more for a broader random alphabet. Hashing fixes the key representation but
+does not add entropy. Changing the string requires changing `auth.key_id` under
+the existing key-rotation contract.
+
 The operator clarified this boundary on 8 September 2026. The earlier proposal
 for application-level `base_url` validation is withdrawn. Exodan owns domain
 validation, DNS, routing, and public TLS; the application consumes its runtime

@@ -4,7 +4,7 @@ package config
 
 import (
 	"bytes"
-	"encoding/base64"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"gopkg.in/yaml.v3"
@@ -165,11 +165,11 @@ func (cfg *Config) validateWorkflow() error {
 	if !workflowID.MatchString(cfg.Auth.KeyID) {
 		return errors.New("configuration field auth.key_id is invalid")
 	}
-	key, err := base64.StdEncoding.DecodeString(cfg.Auth.SigningKeyText)
-	if err != nil || len(key) != 32 {
-		return errors.New("configuration field auth.signing_key must decode to 32 bytes")
+	if len([]rune(cfg.Auth.SigningKeyText)) < 32 {
+		return errors.New("configuration field auth.signing_key must contain at least 32 characters")
 	}
-	cfg.Auth.SigningKey = key
+	key := sha256.Sum256([]byte(cfg.Auth.SigningKeyText))
+	cfg.Auth.SigningKey = key[:]
 	return nil
 }
 

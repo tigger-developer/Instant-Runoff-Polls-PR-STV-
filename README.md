@@ -52,7 +52,11 @@ mkdir -p .local/state
 
 Copy `secrets/localhost.yaml.example` to the ignored
 `secrets/localhost.yaml`, then replace the signing-key placeholder with the
-base64 encoding of 32 random bytes. The example moderator address is synthetic.
+random string used for that deployment. It must contain at least 32 characters;
+32 uniformly random hexadecimal characters provide the required 128-bit minimum
+input entropy, and a broader random alphabet provides more. The application
+derives its fixed 32-byte HMAC key with SHA-256. The example moderator address is
+synthetic.
 
 ```sh
 cd cmd/stv-poll

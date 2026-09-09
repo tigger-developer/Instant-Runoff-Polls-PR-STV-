@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +20,7 @@ http:
 moderators: []
 auth:
   key_id: key-1
-  signing_key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+  signing_key: 0123456789abcdefghijklmnopqrstuv
 `
 
 func TestLoadMergesLayersRecursively(t *testing.T) {
@@ -53,13 +55,14 @@ func TestLoadValidatesWorkflowConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Auth.KeyID != "key-1" || len(cfg.Auth.SigningKey) != 32 || cfg.HTTP.SecureCookies {
+	wantKey := sha256.Sum256([]byte("0123456789abcdefghijklmnopqrstuv"))
+	if cfg.Auth.KeyID != "key-1" || !bytes.Equal(cfg.Auth.SigningKey, wantKey[:]) || cfg.HTTP.SecureCookies {
 		t.Fatalf("workflow configuration = %#v", cfg)
 	}
 
 	for name, overlay := range map[string]string{
 		"duplicate moderator": "moderators:\n  - {id: one, email: SAME@example.test}\n  - {id: two, email: same@example.test}\n",
-		"invalid signing key": "auth:\n  signing_key: c2hvcnQ=\n",
+		"invalid signing key": "auth:\n  signing_key: too-short\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(directory, name+".yaml")
